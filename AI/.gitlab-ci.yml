@@ -1,0 +1,10 @@
+# 1. 파일의 가장 첫 줄에 spec이 와야 합니다.
+spec:
+  inputs:
+    project_dir:
+      type: string
+      default: "AI/"
+      description: "Spring Boot 프로젝트의 상대 경로"
+
+# 2. spec 섹션과 Job 정의 섹션을 구분하는 구분선 (필수!)
+---
