@@ -1,17 +1,37 @@
-# 1. 파일의 가장 첫 줄에 spec이 와야 합니다.
 spec:
   inputs:
     project_dir:
       type: string
-      default: "embedded/autowing_car"
-      description: "Spring Boot 프로젝트의 상대 경로"
-
-# 2. spec 섹션과 Job 정의 섹션을 구분하는 구분선 (필수!)
+      default: "embbeded"
+      description: "Embedded 프로젝트의 상대 경로"
 ---
-# ---------------------------------------------------------------------------
-# [변수 설정]
-# ---------------------------------------------------------------------------
+
 variables:
-  good:good
-  # EMBEDDED_IMAGE: $CI_REGISTRY_IMAGE/embedded:$CI_COMMIT_SHORT_SHA
-  # EMBEDDED_DIR: "embedded/autowing_car"
+  EMBEDDED_DIR: "$[[ inputs.project_dir ]]"
+
+# [Build/Test] 임베디드 코드 문법 검사 또는 유닛 테스트
+embedded-test:
+  stage: build
+  image: python:3.10-slim
+  rules:
+    - changes:
+        - "$[[ inputs.project_dir ]]/**/*"
+  script:
+    - echo "⚙️ Testing Embedded Code..."
+    - cd $[[ inputs.project_dir ]]
+    # 예: 파이썬 의존성 확인 또는 테스트 실행
+    # pip install -r requirements.txt
+    # pytest
+
+# [Deploy] Main 브랜치 머지 시 타겟 장치(Jetson 등)로 코드 전송
+# (이 예시는 EC2를 게이트웨이로 쓰거나 직접 배포한다고 가정합니다)
+embedded-deploy:
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "master"'
+      changes:
+        - "$[[ inputs.project_dir ]]/**/*"
+  script:
+    - echo "🚚 Sending code to Embedded Device..."
+    # 실제 장비로 rsync나 scp를 통해 코드를 보낼 때 사용
+    # ssh $DEVICE_USER@$DEVICE_IP "cd /home/project && git pull"
