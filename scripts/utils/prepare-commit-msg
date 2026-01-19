@@ -1,0 +1,26 @@
+#!/bin/bash
+# 저장 위치: scripts/utils/prepare-commit-msg
+
+COMMIT_MSG_FILE=$1
+COMMIT_SOURCE=$2
+SHA1=$3
+
+# 브랜치 이름 가져오기
+BRANCH_NAME=$(git symbolic-ref --short HEAD 2>/dev/null)
+
+# 지라 티켓 번호 추출 (S00P00A000-00 형태)
+JIRA_KEY=$(echo "$BRANCH_NAME" | grep -oE "S[0-9]+P[0-9]+A[0-9]+-[0-9]+")
+
+if [ -n "$JIRA_KEY" ]; then
+    # 기존 메시지 읽기
+    ORIGINAL_MSG=$(cat "$COMMIT_MSG_FILE")
+    
+    # 이미 지라 키가 있으면 패스 (중복 방지)
+    if [[ "$ORIGINAL_MSG" == *"$JIRA_KEY"* ]]; then
+        exit 0
+    fi
+
+    # 메시지 앞에 지라 키 붙이기 (원하는 포맷으로 수정 가능)
+    # 예: [S14P11A402-123] 기존메시지
+    echo "[$JIRA_KEY] $ORIGINAL_MSG" > "$COMMIT_MSG_FILE"
+fi
