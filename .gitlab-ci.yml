@@ -15,6 +15,6 @@ include:
   - local: 'Frontend/.gitlab-ci.yml'
     inputs:
       project_dir: "Frontend"
-  - local: 'embbeded/.gitlab-ci.yml' # 사용자님 폴더명 오타 확인 필요 (embedded?)
+  - local: 'embedded/.gitlab-ci.yml' # 사용자님 폴더명 오타 확인 필요 (embedded?)
     inputs:
-      project_dir: "embbeded"
+      project_dir: "embedded"
