@@ -1,0 +1,13 @@
+# 전체 프로젝트에서 사용할 단계(Stage)를 미리 정의합니다.
+stages:
+  - build
+  - package
+  - deploy
+
+# 각 폴더에 있는 CI 파일들을 불러옵니다.
+include:
+  - local: 'Backend/.gitlab-ci.yml'
+  - local: 'AI/.gitlab-ci.yml'
+  - local: 'Frontend/.gitlab-ci.yml'
+  - local: 'embbeded/.gitlab-ci.yml'
+  # - local: 'frontend/.gitlab-ci.yml' # 필요시 주석 해제
