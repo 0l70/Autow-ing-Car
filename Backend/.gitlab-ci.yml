@@ -1,3 +1,11 @@
+spec:
+  inputs:
+    project_dir:
+      type: string
+      # 👇 여기를 실제 백엔드 프로젝트 경로로 수정
+      default: "Backend/autowing_car"
+      description: "Backend 프로젝트의 상대 경로"
+---
 stages:
   - build
   - package
@@ -93,7 +101,7 @@ backend-deploy:
 
 
 
-          
+
           # -e DB_URL='$DB_URL' \
           # -e DB_USERNAME='$DB_USERNAME' \
           # -e DB_PASSWORD='$DB_PASSWORD' \
