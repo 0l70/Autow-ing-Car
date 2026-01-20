@@ -1,68 +1,19 @@
+# 📂 Frontend/.gitlab-ci.yml
 spec:
   inputs:
     project_dir:
       type: string
       default: "Frontend"
-      description: "Frontend 프로젝트의 상대 경로"
+      description: "Frontend 프로젝트 경로"
+    # 만약 메인에서 image_tag 같은 걸 넘긴다면 여기도 정의해야 함
+
 ---
+# (여기서부터 기존 로직 시작)
 
-# variables:
-#   FRONTEND_DIR: "$[[ inputs.project_dir ]]"
-#   FRONTEND_IMAGE: "$CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_SHORT_SHA"
-
-# # [Build] 의존성 설치 및 빌드 테스트
-# frontend-build:
-#   stage: build
-#   image: node:20-alpine
-#   rules:
-#     - changes:
-#         - "$[[ inputs.project_dir ]]/**/*"
-#   script:
-#     - echo "🎨 Building Frontend..."
-#     - cd $[[ inputs.project_dir ]]
-#     - npm install
-#     - npm run build
-#   artifacts:
-#     paths:
-#       - $[[ inputs.project_dir ]]/dist/ # 빌드 결과물 저장
-#     expire_in: 1 hour
-
-# # [Package & Deploy] Main 브랜치 머지 시 Nginx 이미지로 배포
-# frontend-package:
-#   stage: package
-#   image: docker:latest
-#   services:
-#     - docker:dind
-#   rules:
-#     - if: '$CI_COMMIT_REF_NAME == "master"'
-#       changes:
-#         - "$[[ inputs.project_dir ]]/**/*"
-#   before_script:
-#     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-#   script:
-#     - cd $[[ inputs.project_dir ]]
-#     - docker build -t $FRONTEND_IMAGE .
-#     - docker push $FRONTEND_IMAGE
-
-# frontend-deploy:
-#   stage: deploy
-#   image: alpine:latest
-#   rules:
-#     - if: '$CI_COMMIT_REF_NAME == "main"'
-#       changes:
-#         - "$[[ inputs.project_dir ]]/**/*"
-#   before_script:
-#     - apk update && apk add openssh-client
-#     - eval $(ssh-agent -s)
-#     - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
-#     - mkdir -p ~/.ssh
-#     - chmod 700 ~/.ssh
-#     - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
-#   script:
-#     - echo "🚀 Deploying Frontend to Nginx..."
-#     - ssh ubuntu@$EC2_IP "
-#         docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
-#         docker pull $FRONTEND_IMAGE &&
-#         docker stop frontend-app || true &&
-#         docker rm frontend-app || true &&
-#         docker run -d --name frontend-app -p 80:80 --restart always $FRONTEND_IMAGE"
+frontend-build:
+  stage: build
+  script:
+    # inputs 값을 사용할 때는 $[[ inputs.변수명 ]] 형식을 씁니다
+    - cd $[[ inputs.project_dir ]]
+    - npm install
+    - npm run build
