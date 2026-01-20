@@ -1,0 +1,20 @@
+# 전체 프로젝트에서 사용할 단계 정의
+stages:
+  - build
+  - package
+  - deploy
+
+# 각 폴더의 CI 파일을 include 하며 필요한 값을 주입합니다.
+include:
+  - local: 'Backend/.gitlab-ci.yml'
+    inputs:
+      project_dir: "Backend/autowing_car"  # 실제 Spring Boot 프로젝트 위치
+  - local: 'AI/.gitlab-ci.yml'
+    inputs:
+      project_dir: "AI"
+  - local: 'Frontend/.gitlab-ci.yml'
+    inputs:
+      project_dir: "Frontend"
+  - local: 'embedded/.gitlab-ci.yml' # 사용자님 폴더명 오타 확인 필요 (embedded?)
+    inputs:
+      project_dir: "embedded"

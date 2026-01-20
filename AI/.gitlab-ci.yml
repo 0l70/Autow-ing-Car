@@ -1,0 +1,41 @@
+# 1. 외부(Root)에서 전달받을 변수 정의
+spec:
+  inputs:
+    project_dir:
+      type: string
+      default: "AI"
+      description: "AI 프로젝트의 상대 경로"
+
+# 2. spec 섹션과 실제 작업(Jobs)을 구분하는 구분선 (필수)
+---
+
+variables:
+  AI_DIR: "$[[ inputs.project_dir ]]"
+  AI_IMAGE: "$CI_REGISTRY_IMAGE/ai:$CI_COMMIT_SHORT_SHA"
+
+# ---------------------------------------------------------------------------
+# [Build/Test] AI 폴더 변경 시 수행
+# ---------------------------------------------------------------------------
+ai-build:
+  stage: build
+  rules:
+    - changes:
+        - "$[[ inputs.project_dir ]]/**/*"
+  script:
+    - echo "🤖 Building AI module in $[[ inputs.project_dir ]]"
+    # 여기에 AI 프로젝트 빌드 명령어 추가 (예: pip install 등)
+    - cd $[[ inputs.project_dir ]]
+    - echo "AI Build complete"
+
+# ---------------------------------------------------------------------------
+# [Deploy] main 브랜치일 때만 수행 (필요 시)
+# ---------------------------------------------------------------------------
+ai-deploy:
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "master"'
+      changes:
+        - "$[[ inputs.project_dir ]]/**/*"
+  script:
+    - echo "🚀 Deploying AI model to server..."
+    # AI 배포 로직 추가
