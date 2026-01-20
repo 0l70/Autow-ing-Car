@@ -68,6 +68,8 @@ end
 
 function handle(req::HTTP.Request)
     try
+        path, q = parse_target(req.target)
+        
         if path == "/health"
             return HTTP.Response(200, "ok")
         end
@@ -124,24 +126,6 @@ function handle(req::HTTP.Request)
             trailerlib.check_trailer_collision(ox, oy, [gx], [gy], [gyaw], [gtyaw]; debug=true, max_near=12)
         end
         @info "[COLL CHECK]" ok_start=ok_start ok_goal=ok_goal sx=sx sy=sy gx=gx gy=gy
-
-        kdtree = trailerlib.KDTree([ox'; oy'])
-
-        # 트럭 위치
-        DF  = (trailerlib.LF + trailerlib.LB)/2.0 - trailerlib.LB
-        DFR = (trailerlib.LF + trailerlib.LB)/2.0 + 0.3
-        cxF = sx + DF*cos(syaw)
-        cyF = sy + DF*sin(syaw)
-        idsF = trailerlib.inrange(kdtree, [cxF, cyF], DFR, true)
-        @info "[START NEAR front]" cx=cxF cy=cyF r=DFR n=length(idsF) sample=collect(zip(ox[idsF[1:min(end,10)]], oy[idsF[1:min(end,10)]]))
-
-        # 트레일러 위치
-        DT  = (trailerlib.LTF + trailerlib.LTB)/2.0 - trailerlib.LTB
-        DTR = (trailerlib.LTF + trailerlib.LTB)/2.0 + 0.3
-        cxT = sx + DT*cos(styaw)
-        cyT = sy + DT*sin(styaw)
-        idsT = trailerlib.inrange(kdtree, [cxT, cyT], DTR, true)
-        @info "[START NEAR trailer]" cx=cxT cy=cyT r=DTR n=length(idsT) sample=collect(zip(ox[idsT[1:min(end,10)]], oy[idsT[1:min(end,10)]]))
 
         p = trailer_hybrid_a_star.calc_hybrid_astar_path(
             sx, sy, syaw, styaw,
