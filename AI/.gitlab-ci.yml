@@ -7,11 +7,11 @@ spec:
       description: "AI 프로젝트의 상대 경로"
 
 # 2. spec 섹션과 실제 작업(Jobs)을 구분하는 구분선 (필수)
-# ---
+---
 
-# variables:
-#   AI_DIR: "$[[ inputs.project_dir ]]"
-#   AI_IMAGE: "$CI_REGISTRY_IMAGE/ai:$CI_COMMIT_SHORT_SHA"
+variables:
+  AI_DIR: "$[[ inputs.project_dir ]]"
+  AI_IMAGE: "$CI_REGISTRY_IMAGE/ai:$CI_COMMIT_SHORT_SHA"
 
 # # ---------------------------------------------------------------------------
 # # [Build/Test] AI 폴더 변경 시 수행

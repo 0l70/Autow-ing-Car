@@ -4,7 +4,7 @@ spec:
       type: string
       default: "Frontend"
       description: "Frontend 프로젝트의 상대 경로"
-# ---
+---
 
 # variables:
 #   FRONTEND_DIR: "$[[ inputs.project_dir ]]"
