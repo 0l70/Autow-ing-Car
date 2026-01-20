@@ -17,3 +17,13 @@ spring:
   h2:
     console:
       enabled: true # http://localhost:8080/h2-console 접속 가능
+  mqtt:
+    broker:
+      url: tcp://13.125.137.99:8183
+    client:
+      id: spring-boot-app
+    topic: ssafy/topic
+logging:
+  level:
+    org.springframework.web: DEBUG
+    com.project: DEBUG
