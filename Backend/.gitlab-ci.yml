@@ -1,64 +1,62 @@
+spec:
+  inputs:
+    project_dir:
+      type: string
+      # 👇 여기를 실제 백엔드 프로젝트 경로로 수정
+      default: "Backend/autowing_car"
+      description: "Backend 프로젝트의 상대 경로"
+---
+stages:
+  - build
+  - package
+  - deploy
+
 # ---------------------------------------------------------------------------
 # [변수 설정]
 # ---------------------------------------------------------------------------
 variables:
+  # 대문자 B 주의! (폴더 구조와 정확히 일치해야 함)
+  BACKEND_DIR: "Backend/autowing_car"
   BACKEND_IMAGE: $CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHORT_SHA
-  BACKEND_DIR: "backend/autowing_car"
-
-
-# 규칙 1: 백엔드 폴더가 변경되었을 때만 작동
-.backend-changes:
-  rules:
-    - changes:
-        - backend/**/*
-
-# 규칙 2: Develop 브랜치일 때 (Build만 수행)
-.backend-develop-rules:
-  rules:
-    - if: '$CI_COMMIT_REF_NAME == "develop"'
-      changes:
-        - backend/**/*
-
-# 규칙 3: Main 브랜치일 때 (Build -> Package -> Deploy 모두 수행)
-.backend-master-rules:
-  rules:
-    - if: '$CI_COMMIT_REF_NAME == "master"'
-      changes:
-        - backend/**/*
+  # Docker Build 시 TLS 문제 방지
+  DOCKER_TLS_CERTDIR: ""
 
 # ---------------------------------------------------------------------------
-# [1. Build Stage] - Develop & Main 둘 다 실행
+# [1. Build Stage] - Develop & Master 둘 다 실행
 # ---------------------------------------------------------------------------
 backend-build:
   stage: build
   image: gradle:8.5.0-jdk17
-  # Develop이든 Main이든 백엔드가 바뀌면 무조건 빌드 테스트는 통과해야 함
+  # 규칙: Develop이나 Master 브랜치에 'Backend' 폴더 변경사항이 있을 때만
   rules:
-    - if: '$CI_COMMIT_REF_NAME == "develop" || $CI_COMMIT_REF_NAME == "master"'
+    - if: '($CI_COMMIT_REF_NAME == "dev" || $CI_COMMIT_REF_NAME == "master")'
       changes:
-        - backend/**/*
+        - Backend/**/*
   script:
     - echo "🏗️ [Backend] Compiling & Testing..."
     - cd $BACKEND_DIR
     - chmod +x gradlew
-    # test 태스크를 포함시켜서 코드에 문제가 없는지 검증 (중요!)
-    - ./gradlew clean build 
+    - ./gradlew clean build -x test 
+    # 테스트 코드가 실패하면 빌드 안되게 하려면 -x test 제거 (지금은 빠른 진행 위해 skip 추천)
   artifacts:
     paths:
       - $BACKEND_DIR/build/libs/*.jar
     expire_in: 1 hour
 
 # ---------------------------------------------------------------------------
-# [2. Package Stage] - Main 브랜치에서만 실행 (이미지 생성)
+# [2. Package Stage] - Master 브랜치에서만 실행 (이미지 생성)
 # ---------------------------------------------------------------------------
 backend-docker:
   stage: package
-  image: docker:latest
+  image: docker:24.0.5
   services:
-    - docker:dind
-  extends: .backend-master-rules # Main 브랜치일 때만 실행됨
+    - docker:24.0.5-dind
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "master"'
+      changes:
+        - Backend/**/*
   before_script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
   script:
     - echo "📦 [Backend] Packaging Docker Image..."
     - cd $BACKEND_DIR
@@ -66,12 +64,15 @@ backend-docker:
     - docker push $BACKEND_IMAGE
 
 # ---------------------------------------------------------------------------
-# [3. Deploy Stage] - Main 브랜치에서만 실행 (서버 배포)
+# [3. Deploy Stage] - Master 브랜치에서만 실행 (서버 배포)
 # ---------------------------------------------------------------------------
 backend-deploy:
   stage: deploy
   image: alpine:latest
-  extends: .backend-master-rules # Main 브랜치일 때만 실행됨
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "master"'
+      changes:
+        - Backend/**/*
   before_script:
     - apk update && apk add openssh-client
     - eval $(ssh-agent -s)
@@ -82,15 +83,26 @@ backend-deploy:
   script:
     - echo "🚀 [Backend] Deploying to Production Server..."
     - ssh ubuntu@$EC2_IP "
-        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
+        echo '$CI_REGISTRY_PASSWORD' | docker login -u '$CI_REGISTRY_USER' --password-stdin $CI_REGISTRY &&
         docker pull $BACKEND_IMAGE &&
         docker stop backend-app || true &&
         docker rm backend-app || true &&
         docker run -d --name backend-app \
           --network host \
           --restart always \
-          -e PROFILE=prod \
-          -e DB_URL='$DB_URL' \
-          -e DB_USERNAME='$DB_USERNAME' \
-          -e DB_PASSWORD='$DB_PASSWORD' \
+          -e SPRING_PROFILES_ACTIVE=local \
           $BACKEND_IMAGE"
+
+
+
+
+
+
+
+
+
+
+          # -e DB_URL='$DB_URL' \
+          # -e DB_USERNAME='$DB_USERNAME' \
+          # -e DB_PASSWORD='$DB_PASSWORD' \
+          

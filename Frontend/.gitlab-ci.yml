@@ -1,0 +1,19 @@
+# 📂 Frontend/.gitlab-ci.yml
+spec:
+  inputs:
+    project_dir:
+      type: string
+      default: "Frontend"
+      description: "Frontend 프로젝트 경로"
+    # 만약 메인에서 image_tag 같은 걸 넘긴다면 여기도 정의해야 함
+
+---
+# (여기서부터 기존 로직 시작)
+
+frontend-build:
+  stage: build
+  script:
+    # inputs 값을 사용할 때는 $[[ inputs.변수명 ]] 형식을 씁니다
+    - cd $[[ inputs.project_dir ]]
+    - npm install
+    - npm run build
