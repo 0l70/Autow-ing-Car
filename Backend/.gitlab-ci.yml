@@ -1,0 +1,96 @@
+# ---------------------------------------------------------------------------
+# [변수 설정]
+# ---------------------------------------------------------------------------
+variables:
+  BACKEND_IMAGE: $CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHORT_SHA
+  BACKEND_DIR: "backend/autowing_car"
+
+
+# 규칙 1: 백엔드 폴더가 변경되었을 때만 작동
+.backend-changes:
+  rules:
+    - changes:
+        - backend/**/*
+
+# 규칙 2: Develop 브랜치일 때 (Build만 수행)
+.backend-develop-rules:
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "develop"'
+      changes:
+        - backend/**/*
+
+# 규칙 3: Main 브랜치일 때 (Build -> Package -> Deploy 모두 수행)
+.backend-master-rules:
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "master"'
+      changes:
+        - backend/**/*
+
+# ---------------------------------------------------------------------------
+# [1. Build Stage] - Develop & Main 둘 다 실행
+# ---------------------------------------------------------------------------
+backend-build:
+  stage: build
+  image: gradle:8.5.0-jdk17
+  # Develop이든 Main이든 백엔드가 바뀌면 무조건 빌드 테스트는 통과해야 함
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "develop" || $CI_COMMIT_REF_NAME == "master"'
+      changes:
+        - backend/**/*
+  script:
+    - echo "🏗️ [Backend] Compiling & Testing..."
+    - cd $BACKEND_DIR
+    - chmod +x gradlew
+    # test 태스크를 포함시켜서 코드에 문제가 없는지 검증 (중요!)
+    - ./gradlew clean build 
+  artifacts:
+    paths:
+      - $BACKEND_DIR/build/libs/*.jar
+    expire_in: 1 hour
+
+# ---------------------------------------------------------------------------
+# [2. Package Stage] - Main 브랜치에서만 실행 (이미지 생성)
+# ---------------------------------------------------------------------------
+backend-docker:
+  stage: package
+  image: docker:latest
+  services:
+    - docker:dind
+  extends: .backend-master-rules # Main 브랜치일 때만 실행됨
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - echo "📦 [Backend] Packaging Docker Image..."
+    - cd $BACKEND_DIR
+    - docker build -t $BACKEND_IMAGE .
+    - docker push $BACKEND_IMAGE
+
+# ---------------------------------------------------------------------------
+# [3. Deploy Stage] - Main 브랜치에서만 실행 (서버 배포)
+# ---------------------------------------------------------------------------
+backend-deploy:
+  stage: deploy
+  image: alpine:latest
+  extends: .backend-master-rules # Main 브랜치일 때만 실행됨
+  before_script:
+    - apk update && apk add openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+  script:
+    - echo "🚀 [Backend] Deploying to Production Server..."
+    - ssh ubuntu@$EC2_IP "
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
+        docker pull $BACKEND_IMAGE &&
+        docker stop backend-app || true &&
+        docker rm backend-app || true &&
+        docker run -d --name backend-app \
+          --network host \
+          --restart always \
+          -e PROFILE=prod \
+          -e DB_URL='$DB_URL' \
+          -e DB_USERNAME='$DB_USERNAME' \
+          -e DB_PASSWORD='$DB_PASSWORD' \
+          $BACKEND_IMAGE"

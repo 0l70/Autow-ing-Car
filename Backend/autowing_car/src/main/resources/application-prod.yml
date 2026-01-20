@@ -1,0 +1,19 @@
+# --- application-prod.yml ---
+spring:
+  config:
+    activate:
+      on-profile: prod
+  datasource:
+    # 환경변수에서 주입받도록 수정
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+  # Redis도 필요하다면 환경변수 처리
+  data:
+    redis:
+      host: localhost
+      port: 6379
