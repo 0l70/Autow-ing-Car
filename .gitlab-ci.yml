@@ -8,7 +8,7 @@ stages:
 include:
   - local: 'Backend/.gitlab-ci.yml'
     inputs:
-      project_dir: "backend/autowing_car"  # 실제 Spring Boot 프로젝트 위치
+      project_dir: "Backend/autowing_car"  # 실제 Spring Boot 프로젝트 위치
   - local: 'AI/.gitlab-ci.yml'
     inputs:
       project_dir: "AI"
