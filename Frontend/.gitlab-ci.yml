@@ -15,5 +15,5 @@ frontend-build:
   script:
     # inputs 값을 사용할 때는 $[[ inputs.변수명 ]] 형식을 씁니다
     - cd $[[ inputs.project_dir ]]
-    - npm install
-    - npm run build
+    # - npm install
+    # - npm run build
