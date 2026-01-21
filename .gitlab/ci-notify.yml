@@ -1,4 +1,3 @@
-# MM - MR 자동화
 stages:
   - notify
 
@@ -8,31 +7,45 @@ send-commit-list-to-mattermost:
   rules:
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
   before_script:
-    - apk add --no-cache curl jq
+    - apk add --no-cache curl jq || echo "⚠️ apk 설치 실패 (무시하고 진행)"
+  
+  # 👇 여기서부터가 중요합니다. '- |' 를 써서 하나의 큰 덩어리로 만듭니다.
   script:
-    - git fetch origin $CI_MERGE_REQUEST_TARGET_BRANCH_NAME --depth=1
-    - COMMITS=$(git log origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME..$CI_COMMIT_SHA --pretty=format:"- %s")
-    
-    # 리뷰어 처리
     - |
+      echo "🔍 알림 스크립트 시작..."
+
+      # 1. 웹훅 URL 체크
+      if [ -z "$MATTERMOST_WEBHOOK_URL" ]; then
+        echo "❌ 에러: MATTERMOST_WEBHOOK_URL 변수가 없습니다. Settings > CI/CD > Variables 확인 필요."
+        exit 1
+      fi
+
+      # 2. Git Fetch (에러 무시 처리 || true)
+      echo "📡 타겟 브랜치($CI_MERGE_REQUEST_TARGET_BRANCH_NAME) 정보 가져오는 중..."
+      git fetch origin $CI_MERGE_REQUEST_TARGET_BRANCH_NAME --depth=50 || echo "⚠️ Fetch 경고 (계속 진행)"
+
+      # 3. 커밋 리스트 만들기
+      COMMITS=$(git log origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME..$CI_COMMIT_SHA --pretty=format:"- %s" || echo "- (커밋 정보를 가져올 수 없음)")
+
+      # 4. 리뷰어 정보 처리
       REVIEWERS=$CI_MERGE_REQUEST_REVIEWERS
       if [ -z "$REVIEWERS" ]; then
         REVIEWERS="지정되지 않음"
       fi
 
-    # 👇 [수정됨] 문장 전체를 작은따옴표(')로 감쌌습니다.
-    - 'HEADER="📢 MR 리뷰 요청"'
-    
-    # 👇 [중요] 특히 이 줄이 에러의 원인이었습니다. 작은따옴표 필수!
-    - 'ROW_TITLE="제목 : [$CI_MERGE_REQUEST_TITLE]($CI_MERGE_REQUEST_PROJECT_URL/-/merge_requests/$CI_MERGE_REQUEST_IID)"'
-    
-    - 'ROW_COMMITS="커밋 목록\n$COMMITS"'
-    
-    # 👇 콜론(:)이 있는 이 줄들도 감싸주는 게 안전합니다.
-    - 'ROW_AUTHOR="생성자 : $GITLAB_USER_NAME"'
-    - 'ROW_REVIEWER="리뷰어 : $REVIEWERS"'
+      # 5. 메시지 변수 조합 (이제 따옴표 걱정 없이 쉘 문법대로 쓰면 됩니다)
+      HEADER="📢 MR 리뷰 요청"
+      ROW_TITLE="제목 : [$CI_MERGE_REQUEST_TITLE]($CI_MERGE_REQUEST_PROJECT_URL/-/merge_requests/$CI_MERGE_REQUEST_IID)"
+      ROW_COMMITS="커밋 목록"$'\n'"$COMMITS"
+      ROW_AUTHOR="생성자 : $GITLAB_USER_NAME"
+      ROW_REVIEWER="리뷰어 : $REVIEWERS"
+      
+      # 6. 본문 합치기
+      CONTENT="$HEADER"$'\n'"$ROW_TITLE"$'\n'"$ROW_COMMITS"$'\n'"$ROW_AUTHOR"$'\n'"$ROW_REVIEWER"
 
-    - CONTENT="$HEADER\n$ROW_TITLE\n$ROW_COMMITS\n$ROW_AUTHOR\n$ROW_REVIEWER"
-    
-    - PAYLOAD=$(jq -n --arg text "$CONTENT" '{"text": $text}')
-    - curl -X POST -H 'Content-Type: application/json' -d "$PAYLOAD" "$MATTERMOST_WEBHOOK_URL"
+      # 7. JSON 변환 및 전송
+      PAYLOAD=$(jq -n --arg text "$CONTENT" '{"text": $text}')
+      
+      curl -X POST -H 'Content-Type: application/json' -d "$PAYLOAD" "$MATTERMOST_WEBHOOK_URL"
+      
+      echo "✅ 전송 완료!"
