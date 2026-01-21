@@ -20,9 +20,6 @@ spring:
   mqtt:
     broker:
       url: tcp://13.125.137.99:8183
-    client:
-      id: spring-boot-app
-    topic: ssafy/topic
 logging:
   level:
     org.springframework.web: DEBUG
