@@ -26,12 +26,12 @@ using NearestNeighbors
 
 # Ver. 비행기
 const WB = 3.7  #[m] wheel base: rear to front steer
-const LT = 3.0 #힌지-트레일러 기준점 거리를 줄임!
-const W = 10.0 #비행기 폭 날개 포함
+const LT = 5.0 # 힌지-트레일러 기준점 거리 조정
+const W = 16.0 # 비행기 폭 - 날개 포함
 const LF = 4.5 #[m] distance from rear to vehicle front end of vehicle
 const LB = 1.0 #[m] distance from rear to vehicle back end of vehicle
 const LTF = 2.0 # 비행기와 토잉카 사이의 거리
-const LTB = 9.0 # 연결점부터 비행기 꼬리까지의 거리
+const LTB = 20.0 # 연결점부터 비행기 꼬리까지의 거리
 const MAX_STEER = 0.6 #[rad] maximum steering angle 
 const TR = 0.5 # Tyre radius [m] for plot
 const TW = 1.0 # Tyre width [m] for plot
