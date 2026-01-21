@@ -31,13 +31,12 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
 
-	
+	// implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-integration'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.springframework.boot:spring-boot-starter-websocket'
 	implementation 'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5'
 	implementation 'org.springframework.integration:spring-integration-mqtt' 
-	
 
 	
 	implementation 'org.springframework.integration:spring-integration-http'
@@ -45,7 +44,7 @@ dependencies {
 	implementation 'org.springframework.integration:spring-integration-stomp'
 	implementation 'org.springframework.integration:spring-integration-websocket'
 	compileOnly 'org.projectlombok:lombok'
-	developmentOnly 'org.springframework.boot:spring-boot-devtools'
+	// developmentOnly 'org.springframework.boot:spring-boot-devtools'
 	annotationProcessor 'org.projectlombok:lombok'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.integration:spring-integration-test'

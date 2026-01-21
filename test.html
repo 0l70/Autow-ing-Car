@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Autowing 관제 테스트</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+</head>
+<body>
+    <h2>🚀 Autowing 관제 모니터 (WebSocket)</h2>
+    <div>
+        상태: <span id="status" style="color:red">연결 끊김</span>
+    </div>
+    <hr/>
+    <h3>수신된 데이터 (Live)</h3>
+    <textarea id="log" rows="20" cols="100" style="font-family: monospace;"></textarea>
+
+    <script>
+        var stompClient = null;
+
+        function connect() {
+            // 1. 서버의 WebSocket 엔드포인트 연결
+            var socket = new SockJS('http://localhost:8080/ws-stomp');
+            stompClient = Stomp.over(socket);
+
+            stompClient.connect({}, function (frame) {
+                document.getElementById("status").innerText = "🟢 연결됨 (Online)";
+                document.getElementById("status").style.color = "green";
+                console.log('Connected: ' + frame);
+
+                // 2. 구독 (Topic: /topic/robot/{carId}/{type})
+                // TC01 로봇의 telemetry를 구독해봅니다.
+                stompClient.subscribe('/topic/robot/TC01/telemetry', function (message) {
+                    showLog(" [TELEMETRY] " + message.body);
+                });
+
+                // TC01 로봇의 state를 구독해봅니다.
+                stompClient.subscribe('/topic/robot/TC01/state', function (message) {
+                    showLog(" [STATE] " + message.body);
+                });
+            });
+        }
+
+        function showLog(message) {
+            var log = document.getElementById("log");
+            log.value = getCurrentTime() + message + "\n" + log.value;
+        }
+
+        function getCurrentTime() {
+            return new Date().toLocaleTimeString();
+        }
+
+        // 페이지 열리면 자동 연결
+        connect();
+    </script>
+</body>
+</html>
