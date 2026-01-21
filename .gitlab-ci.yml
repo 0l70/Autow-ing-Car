@@ -1,6 +1,6 @@
 # 전체 프로젝트에서 사용할 단계 정의
 stages:
-  - notify   # ➕ (추가 1) 알림 단계 추가
+  - notify   # 알림 단계 추가
   - build
   - package
   - deploy
