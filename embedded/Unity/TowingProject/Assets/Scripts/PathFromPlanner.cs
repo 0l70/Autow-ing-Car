@@ -6,7 +6,7 @@ public class PathFromPlanner : MonoBehaviour
 {
     [Header("Follow Targets")]
     public Transform towing;
-    public Transform plane;
+    public Transform planeWheel;
 
     [Header("World Mapping")]
     public float worldScale = 1f;
@@ -79,7 +79,7 @@ public class PathFromPlanner : MonoBehaviour
         var yaw1 = resp.yaw1;
 
         int n = x.Length;
-        if (n < 2 || towing == null || plane == null) yield break;
+        if (n < 2 || towing == null || planeWheel == null) yield break;
 
         for (int i = 0; i < n - 1; i++)
         {
@@ -110,11 +110,11 @@ public class PathFromPlanner : MonoBehaviour
 
                 // plane rotation - yaw1
                 Quaternion planeRot = Quaternion.Euler(0f, planeYaw, 0f);
-                plane.rotation = planeRot;
+                planeWheel.rotation = planeRot;
 
                 // plane position
                 Vector3 planeForward = planeRot * Vector3.forward;
-                plane.position = pos - planeForward * planeOffset;
+                planeWheel.position = pos - planeForward * planeOffset;
 
                 yield return null;
             }
