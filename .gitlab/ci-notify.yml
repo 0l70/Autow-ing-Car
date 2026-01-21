@@ -1,0 +1,63 @@
+stages:
+  - notify
+
+send-commit-list-to-mattermost:
+  stage: notify
+  image: 
+    name: alpine/git:v2.45.2
+    entrypoint: [""]
+    
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+  before_script:
+    - apk add --no-cache curl jq || true
+  
+  script:
+    - |
+      echo "🚀 Mattermost 알림 전송 시작"
+
+      # 1. 필수 변수 체크
+      if [ -z "$MATTERMOST_WEBHOOK_URL" ]; then
+        echo "❌ [오류] MATTERMOST_WEBHOOK_URL 변수가 없습니다."
+        exit 1
+      fi
+
+      # 2. 타겟 브랜치 설정
+      TARGET_BRANCH=$CI_MERGE_REQUEST_TARGET_BRANCH_NAME
+      if [ -z "$TARGET_BRANCH" ]; then
+        TARGET_BRANCH="main"
+      fi
+
+      # 3. Git Fetch
+      git fetch origin $TARGET_BRANCH --depth=50 || echo "⚠️ Fetch 실패 (계속 진행)"
+
+      # 4. 커밋 로그 추출
+      COMMITS=$(git log origin/$TARGET_BRANCH..$CI_COMMIT_SHA --pretty=format:"- %s" || echo "- (커밋 정보를 가져올 수 없음)")
+
+      # 5. [수정됨] 리뷰어 정보 가져오기 (API 사용)
+      # GitLab API를 통해 현재 MR의 정보를 가져옵니다.
+      echo "📡 리뷰어 정보 조회 중..."
+      MR_INFO=$(curl -s --header "JOB-TOKEN: $CI_JOB_TOKEN" "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$CI_MERGE_REQUEST_IID")
+      
+      # jq를 사용해 리뷰어 이름만 쏙 뽑아냅니다.
+      REVIEWERS=$(echo "$MR_INFO" | jq -r '.reviewers | map(.name) | join(", ")')
+
+      if [ -z "$REVIEWERS" ] || [ "$REVIEWERS" == "null" ]; then
+        REVIEWERS="지정되지 않음"
+      fi
+
+      # 6. 메시지 내용 조합
+      HEADER="📢 MR 리뷰 요청"
+      ROW_TITLE="제목 : [$CI_MERGE_REQUEST_TITLE]($CI_MERGE_REQUEST_PROJECT_URL/-/merge_requests/$CI_MERGE_REQUEST_IID)"
+      ROW_COMMITS="커밋 목록"$'\n'"$COMMITS"
+      ROW_AUTHOR="생성자 : $GITLAB_USER_NAME"
+      ROW_REVIEWER="리뷰어 : $REVIEWERS"
+
+      CONTENT="$HEADER"$'\n'"$ROW_TITLE"$'\n'"$ROW_COMMITS"$'\n'"$ROW_AUTHOR"$'\n'"$ROW_REVIEWER"
+
+      # 7. 전송
+      PAYLOAD=$(jq -n --arg text "$CONTENT" '{"text": $text}')
+      
+      curl -X POST -H 'Content-Type: application/json' -d "$PAYLOAD" "$MATTERMOST_WEBHOOK_URL"
+      
+      echo "✅ 전송 완료"

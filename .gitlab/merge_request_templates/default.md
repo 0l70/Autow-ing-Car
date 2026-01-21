@@ -5,5 +5,5 @@
 - (예시) KEY.ENV 파일 최신화 (노션)
 
 ## ✅ 체크리스트
-- [ ] Merge 되는 브랜치가 `develop`이 맞나요?
+- [ ] Merge 되는 브랜치가 `dev`가 맞나요?
 - [ ] Assignee(본인)와 Reviewer(팀원)를 지정했나요?
