@@ -19,6 +19,13 @@ public class MqttConfig {
     // @Value("${spring.mqtt.password:}") // 없을 경우 빈 문자열
     // private String password;
 
+    // MQTT 클라이언트 팩토리 빈 생성
+    /*
+        역할 : MQTT 클라이언트의 생성과 설정을 담당하는 공장(Factory) 역할
+        - MQTT 브로커 URL 설정
+        - (옵션) 인증 정보 설정 (아이디/비번)
+        - 연결 옵션 설정 (자동 재접속, 클린 세션 등)
+    */
     @Bean
     public MqttPahoClientFactory mqttClientFactory() {
         DefaultMqttPahoClientFactory factory = new DefaultMqttPahoClientFactory();
