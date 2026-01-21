@@ -1,11 +1,15 @@
 # 전체 프로젝트에서 사용할 단계 정의
 stages:
+  - notify   # ➕ (추가 1) 알림 단계 추가
   - build
   - package
   - deploy
 
 # 각 폴더의 CI 파일을 include 하며 필요한 값을 주입합니다.
 include:
+  # MR시 메세지 전송
+  - local: '/.gitlab/ci-notify.yml'
+
   - local: 'Backend/.gitlab-ci.yml'
     inputs:
       project_dir: "Backend/autowing_car"  # 실제 Spring Boot 프로젝트 위치

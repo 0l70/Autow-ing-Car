@@ -1,0 +1,38 @@
+# MM - MR 자동화
+stages:
+  - notify
+
+send-commit-list-to-mattermost:
+  stage: notify
+  image: alpine/git:v2.45.2
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+  before_script:
+    - apk add --no-cache curl jq
+  script:
+    - git fetch origin $CI_MERGE_REQUEST_TARGET_BRANCH_NAME --depth=1
+    - COMMITS=$(git log origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME..$CI_COMMIT_SHA --pretty=format:"- %s")
+    
+    # 리뷰어 처리
+    - |
+      REVIEWERS=$CI_MERGE_REQUEST_REVIEWERS
+      if [ -z "$REVIEWERS" ]; then
+        REVIEWERS="지정되지 않음"
+      fi
+
+    # 👇 [수정됨] 문장 전체를 작은따옴표(')로 감쌌습니다.
+    - 'HEADER="📢 MR 리뷰 요청"'
+    
+    # 👇 [중요] 특히 이 줄이 에러의 원인이었습니다. 작은따옴표 필수!
+    - 'ROW_TITLE="제목 : [$CI_MERGE_REQUEST_TITLE]($CI_MERGE_REQUEST_PROJECT_URL/-/merge_requests/$CI_MERGE_REQUEST_IID)"'
+    
+    - 'ROW_COMMITS="커밋 목록\n$COMMITS"'
+    
+    # 👇 콜론(:)이 있는 이 줄들도 감싸주는 게 안전합니다.
+    - 'ROW_AUTHOR="생성자 : $GITLAB_USER_NAME"'
+    - 'ROW_REVIEWER="리뷰어 : $REVIEWERS"'
+
+    - CONTENT="$HEADER\n$ROW_TITLE\n$ROW_COMMITS\n$ROW_AUTHOR\n$ROW_REVIEWER"
+    
+    - PAYLOAD=$(jq -n --arg text "$CONTENT" '{"text": $text}')
+    - curl -X POST -H 'Content-Type: application/json' -d "$PAYLOAD" "$MATTERMOST_WEBHOOK_URL"
