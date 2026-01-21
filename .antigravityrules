@@ -1,0 +1,359 @@
+# =========================
+# .antigravityrules (v1.2)
+# React ATC Control Center Frontend Standard (Backend: Spring Boot / Java 17)
+# SSOT: Single Source of Truth for frontend conventions.
+# =========================
+
+[0. ABSOLUTE PRIORITY: LEGACY-LOCK RULE (NON-BREAKING ONLY)]
+0.1 MUST NOT delete or modify existing features, behaviors, outputs, UI flows, routes, event schemas, side-effects, or public contracts.
+0.2 All changes MUST be additive by default:
+    - Add new files, new components, new routes, new fields, new handlers, new adapters.
+    - Do NOT alter existing logic paths or outputs.
+0.3 Bug fixes MUST follow the same additive protocol:
+    - Keep old behavior intact.
+    - Introduce fixed behavior behind a feature flag or new code path.
+    - Default remains old behavior unless explicitly enabled.
+0.4 Non-breaking Change Protocol (MANDATORY):
+    A) Preserve old behavior (tests must keep passing).
+    B) Add new behavior behind a feature flag OR a new contract version (route/key/eventType).
+    C) Add compatibility adapter if needed (new ↔ old).
+    D) Mark old behavior as DEPRECATED (comment + doc), but keep it working.
+    E) Provide migration plan + tests proving old behavior still passes.
+0.5 Breaking changes allowed ONLY if ALL satisfied:
+    - Approved by 2 reviewers (one must be “contract owner”)
+    - Changelog entry
+    - Migration guide + compatibility window (date/version)
+    - Regression tests verifying old contract behavior until sunset
+0.6 Public contract stability MUST be enforced:
+    - API DTO shape, response wrapper, error codes, query params, localStorage keys, route params, MQTT/WS event payloads.
+    - Contract evolution: ONLY add optional fields or add new versions. NEVER rename/remove existing fields.
+
+[1. STACK: FIXED DEFAULTS (NO PERSONAL TASTE ALLOWED)]
+1.1 MUST use:
+    - Node: LTS only
+    - Package manager: pnpm only
+    - Build: Vite
+    - Language: TypeScript (strict)
+    - Lint/Format: ESLint + Prettier
+    - Git hooks: Husky + lint-staged
+    - Testing: Vitest + React Testing Library
+1.2 Styling MUST use: Tailwind CSS
+1.3 UI primitives MUST use: shadcn/ui pattern (project-owned components). No other UI kit.
+1.4 Server state MUST use: TanStack Query
+1.5 Global app state MUST use: Zustand (only truly global, not everything)
+1.6 Routing MUST use: TanStack Router (do NOT mix React Router)
+1.7 Runtime validation MUST use: Zod at boundaries (API + realtime)
+1.8 Date handling MUST use: dayjs (single lib). No native Date formatting in UI.
+
+[2. TYPESCRIPT + CONFIG: STRICT BY DEFAULT]
+2.1 TypeScript MUST be strict:
+    - strict: true
+    - noImplicitAny: true
+    - exactOptionalPropertyTypes: true (preferred)
+    - noUncheckedIndexedAccess: true (preferred)
+2.2 MUST NOT use `any` (ban). Allowed only with explicit justification:
+    - `// EXCEPTION(any): reason, owner, removal-date`
+2.3 Prefer `unknown` + Zod parse instead of `any`.
+2.4 Path aliases:
+    - MUST use "@/..." mapped to "src/..."
+    - No deep relative imports "../../.."
+
+[3. PROJECT STRUCTURE: FIXED]
+3.1 Root structure (MUST follow):
+- src/
+  - app/                # bootstrap: providers, router, query client, theme, flags
+  - pages/              # route-level UI (thin: layout + composition only)
+  - features/           # user flows (approve mission, manual mode, etc.)
+  - entities/           # domain models (aircraft, towcar, mission, alert)
+  - widgets/            # large reusable blocks (map panel, alert feed, inspector)
+  - shared/
+      - ui/             # base UI components + shadcn overrides
+      - api/            # api client + dto + schemas + adapters
+      - realtime/       # ws/mqtt clients + schemas + adapters
+      - lib/            # pure utils (format, math, guards)
+      - config/         # env, constants, endpoints, feature flags registry
+      - hooks/          # reusable hooks (not domain-specific)
+  - assets/
+  - styles/
+  - tests/              # msw, fixtures, contract snapshots
+
+3.2 Placement rules:
+- Domain object model/state: src/entities/<domain>/
+- Flow composition: src/features/<flow>/
+- Complex block used across pages: src/widgets/<widget>/
+- Reusable UI atoms: src/shared/ui/
+- External boundary logic: src/shared/api/, src/shared/realtime/
+
+3.3 Barrel exports:
+- Allowed only at module boundary index.ts
+- MUST NOT cause circular deps
+- Export only public surface
+
+[4. ENVIRONMENT VARIABLES (VITE RULES)]
+4.1 All client env vars MUST start with: VITE_
+4.2 Required env keys (MUST define):
+    - VITE_API_BASE_URL
+    - VITE_WS_BASE_URL (if WS used)
+    - VITE_MQTT_BROKER_URL (if mqtt over ws)
+    - VITE_FEATURE_FLAGS (optional json string or empty)
+4.3 No secrets in frontend env (API keys/tokens must not be embedded).
+4.4 Env access must be centralized in src/shared/config/env.ts (single gate).
+
+[5. NAMING CONVENTIONS: STRICT]
+5.1 folders: kebab-case
+5.2 component files: PascalCase.tsx
+5.3 hooks: useCamelCase.ts
+5.4 utilities: camelCase.ts
+5.5 schemas: *.schema.ts (Zod)
+5.6 types: *.types.ts (or colocated, but consistent per module)
+5.7 tests: *.test.ts / *.test.tsx
+5.8 Identifiers:
+- Components: PascalCase
+- Functions/vars: camelCase
+- Constants: UPPER_SNAKE_CASE
+- Booleans: is/has/can/should/was/will prefix
+5.9 Handlers:
+- Props callbacks: onX
+- Internal handlers: handleX
+5.10 Prohibited names:
+- any, foo, bar, tmp, data1, test123, thing
+
+[6. REACT CODING RULES]
+6.1 Function components only.
+6.2 Props typing:
+- Use `type` by default, `interface` only when extension is necessary.
+6.3 Component file order:
+- imports → types → constants → component → helpers
+6.4 State rules:
+- No derived state unless proven necessary.
+- Server state: TanStack Query only.
+- UI global state: Zustand only.
+6.5 Effects:
+- useEffect MUST NOT fetch data (use Query).
+- Allowed for subscriptions, imperative bridges (map engine), external sync.
+6.6 Accessibility:
+- No clickable divs. Use button/a.
+- Inputs must have label or aria-label.
+6.7 Performance:
+- No blanket memoization.
+- Stable keys: id only (no index keys when reorder possible).
+6.8 Logging:
+- No console.log in committed code.
+- console.error allowed only in error boundary or DEV-gated diagnostics.
+6.9 Error boundaries:
+- App root MUST have ErrorBoundary with safe fallback UI.
+
+[7. STYLE SYSTEM (TAILWIND + DESIGN TOKENS)]
+7.1 Tailwind only. No styled-components/emotion/sass.
+7.2 Inline style allowed only for dynamic transforms/positions not expressible cleanly.
+7.3 Design tokens:
+- Use CSS variables + tailwind config mapping.
+- Theme (dark ops) must be via tokens, not ad-hoc hex codes.
+7.4 Shared components live in src/shared/ui/ and must not be duplicated.
+
+[8. API + CONTRACTS (SPRING BOOT / JAVA 17 FIT)]
+8.1 Single API client:
+- src/shared/api/client.ts is the only place that touches fetch/axios.
+8.2 DTO boundary:
+- All API responses MUST be validated with Zod schemas at boundary.
+- DTO types in src/shared/api/dto/
+- Domain models in src/entities/<domain>/model/
+- Adapters dtoToDomain live near domain.
+8.3 Response wrapper standard (FRONTEND EXPECTATION):
+- If backend uses envelope like { success, data, error }, parse and normalize.
+- Normalize ALL errors into:
+  { code: string; message: string; detail?: unknown; retryable?: boolean }
+8.4 Date/time contract:
+- Treat backend timestamps as ISO-8601 strings.
+- UI formatting via dayjs only.
+8.5 Pagination contract:
+- If backend returns page info, adapter must map into a single internal shape:
+  { items: T[]; page: number; size: number; total?: number; hasNext?: boolean }
+8.6 Auth contract:
+- Token storage keys are public contracts (do not rename).
+- Token handling must be centralized (no scattered localStorage access).
+
+[9. REALTIME (WS/MQTT) RULES]
+9.1 Single ingress layer:
+- All WS/MQTT clients live in src/shared/realtime/
+- Components MUST NOT subscribe directly.
+9.2 Message validation:
+- Every event payload MUST have Zod schema.
+- Invalid messages MUST be dropped safely with DEV diagnostics (no crash).
+9.3 Store update:
+- Realtime updates Zustand through actions only.
+9.4 Buffering:
+- Default: latest snapshot only.
+- History requires bounded buffer (max size/time).
+9.5 Contract stability:
+- Topic names, event types, payload fields are public contracts (see [0]).
+
+[10. FEATURE FLAGS (MANDATORY FOR CHANGES)]
+10.1 Feature flags registry must exist:
+- src/shared/config/flags.ts
+10.2 Any new behavior that might replace old behavior MUST be behind a flag.
+10.3 Flags are the only allowed mechanism to ship “new without breaking old”.
+
+[11. QUALITY GATES]
+11.1 Pre-commit (lint-staged) MUST run:
+- eslint, prettier, typecheck (affected)
+11.2 CI MUST run:
+- pnpm lint
+- pnpm typecheck
+- pnpm test
+- pnpm build
+11.3 PR approvals:
+- Normal: >=1 approval
+- Contract areas (shared/api, shared/realtime, router, entities models): >=2 approvals
+11.4 Tests:
+- New feature must include unit + critical UI test when applicable.
+- Any change must prove old behavior remains (regression test or contract snapshot).
+
+[12. CODE STYLE DETAILS]
+12.1 Import order MUST be enforced (eslint):
+- react/vendor → internal (@/...) → relative → styles
+12.2 No unused exports, no implicit side-effect imports.
+12.3 No default exports except route components (optional). Prefer named exports.
+
+[13. GIT + COMMITS]
+13.1 Conventional Commits required:
+- feat:, fix:, chore:, refactor:, docs:, test:
+13.2 Branching:
+- main (release), dev (integration), feature/<ticket>-<short>
+13.3 No force push to main/dev.
+13.4 Any contract impact requires changelog entry.
+
+[14. ANTI-LEGACY DECLARATION]
+14.1 MUST NOT:
+- Copy-paste components to create variants
+- Introduce a second router/state/ui kit/date lib
+- Bypass schemas and boundary adapters
+- “Temporary hacks” that touch existing behavior directly
+14.2 If tempted:
+- Add an additive layer, keep old working, gate with flag, write tests.
+
+[15. UI DESIGN SYSTEM: DARK OPS + NEON LASER (MANDATORY)]
+15.1 Theme principle:
+- Default UI is DARK OPS (low contrast, calm).
+- NEON is accent-only. Neon MUST NOT be used as general text or large-area backgrounds.
+- Neon usage is limited to:
+  A) Status indication (badges)
+  B) Critical alerts
+  C) Primary action emphasis (very limited)
+  D) Focus/selection outline
+
+15.2 Tokens (single source of truth):
+- All colors, spacing, radius, shadows MUST be defined as CSS variables in:
+  src/styles/tokens.css
+- Tailwind MUST reference these variables (no ad-hoc hex colors).
+- Prohibited: raw hex color codes in components (except inside tokens.css).
+
+15.3 Allowed neon accents (token names must exist):
+- --accent-cyan, --accent-lime, --accent-amber, --accent-red
+- --glow-soft, --glow-strong (box-shadow presets)
+Rules:
+- INFO uses cyan (soft glow)
+- WARNING uses amber (soft glow)
+- CRITICAL uses red (strong glow + pulse)
+- EMERGENCY status MUST use red (strong glow)
+
+15.4 Typography + spacing:
+- 8px grid system REQUIRED (spacing scale is 4/8/12/16/24/32...).
+- Use consistent hierarchy:
+  - Page title: text-xl~2xl
+  - Panel title: text-lg
+  - Label: text-xs~sm
+- Dense UI rule: No line-height smaller than readable defaults.
+
+15.5 Layout standard (ATC control center):
+- Default layout is 3-zone:
+  A) Left Sidebar: list/search/filter
+  B) Center Map: primary workspace
+  C) Right Inspector Panel: selected entity details
+- Panels MUST be resizable/collapsible only if implemented as a shared widget, not per-page hacks.
+
+15.6 Component library rule (must be project-owned):
+- Base UI primitives MUST live in:
+  src/shared/ui/
+- ATC-specific composites MUST live in:
+  src/widgets/ (map panel, inspector, alert feed)
+- Do NOT introduce another UI library. shadcn/ui pattern only.
+
+15.7 Required components (MUST exist as shared components):
+A) StatusBadge
+- Variants: ONLINE, OFFLINE, DOCKED, TOWING, STOPPED, EMERGENCY, MANUAL
+- Optional extended variants: EN_ROUTE, REQUESTED, APPROVED, ARRIVED
+- Sizes: sm, md(default), lg
+- Rules:
+  - OFFLINE must look clearly disabled (no glow)
+  - EMERGENCY must be visually dominant (strong glow)
+  - Badge text MUST be short, uppercase, consistent.
+
+B) AlertCard
+- Levels: INFO, WARNING, CRITICAL
+- CRITICAL MUST include pulse animation (subtle, not seizure-grade).
+- Must include:
+  - Title (type)
+  - Context line (vehicleId / missionId / flightId when available)
+  - Timestamp (“Just now”, “2m ago” etc.)
+  - Message body
+  - Optional actions (Approve/Reject) when relevant
+
+C) NeonOutline (focus ring)
+- Selected entity on map and selected list item MUST share the same focus style.
+- Focus ring uses --accent-cyan unless state is CRITICAL/EMERGENCY.
+
+15.8 Map overlay rules:
+- Restricted zones MUST be shown as overlay with clear legend.
+- Active route/path MUST be visually distinct from restricted zones.
+- Entity label rule:
+  - Vehicle/Aircraft markers MUST show a small ID label near icon.
+  - Label must not overlap excessively; implement collision/priority if needed.
+
+15.9 Motion/animation rules:
+- Motion is allowed only for:
+  - CRITICAL pulse
+  - Loading skeletons
+  - Subtle panel transitions
+- Prohibited:
+  - Infinite flashy animations for decoration
+  - Large parallax/3D scroll gimmicks in control center
+
+15.10 Accessibility + contrast:
+- Neon accents MUST still pass readable contrast for text.
+- Never use color alone to encode status: include icon/text label.
+- Buttons/inputs must have visible focus state (NeonOutline).
+
+15.11 Anti-design-drift policy:
+- Any new UI element MUST reuse:
+  - StatusBadge / AlertCard / shared buttons
+- If a new visual pattern is needed, it MUST be added to tokens + shared/ui first.
+- “Just this one page” exceptions are NOT allowed.
+
+[16. API/REALTIME CONTRACT FREEZE & DATA SAFETY (STRICT)]
+16.1 Contract Definition Location:
+- API Endpoints MUST be defined only in src/shared/api/endpoints.ts (no inline strings).
+- WS/MQTT Topics MUST be defined only in src/shared/realtime/topics.ts (no inline strings).
+
+16.2 Schema Enforcement:
+- Each REST response MUST have a Zod schema in src/shared/api/schemas/*.schema.ts.
+- Each WS payload MUST have a Zod schema in src/shared/realtime/schemas/*.schema.ts.
+- Schemas MUST match the backend API documentation exactly.
+
+16.3 Data Types & Units:
+- Coordinates: internal coordinate object is `{ x: number; y: number; headingDeg: number }`.
+  - NEVER mix lat/lng with local projected x/y in the same object type.
+- Units (Fixed):
+  - Speed: km/h
+  - Distance: meters (m)
+  - Heading: degrees (0-360)
+- Timestamps:
+  - REST API: ISO-8601 strings (e.g. "2024-01-01T12:00:00Z").
+  - WebSocket/MQTT: Epoch milliseconds (number).
+  - Internal App State: Epoch milliseconds (number).
+
+16.4 Contract Evolution:
+- Any contract change MUST be additive (new optional fields, new topic, new version).
+- NEVER rename or remove existing fields unless following the Breaking Change Protocol (0.5).
+
+# END

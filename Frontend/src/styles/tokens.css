@@ -1,0 +1,88 @@
+@layer base {
+  :root {
+    /* DARK OPS BASE */
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222 47.4% 11.2%;
+
+    --secondary: 217 32% 17%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217 32% 17%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217 32% 17%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 32% 17%;
+    --input: 217 32% 17%;
+    --ring: 212.7 26.8% 83.9%;
+
+    --radius: 0.5rem;
+
+    /* NEON LASER ACCENTS */
+    --accent-cyan: 180 100% 50%;
+    --accent-lime: 120 100% 50%;
+    --accent-amber: 40 100% 50%;
+    --accent-red: 0 100% 50%;
+    --accent-orange: 25 100% 50%; /* Mockup Orange */
+
+    --glow-soft: 0 0 10px rgba(0, 255, 255, 0.3);
+    --glow-strong: 0 0 20px rgba(255, 0, 0, 0.6);
+    --glow-orange: 0 0 15px rgba(255, 120, 0, 0.5);
+
+    /* FIGMA PALETTE MATCH (Exact #1A1A26) */
+    /* Primary: deeply neutral dark (User specified OKLCH) */
+    --bg-primary: oklch(.145 0 0);
+    /* Secondary: Panel BG #1A1A26 (HSL approx 240 19% 13%) */
+    --bg-secondary: 240 19% 13%; 
+    /* Tertiary: Widget/Input BG (Lighter) */
+    --bg-tertiary: 217 33% 17%;
+    /* Borders */
+    --gray-600: 215 25% 27%;
+    /* Text */
+    --gray-400: 215 20% 65%;
+
+    /* Shared Border Color */
+    --widget-border: color-mix(in oklab, oklch(.708 0 0) 50%, transparent);
+  }
+
+  .dark {
+    /* Same as root since we default to dark */
+    --background: var(--bg-primary);
+    --foreground: oklch(0.7 0 0); /* Neutral Foreground to match */
+    
+    --card: var(--bg-secondary);
+    --card-foreground: 210 40% 98%;
+
+    --popover: var(--bg-secondary);
+    --popover-foreground: 210 40% 98%;
+    
+    --border: var(--gray-600);
+    --input: var(--bg-tertiary);
+  }
+}
+
+@layer utilities {
+  .bg-grid-pattern {
+    background-size: 40px 40px;
+    background-image: linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  }
+  
+  .glass-panel {
+    @apply bg-[hsl(var(--bg-secondary)_/_0.7)] backdrop-blur-md;
+    border: 1px solid var(--widget-border);
+  }
+}
