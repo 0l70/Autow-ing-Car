@@ -43,7 +43,7 @@ export function DashboardPage() {
                             <path d="M 0 0 L 10 5 L 0 10 z" fill="hsl(var(--accent-orange))" />
                         </marker>
                     </defs>
-
+                    
                     {/* Grid Lines (Subtle) */}
                     <path d="M100 0 V600 M200 0 V600 M300 0 V600 M400 0 V600 M500 0 V600 M600 0 V600 M700 0 V600" stroke="white" strokeOpacity="0.03" />
                     <path d="M0 100 H800 M0 200 H800 M0 300 H800 M0 400 H800 M0 500 H800" stroke="white" strokeOpacity="0.03" />
