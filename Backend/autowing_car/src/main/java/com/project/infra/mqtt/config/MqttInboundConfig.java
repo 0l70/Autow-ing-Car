@@ -44,10 +44,7 @@ public class MqttInboundConfig {
         MqttPahoMessageDrivenChannelAdapter adapter = new MqttPahoMessageDrivenChannelAdapter(
                 clientId,
                 mqttClientFactory,
-                MqttTopics.SUB_TELEMETRY,
-                MqttTopics.SUB_STATE,
-                MqttTopics.SUB_EVENT,
-                MqttTopics.SUB_STATUS,
+                MqttTopics.SUB_MONITORING,
                 MqttTopics.SUB_ACK
         );
         
