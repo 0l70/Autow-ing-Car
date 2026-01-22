@@ -1,8 +1,8 @@
-package com.project.domain.robot.entity;
+package com.project.domain.towingcar.entity;
 
 import java.time.LocalDateTime;
 
-import com.project.domain.robot.dto.RobotStatusDTO;
+import com.project.domain.towingcar.dto.TowingCarStatusDTO;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -26,7 +26,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class RobotHistory {
+public class TowingCar {
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -45,7 +45,7 @@ public class RobotHistory {
 
     private LocalDateTime recordedAt; // DB 저장 시간
 
-    public RobotHistory(RobotStatusDTO dto) {
+    public TowingCar(TowingCarStatusDTO dto) {
         this.carId = dto.getCarId();
         this.x = dto.getX();
         this.y = dto.getY();

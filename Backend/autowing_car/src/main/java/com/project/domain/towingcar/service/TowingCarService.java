@@ -1,36 +1,37 @@
-package com.project.domain.robot.service;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.project.domain.robot.dto.RobotCommandDTO;
-import com.project.domain.robot.dto.RobotStatusDTO;
-import com.project.domain.robot.entity.RobotCommandHistory;
-import com.project.domain.robot.entity.RobotHistory;
-import com.project.domain.robot.repository.RobotCommandHistoryRepository;
-import com.project.domain.robot.repository.RobotHistoryRepository;
-import com.project.infra.mqtt.handler.RobotSignalProcessor; // 인터페이스 위치 확인 필요
-import com.project.infra.mqtt.service.MqttOutboundService;
-import com.project.infra.mqtt.MqttTopics; // 토픽 상수 관리 클래스
-import com.project.infra.mqtt.util.*;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+package com.project.domain.towingcar.service;
 
 import java.time.LocalDateTime;
 import java.util.Map;
 
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.project.domain.towingcar.dto.TowingCarCommandDTO;
+import com.project.domain.towingcar.dto.TowingCarStatusDTO;
+import com.project.domain.towingcar.entity.TowingCarCommandHistory;
+import com.project.domain.towingcar.entity.TowingCar;
+import com.project.domain.towingcar.repository.TowingCarCommandHistoryRepository;
+import com.project.domain.towingcar.repository.TowingCarHistoryRepository;
+import com.project.global.util.RobotIncomingMessage;
+import com.project.global.util.RobotMessageParser;
+import com.project.infra.mqtt.MqttTopics; // 토픽 상수 관리 클래스
+import com.project.infra.mqtt.handler.RobotSignalProcessor; // 인터페이스 위치 확인 필요
+import com.project.infra.mqtt.service.MqttOutboundService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class RobotService implements RobotSignalProcessor {
+public class TowingCarService implements RobotSignalProcessor {
 
-    private final RobotCommandHistoryRepository commandRepository;
-    private final RobotHistoryRepository historyRepository;
+    private final TowingCarCommandHistoryRepository commandRepository;
+    private final TowingCarHistoryRepository historyRepository;
     
     private final RobotMessageParser parser;
-    private final RobotNotificationService notificationService;
+    private final TowingCarNotificationService notificationService;
 
 
     private final MqttOutboundService mqttOutboundService; // 우리가 만든 Outbound 서비스
@@ -41,16 +42,16 @@ public class RobotService implements RobotSignalProcessor {
     // 1. 기장(Pilot) 영역: "가도 되나요?" (요청)
     // =================================================================
     @Transactional
-    public String requestCommand(String carId, RobotCommandDTO.CommandType type) {
+    public String requestCommand(String carId, TowingCarCommandDTO.CommandType type) {
         
         // 1. DTO 생성
-        RobotCommandDTO dto = RobotCommandDTO.builder()
+        TowingCarCommandDTO dto = TowingCarCommandDTO.builder()
                 .carId(carId)
                 .type(type)
                 .build();
 
         // 2. DB 저장 (상태: REQUESTED)
-        RobotCommandHistory history = new RobotCommandHistory(dto);
+        TowingCarCommandHistory history = new TowingCarCommandHistory(dto);
         commandRepository.save(history);
 
         // 3. 관제사(Admin)에게 알림 전송 (WebSocket)
@@ -70,20 +71,20 @@ public class RobotService implements RobotSignalProcessor {
     public void approveCommand(String cmdId) {
         
         // 1. 요청 내역 조회
-        RobotCommandHistory history = commandRepository.findById(cmdId)
+        TowingCarCommandHistory history = commandRepository.findById(cmdId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 명령 ID입니다."));
 
         // 2. 상태 검증 (중복 승인 방지)
-        if (history.getStatus() != RobotCommandHistory.CommandStatus.REQUESTED) {
+        if (history.getStatus() != TowingCarCommandHistory.CommandStatus.REQUESTED) {
             throw new IllegalStateException("승인 대기 상태가 아닙니다.");
         }
 
         try {
             // 3. Entity -> DTO 변환 (전송용)
-            RobotCommandDTO cmdDto = RobotCommandDTO.builder()
+            TowingCarCommandDTO cmdDto = TowingCarCommandDTO.builder()
                     .cmdId(history.getCmdId())
                     .carId(history.getCarId())
-                    .type(RobotCommandDTO.CommandType.valueOf(history.getType().name()))
+                    .type(TowingCarCommandDTO.CommandType.valueOf(history.getType().name()))
                     .targetNode(history.getTargetNode())
                     .params(objectMapper.readValue(history.getParameters(), Map.class)) // JSON String -> Map
                     .build();
@@ -94,10 +95,10 @@ public class RobotService implements RobotSignalProcessor {
             // 5. MQTT 발송 (OutboundService 사용)
             // 토픽 예: autowing/car/TC01/cmd
             String topic = String.format(MqttTopics.CMD_FORMAT, history.getCarId());
-            mqttOutboundService.sendCommand(topic, jsonPayload);
+            mqttOutboundService.publish(topic, jsonPayload);
 
             // 6. DB 상태 업데이트 (APPROVED -> SENT)
-            history.setStatus(RobotCommandHistory.CommandStatus.APPROVED); // or SENT
+            history.setStatus(TowingCarCommandHistory.CommandStatus.APPROVED); // or SENT
             history.setApprovedAt(LocalDateTime.now());
             
             log.info("🚀 [승인/전송] Topic: {}, Cmd: {}", topic, history.getType());
@@ -110,10 +111,10 @@ public class RobotService implements RobotSignalProcessor {
 
     @Transactional
     public void rejectCommand(String cmdId) {
-        RobotCommandHistory history = commandRepository.findById(cmdId)
+        TowingCarCommandHistory history = commandRepository.findById(cmdId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 명령 ID입니다."));
         
-        history.setStatus(RobotCommandHistory.CommandStatus.REJECTED);
+        history.setStatus(TowingCarCommandHistory.CommandStatus.REJECTED);
         log.info("🛑 [반려] ID: {}", cmdId);
     }
     
@@ -157,9 +158,9 @@ public class RobotService implements RobotSignalProcessor {
             switch (msg.getMessageType()) {
                 case "monitoring":
                     // JsonNode -> DTO 변환 후 저장
-                    RobotStatusDTO statusDto = objectMapper.treeToValue(msg.getPayload(), RobotStatusDTO.class);
+                    TowingCarStatusDTO statusDto = objectMapper.treeToValue(msg.getPayload(), TowingCarStatusDTO.class);
                     statusDto.setCarId(msg.getCarId());
-                    historyRepository.save(new RobotHistory(statusDto));
+                    historyRepository.save(new TowingCar(statusDto));
                     break;
                 // ack나 heartbeat 등 저장이 필요 없는 건 그냥 pass
                 default:

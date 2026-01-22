@@ -25,11 +25,8 @@ public class MqttOutboundService {
     /**
      * 특정 로봇에게 명령 전송
      */
-    public void sendCommand(String carId, String jsonPayload) {
-        // autowing_car/v1/robot/{carId}/cmd 로 변환
-        String topic = String.format(MqttTopics.CMD_FORMAT, carId);
-        
-        mqttGateway.sendToMqtt(jsonPayload, topic);
-        log.info("CMD 발송 [Target: {}]: {}", carId, topic);
+    public void publish(String topic, String payload) {
+        mqttGateway.sendToMqtt(payload, topic);
+        log.info("📤 MQTT 발송 [Topic: {}]", topic);
     }
 }
