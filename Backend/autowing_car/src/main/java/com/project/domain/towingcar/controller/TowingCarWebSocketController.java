@@ -1,7 +1,8 @@
-package com.project.domain.robot.controller;
+package com.project.domain.towingcar.controller;
 
-import com.project.domain.robot.dto.RobotCommandDTO;
-import com.project.domain.robot.service.RobotService;
+import com.project.domain.towingcar.dto.TowingCarCommandDTO;
+import com.project.domain.towingcar.service.TowingCarService;
+
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,9 +15,9 @@ import org.springframework.stereotype.Controller;
 @Slf4j
 @Controller
 @RequiredArgsConstructor
-public class RobotCommandSocketController {
+public class TowingCarWebSocketController {
 
-    private final RobotService robotService;
+    private final TowingCarService towingCarService;
     private final SimpMessagingTemplate wsTemplate;
 
     // ==========================================
@@ -28,7 +29,7 @@ public class RobotCommandSocketController {
             log.info("📩 WS 요청 수신: {}", msg);
             
             // 서비스 로직 호출 (DB 저장 + 관제사 알림 전송됨)
-            String cmdId = robotService.requestCommand(msg.getCarId(), msg.getType());
+            String cmdId = towingCarService.requestCommand(msg.getCarId(), msg.getType());
 
             // (옵션) 기장에게 "요청 잘 접수됨" 피드백 보내기
             // 기장이 구독 중인 경로 예: /topic/pilot/feedback
@@ -48,7 +49,7 @@ public class RobotCommandSocketController {
             log.info("✅ WS 승인 수신: CmdID={}", msg.getCmdId());
             
             // 서비스 호출 (MQTT 발송됨)
-            robotService.approveCommand(msg.getCmdId());
+            towingCarService.approveCommand(msg.getCmdId());
             
             // 관제사에게 성공 알림
             wsTemplate.convertAndSend("/topic/admin/alerts", "명령이 승인되어 전송되었습니다.");
@@ -64,7 +65,7 @@ public class RobotCommandSocketController {
     @MessageMapping("/control/reject")
     public void handleReject(@Payload DecisionMessage msg) {
         try {
-            robotService.rejectCommand(msg.getCmdId());
+            towingCarService.rejectCommand(msg.getCmdId());
             wsTemplate.convertAndSend("/topic/admin/alerts", "명령이 반려되었습니다.");
         } catch (Exception e) {
             sendError("/topic/admin/errors", "반려 처리 실패: " + e.getMessage());
@@ -91,7 +92,7 @@ public class RobotCommandSocketController {
 @Data
 class CommandRequestMessage {
     private String carId;
-    private RobotCommandDTO.CommandType type;
+    private TowingCarCommandDTO.CommandType type;
     private String targetNode;
 }
 

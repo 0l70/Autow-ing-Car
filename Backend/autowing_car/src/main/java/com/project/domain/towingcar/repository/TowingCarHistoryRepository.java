@@ -1,8 +1,8 @@
-package com.project.domain.robot.repository;
+package com.project.domain.towingcar.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-import com.project.domain.robot.entity.RobotHistory;
+import com.project.domain.towingcar.entity.TowingCar;
 
 /**
  * - 로봇 로그용 레포지토리
@@ -11,7 +11,7 @@ import com.project.domain.robot.entity.RobotHistory;
  * - 추후 RobotSignalService에서 DB 저장 기능 활성화 시 사용
  */
 
-public interface RobotHistoryRepository extends JpaRepository<RobotHistory, Long> {
+public interface TowingCarHistoryRepository extends JpaRepository<TowingCar, Long> {
     // DB 저장 메서드 예시
     // void saveSignal(String carId, String msgType, Object data);
 }

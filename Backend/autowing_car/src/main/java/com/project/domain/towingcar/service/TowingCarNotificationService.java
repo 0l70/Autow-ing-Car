@@ -1,15 +1,16 @@
-package com.project.domain.robot.service;
+package com.project.domain.towingcar.service;
 
-import com.project.infra.mqtt.util.RobotIncomingMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
+import com.project.global.util.RobotIncomingMessage;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class RobotNotificationService {
+public class TowingCarNotificationService {
 
     private final SimpMessagingTemplate wsTemplate;
 

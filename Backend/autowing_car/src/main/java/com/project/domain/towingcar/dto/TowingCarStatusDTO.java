@@ -1,4 +1,4 @@
-package com.project.domain.robot.dto;
+package com.project.domain.towingcar.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -20,7 +20,7 @@ import lombok.Data;
 */
 @Data
 @Builder
-public class RobotStatusDTO {
+public class TowingCarStatusDTO {
 
     @JsonProperty("car_id") // JSON의 car_id를 carId에 매핑
     private String carId;

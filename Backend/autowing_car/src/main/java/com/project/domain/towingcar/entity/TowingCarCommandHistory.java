@@ -1,4 +1,4 @@
-package com.project.domain.robot.entity;
+package com.project.domain.towingcar.entity;
 
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -7,13 +7,13 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-import com.project.domain.robot.dto.RobotCommandDTO;
+import com.project.domain.towingcar.dto.TowingCarCommandDTO;
 
 @Entity
 @Getter
 @NoArgsConstructor
 @Table(name = "robot_command_history")
-public class RobotCommandHistory {
+public class TowingCarCommandHistory {
 
     @Id
     @Column(name = "cmd_id")
@@ -24,7 +24,7 @@ public class RobotCommandHistory {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private RobotCommandDTO.CommandType type; // MOVE, STOP...
+    private TowingCarCommandDTO.CommandType type; // MOVE, STOP...
 
     private String targetNode; // 목적지
 
@@ -42,7 +42,7 @@ public class RobotCommandHistory {
     private LocalDateTime approvedAt;  // 관제사 승인 시간
     
     // --- 생성자 ---
-    public RobotCommandHistory(RobotCommandDTO dto) {
+    public TowingCarCommandHistory(TowingCarCommandDTO dto) {
         this.cmdId = dto.getCmdId();
         this.carId = dto.getCarId();
         this.type = dto.getType();

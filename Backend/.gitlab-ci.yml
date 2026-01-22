@@ -2,49 +2,20 @@ spec:
   inputs:
     project_dir:
       type: string
-      # 👇 여기를 실제 백엔드 프로젝트 경로로 수정
       default: "Backend/autowing_car"
       description: "Backend 프로젝트의 상대 경로"
 ---
 stages:
-  - build
   - package
   - deploy
 
-# ---------------------------------------------------------------------------
-# [변수 설정]
-# ---------------------------------------------------------------------------
 variables:
-  # 대문자 B 주의! (폴더 구조와 정확히 일치해야 함)
   BACKEND_DIR: "Backend/autowing_car"
   BACKEND_IMAGE: $CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHORT_SHA
-  # Docker Build 시 TLS 문제 방지
   DOCKER_TLS_CERTDIR: ""
 
 # ---------------------------------------------------------------------------
-# [1. Build Stage] - Develop & Master 둘 다 실행
-# ---------------------------------------------------------------------------
-backend-build:
-  stage: build
-  image: gradle:8.5.0-jdk17
-  # 규칙: Develop이나 Master 브랜치에 'Backend' 폴더 변경사항이 있을 때만
-  rules:
-    - if: '($CI_COMMIT_REF_NAME == "dev" || $CI_COMMIT_REF_NAME == "master")'
-      changes:
-        - Backend/**/*
-  script:
-    - echo "🏗️ [Backend] Compiling & Testing..."
-    - cd $BACKEND_DIR
-    - chmod +x gradlew
-    - ./gradlew clean build -x test 
-    # 테스트 코드가 실패하면 빌드 안되게 하려면 -x test 제거 (지금은 빠른 진행 위해 skip 추천)
-  artifacts:
-    paths:
-      - $BACKEND_DIR/build/libs/*.jar
-    expire_in: 1 hour
-
-# ---------------------------------------------------------------------------
-# [2. Package Stage] - Master 브랜치에서만 실행 (이미지 생성)
+# [1. Package Stage] - Docker build (Gradle build 포함)
 # ---------------------------------------------------------------------------
 backend-docker:
   stage: package
@@ -58,32 +29,35 @@ backend-docker:
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
   script:
-    - echo "📦 [Backend] Packaging Docker Image..."
+    - echo "📦 [Backend] Docker build (Gradle build inside Dockerfile)"
     - cd $BACKEND_DIR
     - docker build -t $BACKEND_IMAGE .
     - docker push $BACKEND_IMAGE
 
 # ---------------------------------------------------------------------------
-# [3. Deploy Stage] - Master 브랜치에서만 실행 (서버 배포)
+# [2. Deploy Stage] - EC2 배포
 # ---------------------------------------------------------------------------
 backend-deploy:
   stage: deploy
   image: alpine:latest
+  needs:
+    - backend-docker
   rules:
     - if: '$CI_COMMIT_REF_NAME == "master"'
       changes:
         - Backend/**/*
   before_script:
-    - apk update && apk add openssh-client
+    - apk add --no-cache openssh-client
     - eval $(ssh-agent -s)
     - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
     - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh
-    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
   script:
-    - echo "🚀 [Backend] Deploying to Production Server..."
-    - ssh ubuntu@$EC2_IP "
-        echo '$CI_REGISTRY_PASSWORD' | docker login -u '$CI_REGISTRY_USER' --password-stdin $CI_REGISTRY &&
+    - |
+      echo "🚀 [Backend] Deploying to Production Server..."
+      ssh ubuntu@$EC2_IP "
+        docker login -u '$CI_REGISTRY_USER' -p '$CI_REGISTRY_PASSWORD' $CI_REGISTRY &&
         docker pull $BACKEND_IMAGE &&
         docker stop backend-app || true &&
         docker rm backend-app || true &&
@@ -91,18 +65,16 @@ backend-deploy:
           --network host \
           --restart always \
           -e SPRING_PROFILES_ACTIVE=local \
-          $BACKEND_IMAGE"
-
-
-
-
-
-
-
-
-
-
+          # ===============================
+          # DB 설정 (나중에 활성화)
+          # ===============================
           # -e DB_URL='$DB_URL' \
           # -e DB_USERNAME='$DB_USERNAME' \
           # -e DB_PASSWORD='$DB_PASSWORD' \
           
+          # ===============================
+          # 또는 서버에 있는 env 파일 사용
+          # ===============================
+          # --env-file /home/ubuntu/backend.env \
+          $BACKEND_IMAGE
+      "

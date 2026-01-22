@@ -1,4 +1,4 @@
-package com.project.domain.robot.dto;
+package com.project.domain.towingcar.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
@@ -13,7 +13,7 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class RobotCommandDTO {
+public class TowingCarCommandDTO {
 
     @JsonProperty("cmd_id")
     @Builder.Default
