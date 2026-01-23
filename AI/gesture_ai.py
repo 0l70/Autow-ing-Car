@@ -1,211 +1,139 @@
 import cv2
+import mediapipe as mp
 import numpy as np
-import time
-from collections import deque
-from ultralytics import YOLO
+import math
 
 class MarshallerAI:
-    def __init__(self, model_path='yolov8n-pose.pt'):
-        self.model_name = model_path.split('.')[0]
-        print(f"Loading {self.model_name} Model...")
-        self.model = YOLO(model_path)
+    def __init__(self):
+        # MediaPipe Pose 모델 초기화
+        self.mp_pose = mp.solutions.pose
+        self.pose = self.mp_pose.Pose(
+            static_image_mode=False,
+            model_complexity=1,
+            smooth_landmarks=True,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
+        )
+        self.mp_drawing = mp.solutions.drawing_utils
         
-        # --- [설정] 파라미터 튜닝 ---
-        self.maxlen = 15              
-        self.conf_threshold = 0.5     
-        
-        # 1. 임계값 (Thresholds)
-        self.cross_dist_threshold = 80.0    # STOP: 손목 교차 거리
-        self.motion_threshold = 8.0         # 공통: 흔들림 감지 민감도
-        self.elbow_stable_threshold = 25.0  # 공통: 팔꿈치 고정 허용범위 (좀 더 관대하게 25로 상향)
-        
-        # 2. 높이 판별 기준
-        self.high_pose_margin = 120.0       # COME/TURN: 팔꿈치가 이 높이보다 위에 있어야 함
-        self.low_pose_drop = 60.0           # BACK: 팔꿈치가 어깨보다 이만큼 아래에 있어야 함
+        self.status = "IDLE"
+        self.is_finished = False # 도킹 완료 상태 플래그
 
-        # 3. 상태 유지 (Hold)
-        self.sustain_frames = 10  # 약 0.3초 유지
-        self.current_sustain = 0
-        self.last_valid_command = "STANDBY"
+    def calculate_angle(self, a, b, c):
+        """세 점 사이의 각도 계산"""
+        a = np.array(a)
+        b = np.array(b)
+        c = np.array(c)
+        radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
+        angle = np.abs(radians*180.0/np.pi)
+        if angle > 180.0: angle = 360-angle
+        return angle
 
-        # 4. [NEW] 안전장치 (Fail-Safe)
-        self.last_human_time = time.time()
-        self.safety_timeout = 0.5 # 0.5초 이상 사람 안 보이면 STOP
+    def detect_gesture(self, frame):
+        # 이미 완료된 상태면 도킹 터미널 화면 유지
+        if self.is_finished:
+            cv2.rectangle(frame, (0,0), (frame.shape[1], frame.shape[0]), (0,0,0), -1)
+            cv2.putText(frame, "DOCKING TERMINAL", (50, 200), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 5, cv2.LINE_AA)
+            cv2.putText(frame, "SYSTEM STANDBY", (100, 300), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 1, (200, 200, 200), 2, cv2.LINE_AA)
+            return "FINISHED", frame
 
-        # 히스토리 버퍼
-        self.hist_lw = deque(maxlen=self.maxlen) 
-        self.hist_rw = deque(maxlen=self.maxlen) 
-        self.hist_le = deque(maxlen=self.maxlen) 
-        self.hist_re = deque(maxlen=self.maxlen) 
+        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        image.flags.writeable = False
+        results = self.pose.process(image)
+        image.flags.writeable = True
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
-        # [NEW] 지수 이동 평균(EMA) 필터용 변수 (좌표 보정)
-        self.smooth_lw = None
-        self.smooth_rw = None
-        self.alpha = 0.6 # 최신 값 반영 비율 (0.6 = 신규 60%, 기존 40%)
+        current_action = "IDLE"
+        info_text = ""
 
-    def predict(self, frame):
-        start_time = time.time()
-        results = self.model(frame, verbose=False)
-        inference_time = (time.time() - start_time) * 1000
+        if results.pose_landmarks:
+            landmarks = results.pose_landmarks.landmark
 
-        # --- [1] 안전장치: 사람이 없는 경우 ---
-        if results[0].keypoints is None or results[0].keypoints.data.shape[0] == 0:
-            # 사람이 없어진 지 오래됐으면 비상 정지
-            if time.time() - self.last_human_time > self.safety_timeout:
-                self.draw_ui(frame, "EMERGENCY_STOP", 0, 0, False, False)
-                return "STOP", frame # [중요] 명령은 STOP으로 나감
+            # 1. 주요 관절 좌표 추출
+            # 왼쪽
+            l_sh = [landmarks[self.mp_pose.PoseLandmark.LEFT_SHOULDER.value].x,
+                    landmarks[self.mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
+            l_el = [landmarks[self.mp_pose.PoseLandmark.LEFT_ELBOW.value].x,
+                    landmarks[self.mp_pose.PoseLandmark.LEFT_ELBOW.value].y]
+            l_wr = [landmarks[self.mp_pose.PoseLandmark.LEFT_WRIST.value].x,
+                    landmarks[self.mp_pose.PoseLandmark.LEFT_WRIST.value].y]
+            # 오른쪽
+            r_sh = [landmarks[self.mp_pose.PoseLandmark.RIGHT_SHOULDER.value].x,
+                    landmarks[self.mp_pose.PoseLandmark.RIGHT_SHOULDER.value].y]
+            r_el = [landmarks[self.mp_pose.PoseLandmark.RIGHT_ELBOW.value].x,
+                    landmarks[self.mp_pose.PoseLandmark.RIGHT_ELBOW.value].y]
+            r_wr = [landmarks[self.mp_pose.PoseLandmark.RIGHT_WRIST.value].x,
+                    landmarks[self.mp_pose.PoseLandmark.RIGHT_WRIST.value].y]
+
+            # 각도 및 거리 계산
+            angle_l = self.calculate_angle(l_sh, l_el, l_wr)
+            angle_r = self.calculate_angle(r_sh, r_el, r_wr)
+            wrist_dist = abs(l_wr[0] - r_wr[0])
+
+            # =========================================================
+            # 제스처 판단 로직 (우선순위: STOP/BRAKE/CUT > MOTION)
+            # =========================================================
+
+            # [1] STOP: 팔이 X자로 교차 (최우선)
+            # 조건: 손이 어깨보다 높고, 손목이 겹치거나 매우 가까움
+            if (l_wr[1] < l_sh[1] and r_wr[1] < r_sh[1]) and \
+               (wrist_dist < 0.15 or l_wr[0] < r_wr[0]):
+                current_action = "STOP"
+
+            # [2] ENGINE_CUT (종료 동작): 목 긋기
+            # 조건: 한 손은 아래, 다른 한 손은 반대쪽 어깨 근처(목)로 이동
+            # (왼손이 올라와서 오른쪽 어깨 근처로 감 OR 오른손이 올라와서 왼쪽 어깨 근처로 감)
+            elif (l_wr[1] < l_sh[1] + 0.15 and r_wr[1] > r_sh[1] and l_wr[0] < r_sh[0]) or \
+                 (r_wr[1] < r_sh[1] + 0.15 and l_wr[1] > l_sh[1] and r_wr[0] > l_sh[0]):
+                 
+                 current_action = "ENGINE_CUT"
+                 self.is_finished = True # 완료 화면으로 전환
+
+            # [3] SET_BRAKES: 한 팔은 위(STOP위치), 한 팔은 아래로 내림
+            # 조건: 한 손은 어깨 위, 한 손은 어깨 아래
+            elif (l_wr[1] < l_sh[1] and r_wr[1] > r_sh[1]) or \
+                 (r_wr[1] < r_sh[1] and l_wr[1] > l_sh[1]):
+                current_action = "SET_BRAKES"
+
+            # [4] APPROACHING: 팔을 쭉 펴서 머리 위로 (Y자 형태)
+            # 조건: 손이 어깨보다 높고, 팔꿈치가 펴져 있음(>130)
+            elif (l_wr[1] < l_sh[1] and r_wr[1] < r_sh[1]) and \
+                 (angle_l > 130 and angle_r > 130):
+                current_action = "APPROACHING"
+                # 손 간격에 따른 속도 피드백
+                if wrist_dist > 0.5: info_text = "SPEED: FAST"
+                elif wrist_dist > 0.2: info_text = "SPEED: SLOW"
+                else: info_text = "PREPARE STOP"
+
+            # [5] FACE_ME: 양팔을 수평으로 쭉 뻗음 (T자)
+            # 조건: 손 높이와 어깨 높이가 비슷, 팔꿈치 펴짐
+            elif abs(l_wr[1] - l_sh[1]) < 0.2 and abs(r_wr[1] - r_sh[1]) < 0.2 and \
+                 angle_l > 140 and angle_r > 140:
+                current_action = "FACE_ME"
+
+            # [6] FORWARD: T자에서 팔꿈치만 굽힘 (ㄴ자, W자 모양)
+            # 조건: 어깨-팔꿈치는 수평 유지, 팔꿈치 각도는 90도 근처
+            elif abs(l_el[1] - l_sh[1]) < 0.2 and abs(r_el[1] - r_sh[1]) < 0.2 and \
+                 angle_l < 120 and angle_r < 120:
+                current_action = "FORWARD"
+
             else:
-                return "NO_HUMAN", frame
+                current_action = "IDLE"
 
-        # 사람이 있으면 시간 갱신
-        self.last_human_time = time.time()
+            # 뼈대 그리기
+            self.mp_drawing.draw_landmarks(
+                image, results.pose_landmarks, self.mp_pose.POSE_CONNECTIONS)
+
+        self.status = current_action
         
-        keypoints = results[0].keypoints.data[0].cpu().numpy()
-        
-        # 신뢰도 체크
-        if min(keypoints[5][2], keypoints[6][2], keypoints[9][2], keypoints[10][2]) < self.conf_threshold:
-            return "LOW_CONF", frame
+        # 정보창 그리기
+        h, w, _ = image.shape
+        x1, y1 = w - 280, h - 80
+        cv2.rectangle(image, (x1, y1), (w, h), (245, 117, 16), -1)
+        cv2.putText(image, current_action, (x1+10, y1+35), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2)
+        if info_text:
+            cv2.putText(image, info_text, (x1+10, y1+65), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,0), 1)
 
-        # --- [2] 좌표 추출 및 스무딩(Smoothing) ---
-        # 5,6:어깨 / 7,8:팔꿈치 / 9,10:손목
-        ls, rs = keypoints[5][:2], keypoints[6][:2]
-        le, re = keypoints[7][:2], keypoints[8][:2]
-        raw_lw, raw_rw = keypoints[9][:2], keypoints[10][:2]
-        
-        # EMA 필터 적용 (좌표 떨림 방지)
-        if self.smooth_lw is None:
-            self.smooth_lw, self.smooth_rw = raw_lw, raw_rw
-        else:
-            self.smooth_lw = self.alpha * raw_lw + (1 - self.alpha) * self.smooth_lw
-            self.smooth_rw = self.alpha * raw_rw + (1 - self.alpha) * self.smooth_rw
-        
-        # 이제부터 lw, rw는 부드러워진 좌표 사용
-        lw, rw = self.smooth_lw, self.smooth_rw
-
-        # 히스토리 업데이트
-        self.hist_lw.append(lw)
-        self.hist_rw.append(rw)
-        self.hist_le.append(le)
-        self.hist_re.append(re)
-
-        if len(self.hist_lw) < self.maxlen:
-            return "GATHERING", frame
-
-        # --- [3] 로직 데이터 계산 ---
-        
-        # 거리 및 흔들림(Motion) 계산
-        wrist_dist = np.linalg.norm(lw - rw)
-        
-        lw_std = np.std([p[1] for p in self.hist_lw]) # 왼손 흔들림
-        rw_std = np.std([p[1] for p in self.hist_rw]) # 오른손 흔들림
-        
-        le_std = np.std([p[1] for p in self.hist_le])
-        re_std = np.std([p[1] for p in self.hist_re])
-        elbow_motion = max(le_std, re_std) # 팔꿈치는 고정되어야 함
-
-        # 높이(Pose) 분석
-        shoulder_avg_y = (ls[1] + rs[1]) / 2
-        
-        # 왼팔/오른팔 각각 높이 체크 (Y값이 작아야 위쪽)
-        # 어깨보다 +margin(아래)보다 작으면(위면) High로 간주
-        is_left_high = np.mean([p[1] for p in self.hist_le]) < (shoulder_avg_y + self.high_pose_margin)
-        is_right_high = np.mean([p[1] for p in self.hist_re]) < (shoulder_avg_y + self.high_pose_margin)
-        
-        # 백(Back) 자세 체크 (어깨보다 확실히 아래)
-        avg_elbow_y = (np.mean([p[1] for p in self.hist_le]) + np.mean([p[1] for p in self.hist_re])) / 2
-        is_elbow_low = avg_elbow_y > (shoulder_avg_y + self.low_pose_drop)
-
-        # --- [4] 판정 트리 (Decision Tree) ---
-        raw_command = "STANDBY"
-
-        # 조건 1: STOP (최우선) - X자 교차
-        if wrist_dist < self.cross_dist_threshold:
-            raw_command = "STOP"
-            self.current_sustain = 0
-            
-        # 조건 2: 동작 감지 (팔꿈치 고정 + 손목 흔들림)
-        elif (elbow_motion < self.elbow_stable_threshold):
-            
-            # [NEW] 편측 제어 (한쪽만 흔들기)
-            # 왼쪽만 흔들고 + 높음 -> LEFT
-            if (lw_std > self.motion_threshold) and (rw_std < self.motion_threshold) and is_left_high:
-                raw_command = "LEFT"
-                self.current_sustain = self.sustain_frames
-            
-            # 오른쪽만 흔들고 + 높음 -> RIGHT
-            elif (rw_std > self.motion_threshold) and (lw_std < self.motion_threshold) and is_right_high:
-                raw_command = "RIGHT"
-                self.current_sustain = self.sustain_frames
-
-            # 양쪽 다 흔듦
-            elif (lw_std > self.motion_threshold) and (rw_std > self.motion_threshold):
-                if is_left_high and is_right_high:
-                    raw_command = "COME" # 둘 다 높음
-                    self.current_sustain = self.sustain_frames
-                elif is_elbow_low:
-                    raw_command = "BACK" # 둘 다 낮음
-                    self.current_sustain = self.sustain_frames
-
-        # --- [5] 후처리 (Hold) ---
-        final_command = raw_command
-        if raw_command == "STOP":
-            final_command = "STOP"
-        elif raw_command != "STANDBY":
-            final_command = raw_command
-            self.last_valid_command = raw_command
-        else:
-            if self.current_sustain > 0:
-                final_command = self.last_valid_command
-                self.current_sustain -= 1
-            else:
-                final_command = "STANDBY"
-
-        # 시각화
-        self.draw_skeleton(frame, ls, rs, le, re, lw, rw)
-        self.draw_ui(frame, final_command, max(lw_std, rw_std), elbow_motion, (is_left_high and is_right_high), is_elbow_low)
-        self.draw_performance(frame, start_time, inference_time)
-
-        return final_command, frame
-
-    def draw_skeleton(self, frame, ls, rs, le, re, lw, rw):
-        # 뼈대 그리기
-        colors = (200, 200, 200)
-        for p1, p2 in [(ls, le), (le, lw), (rs, re), (re, rw), (ls, rs)]:
-            cv2.line(frame, (int(p1[0]), int(p1[1])), (int(p2[0]), int(p2[1])), colors, 2)
-        # 관절 점
-        for kp in [ls, rs, le, re, lw, rw]:
-            cv2.circle(frame, (int(kp[0]), int(kp[1])), 5, (0, 255, 0), -1)
-
-    def draw_ui(self, frame, cmd, w_mot, e_mot, is_high, is_low):
-        # 화면 크기
-        h, w, _ = frame.shape
-        
-        # 박스 (오른쪽 하단)
-        box_w, box_h, margin = 300, 50, 0
-        sx, sy = w - box_w - margin, h - box_h - margin
-        
-        color_map = {
-            "STOP": (0, 0, 255),     "EMERGENCY_STOP": (0, 0, 255),
-            "COME": (0, 255, 0),     "BACK": (0, 165, 255),
-            "LEFT": (255, 0, 0),     "RIGHT": (255, 0, 0), # 좌우는 파랑
-            "STANDBY": (100, 100, 100)
-        }
-        color = color_map.get(cmd, (100, 100, 100))
-
-        cv2.rectangle(frame, (sx, sy), (w-margin, h-margin), (0,0,0), -1)
-        
-        # 텍스트
-        font_scale = 0.9 if len(cmd) < 10 else 0.7 # 글자 길면 작게
-        cv2.putText(frame, f"CMD: {cmd}", (sx + 10, sy + 35), cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, 2)
-
-        # 디버깅 정보 (왼쪽 하단)
-        pose_str = "HIGH" if is_high else ("LOW" if is_low else "MID")
-        debug_msg = f"Mot:{w_mot:.1f} Elb:{e_mot:.1f} Pose:{pose_str}"
-        cv2.putText(frame, debug_msg, (10, h - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 1)
-
-    def draw_performance(self, frame, start_time, inference_time):
-        # FPS 표시 (오른쪽 상단)
-        fps = 1.0 / (time.time() - start_time + 1e-6)
-        h, w, _ = frame.shape
-        cv2.rectangle(frame, (w-200, 0), (w, 40), (0,0,0), -1)
-        cv2.putText(frame, f"FPS: {fps:.1f}", (w-190, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        return current_action, image
