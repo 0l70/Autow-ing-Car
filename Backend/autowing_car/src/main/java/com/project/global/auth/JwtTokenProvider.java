@@ -51,6 +51,33 @@ public class JwtTokenProvider {
                 .compact();
     }
 
+    /**
+     * 
+     * @param authentication
+     * @return
+     */
+    public String createSocketToken(Authentication authentication) {
+        String authorities = authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.joining(","));
+
+        long now = (new Date()).getTime();
+        Date validity = new Date(now + 10000); // 10초 유효
+
+        return Jwts.builder()
+                .setSubject(authentication.getName())
+                .claim("auth", authorities)
+                .claim("type", "socket")
+                .setIssuedAt(new Date(now))
+                .setExpiration(validity)
+                .signWith(key, SignatureAlgorithm.HS256)
+                .compact();
+        
+    }
+
+    public String getUserId(String token) {
+        return parseClaims(token).getSubject();
+    }
     // 인증 정보 조회
     public Authentication getAuthentication(String token) {
         Claims claims = parseClaims(token);

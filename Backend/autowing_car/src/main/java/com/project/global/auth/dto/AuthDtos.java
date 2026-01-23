@@ -21,7 +21,9 @@ public class AuthDtos {
     @AllArgsConstructor
     public static class TokenResponse {
         private String accessToken;
+        private String socketToken;
         private String grantType;
         private UserRole role;
     }
+
 }
