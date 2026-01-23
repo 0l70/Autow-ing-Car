@@ -5,7 +5,6 @@ import java.util.UUID;
 import com.project.infra.mqtt.MqttTopics;
 import lombok.RequiredArgsConstructor;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.integration.annotation.ServiceActivator;
@@ -17,11 +16,7 @@ import org.springframework.integration.mqtt.support.DefaultPahoMessageConverter;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.MessageHandler;
 
-import com.project.infra.mqtt.MqttTopics;
 import com.project.infra.mqtt.handler.MqttInboundHandler;
-import org.springframework.messaging.support.MessageBuilder;
-
-import lombok.RequiredArgsConstructor;
 
 @Configuration
 @RequiredArgsConstructor
