@@ -30,7 +30,7 @@ dependencies {
 	// runtimeOnly 'org.postgresql:postgresql' // 운영 배포 시 주석 해제
 	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
-
+ 
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-integration'
 	implementation 'org.springframework.boot:spring-boot-starter-web'

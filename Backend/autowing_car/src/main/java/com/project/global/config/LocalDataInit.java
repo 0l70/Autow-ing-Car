@@ -2,6 +2,7 @@ package com.project.global.config;
 
 import com.project.domain.common.CarStatus;
 import com.project.domain.common.MapStatus;
+import com.project.domain.common.MissionStatus;
 import com.project.domain.flight.entity.Flight;
 import com.project.domain.flight.repository.FlightRepository;
 import com.project.domain.map.entity.Edge;
@@ -92,7 +93,8 @@ public class LocalDataInit implements CommandLineRunner {
     private void createAndSaveCar(String code, double x, double y, int battery) {
         TowingCar car = TowingCar.builder()
                 .code(code)
-                .status(CarStatus.IDLE)
+                .carStatus(CarStatus.IDLE)
+                .missionStatus(MissionStatus.IDLE)
                 .battery(battery)
                 .lastPosX(x)
                 .lastPosY(y)

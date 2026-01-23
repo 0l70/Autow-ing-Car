@@ -55,8 +55,8 @@ class MissionServiceTest {
         Mission mockMission = Mission.builder().id(100L).status(MissionStatus.WAITING).build();
         given(missionRepository.save(any(Mission.class))).willReturn(mockMission);
 
-        TowingCar idleCar = TowingCar.builder().code("TC01").status(CarStatus.IDLE).battery(90).build();
-        given(towingCarRepository.findAllByStatus(CarStatus.IDLE)).willReturn(List.of(idleCar));
+        TowingCar idleCar = TowingCar.builder().code("TC01").carStatus(CarStatus.IDLE).battery(90).build();
+        given(towingCarRepository.findAllByCarStatus(CarStatus.IDLE)).willReturn(List.of(idleCar));
 
         // when (실행)
         missionService.createMissionRequest(pilotId, request);
