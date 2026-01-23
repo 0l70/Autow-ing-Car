@@ -33,17 +33,21 @@ public class AuthService {
         // authenticate 매서드가 실행될 때 CustomUserDetailsService 에서 만든 loadUserByUsername
         // 메서드가 실행
         Authentication authentication = authenticationManagerBuilder.getObject().authenticate(authenticationToken);
-
+        
         // 3. 인증 정보 기반으로 JWT 토큰 생성
         String accessToken = jwtTokenProvider.createToken(authentication);
 
-        // 4. 유저 정보 조회 (Role 반환용)
+        // 4. 소켓용 단기 토큰 생성
+        String socketToken = jwtTokenProvider.createSocketToken(authentication);
+
+        // 5. 유저 정보 조회 (Role 반환용)
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
 
         return AuthDtos.TokenResponse.builder()
                 .grantType("Bearer")
                 .accessToken(accessToken)
+                .socketToken(socketToken)
                 .role(user.getRole())
                 .build();
     }

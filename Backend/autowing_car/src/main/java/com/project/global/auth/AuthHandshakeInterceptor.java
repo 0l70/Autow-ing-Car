@@ -23,18 +23,22 @@ public class AuthHandshakeInterceptor implements HandshakeInterceptor {
             WebSocketHandler wsHandler, Map<String, Object> attributes) throws Exception {
         if (request instanceof ServletServerHttpRequest) {
             ServletServerHttpRequest servletRequest = (ServletServerHttpRequest) request;
-            String token = servletRequest.getServletRequest().getParameter("token");
+            String token = servletRequest.getServletRequest().getParameter("access_token");
 
             if (token != null && jwtTokenProvider.validateToken(token)) {
                 // 토큰이 유효하면 attributes에 사용자 정보 저장 (필요 시)
                 // Authentication auth = jwtTokenProvider.getAuthentication(token);
                 // attributes.put("USER_PRINCIPAL", auth);
+                String userId = jwtTokenProvider.getUserId(token);
+                attributes.put("USER_ID", userId);
+                
+                log.info("[WS Handshake] 연결 승인: {}", userId);
                 return true;
-            } else {
-                log.warn("WebSocket Handshake Failed: Invalid or Missing Token");
-                return false;
-            }
+            } 
         }
+
+        log.warn("WebSocket Handshake Failed: Invalid or Missing Token");
+
         return false;
     }
 
