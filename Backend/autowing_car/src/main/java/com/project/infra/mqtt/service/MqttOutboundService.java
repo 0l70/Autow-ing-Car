@@ -1,6 +1,5 @@
 package com.project.infra.mqtt.service;
 
-import com.project.infra.mqtt.MqttTopics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.integration.annotation.MessagingGateway;

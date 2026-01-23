@@ -1,6 +1,6 @@
 package com.project.domain.mission.entity;
 
-import com.project.domain.common.EntityStatus;
+import com.project.domain.common.MissionStatus;
 import com.project.domain.flight.entity.Flight;
 import com.project.domain.towingcar.entity.TowingCar;
 import com.project.global.util.StringListConverter;
@@ -24,25 +24,28 @@ public class Mission {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "flight_schedule_id", nullable = false)
+    @JoinColumn(name = "flight_schedule_id")
     private Flight flight;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "towing_car_id", nullable = false)
+    @JoinColumn(name = "towing_car_id")
     private TowingCar towingCar;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private EntityStatus status; // WAITING, RUNNING...
+    @Column(name = "pilot_id", updatable = false)
+    private String pilotId;
 
-    @Column(name = "depart_node", nullable = false, length = 30)
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private MissionStatus status; // WAITING, RUNNING...
+
+    @Column(name = "depart_node", length = 30)
     private String departNode;
 
-    @Column(name = "dest_node", nullable = false, length = 30)
+    @Column(name = "dest_node", length = 30)
     private String destNode;
 
     @CreationTimestamp
-    @Column(name = "assigned_at", nullable = false, updatable = false)
+    @Column(name = "assigned_at", updatable = false)
     private LocalDateTime assignedAt;
 
     @Column(name = "started_at")
@@ -53,6 +56,16 @@ public class Mission {
 
     // JSON 타입 처리: List<String> <-> JSON String
     @Convert(converter = StringListConverter.class)
-    @Column(name = "route_edge_ids", columnDefinition = "JSON")
+    @Column(name = "route_edge_ids", columnDefinition = "TEXT")
     private List<String> routeEdgeIds;
+
+    public void updateStatus(MissionStatus newStatus) {
+        this.status = newStatus;
+    }
+
+    public void assignCar(TowingCar car, List<String> confirmedPath) {
+        this.towingCar = car;
+        this.routeEdgeIds = confirmedPath;
+        this.assignedAt = LocalDateTime.now();
+    }
 }

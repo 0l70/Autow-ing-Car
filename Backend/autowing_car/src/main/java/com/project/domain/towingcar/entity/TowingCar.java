@@ -1,59 +1,54 @@
 package com.project.domain.towingcar.entity;
 
-import java.time.LocalDateTime;
+import com.project.domain.common.CarStatus;
+import com.project.domain.common.MissionStatus;
+import com.project.domain.mission.entity.Mission;
 
-import com.project.domain.towingcar.dto.TowingCarStatusDTO;
+import jakarta.persistence.*;
+import lombok.*;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
-
-
-/*
-    * 로봇 엔티티
-    * 로봇의 현재 상태 및 정보 관리
-    * 작성자: cgantro
-    * 작성일: 2026-01-21
-    * 수정일: 2026-01-21
-*/
 @Entity
-@Table(name = "robot_history")
+@Table(name = "towing_car")
 @Getter
-@Setter
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor
+@Builder
 public class TowingCar {
 
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "towing_car_id")
     private Long id;
 
-    private String carId;
-    private double x;
-    private double y;
-    private double yaw;
-    private double velocity;
-    
-    private int battery;
-    
-    // 추후 Enum으로 변경 고려
-    private String mode;
-    private String phase; // 상세 상태도 저장
+    @Column(nullable = false, unique = true, length = 20)
+    private String code; // 예: "TC01"
 
-    private LocalDateTime recordedAt; // DB 저장 시간
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private CarStatus status; // IDLE, TOWING, MOVING...
+    
+    @Enumerated(EnumType.STRING)
+    private MissionStatus missionStatus;
+    @Column(nullable = false)
+    private Integer battery;
 
-    public TowingCar(TowingCarStatusDTO dto) {
-        this.carId = dto.getCarId();
-        this.x = dto.getX();
-        this.y = dto.getY();
-        this.yaw = dto.getYaw();
-        this.velocity = dto.getVelocity();
-        this.battery = dto.getBattery();
-        this.mode = dto.getMode();
-        this.phase = dto.getPhase();
-        this.recordedAt = LocalDateTime.now();
+    // --- 시스템 복구용 마지막 위치 ---
+    @Column(name = "last_pos_x")
+    private Double lastPosX;
+
+    @Column(name = "last_pos_y")
+    private Double lastPosY;
+
+    @Column(name = "last_heading")
+    private Double lastHeading;
+
+    // [비즈니스 로직] 상태 업데이트 메서드
+    public void updateStatus(Double x, Double y, Double heading, Integer battery, CarStatus status) {
+        this.lastPosX = x;
+        this.lastPosY = y;
+        this.lastHeading = heading;
+        this.battery = battery;
+        this.status = status;
+        // JPA Dirty Checking에 의해 트랜잭션 종료 시 자동 Update 쿼리 나감
     }
 }

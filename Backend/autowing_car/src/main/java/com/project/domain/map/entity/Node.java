@@ -1,6 +1,7 @@
 package com.project.domain.map.entity;
 
-import com.project.domain.common.EntityStatus;
+import com.project.domain.common.MapStatus;
+
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -28,7 +29,7 @@ public class Node {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private EntityStatus status; // AVAILABLE, BLOCKED
+    private MapStatus status; // AVAILABLE, BLOCKED
 
     @Column(name = "restriction_info", length = 50)
     private String restrictionInfo;

@@ -1,8 +1,13 @@
 import { DashboardPage } from "@/pages/DashboardPage";
+import { Navbar } from "@/widgets/navigation/Navbar";
 
 function App() {
-  // Simple rendering for now (Router will be added later)
-  return <DashboardPage />;
+  return (
+    <>
+      <Navbar />
+      <DashboardPage />
+    </>
+  );
 }
 
 export default App;

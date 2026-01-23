@@ -20,23 +20,27 @@ public class Flight {
     @Column(name = "flight_schedule_id")
     private Long id;
 
-    @Column(name = "flight_number", nullable = false, length = 20)
+    @Column(name = "flight_number", length = 20)
     private String flightNumber;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "aircraft_id", nullable = false)
+    @JoinColumn(name = "aircraft_id")
+    //  nullable = false)
     private Aircraft aircraft;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "pilot_id", nullable = false)
+    @JoinColumn(name = "pilot_id")
+    // , nullable = false)
     private User pilot;
 
     @Column(name = "gate_number", length = 10)
     private String gateNumber;
 
-    @Column(name = "departure_date", nullable = false)
+    @Column(name = "departure_date")
+    // nullable = false)
     private LocalDate departureDate;
 
-    @Column(name = "scheduled_time", nullable = false)
+    @Column(name = "scheduled_time")
+    // nullable = false)
     private LocalDateTime scheduledTime;
 }
