@@ -5,6 +5,7 @@
 # =========================
 
 [0. ABSOLUTE PRIORITY: LEGACY-LOCK RULE (NON-BREAKING ONLY)]
+0.0 MUST ask for user permission before modifying any code.
 0.1 MUST NOT delete or modify existing features, behaviors, outputs, UI flows, routes, event schemas, side-effects, or public contracts.
 0.2 All changes MUST be additive by default:
     - Add new files, new components, new routes, new fields, new handlers, new adapters.
