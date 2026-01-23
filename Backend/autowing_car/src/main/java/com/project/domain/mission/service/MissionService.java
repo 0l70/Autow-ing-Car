@@ -64,7 +64,7 @@ public class MissionService {
         Mission savedMission = missionRepository.save(mission);
 
         // 2. 가용 차량 조회 (배터리순 정렬)
-        List<AvailableCarDto> carOptions = towingCarRepository.findAllByStatus(CarStatus.IDLE).stream()
+        List<AvailableCarDto> carOptions = towingCarRepository.findAllByCarStatus(CarStatus.IDLE).stream()
                 .sorted(Comparator.comparing(TowingCar::getBattery).reversed())
                 .map(car -> AvailableCarDto.builder()
                         .carCode(car.getCode())
@@ -129,7 +129,7 @@ public class MissionService {
         TowingCar car = towingCarRepository.findByCodeForUpdate(decision.getSelectedCarCode())
                 .orElseThrow(() -> new IllegalArgumentException("차량 없음"));
 
-        if (car.getStatus() != CarStatus.IDLE) {
+        if (car.getCarStatus() != CarStatus.IDLE) {
             webSocketService.sendErrorToUser(controllerId, "차량이 이미 작업 중입니다.");
             return;
         }
@@ -137,7 +137,7 @@ public class MissionService {
         // 1. 상태 업데이트
         mission.assignCar(car, decision.getSelectedEdgeIds());
         mission.updateStatus(MissionStatus.RUNNING);
-        car.updateStatus(car.getLastPosX(), car.getLastPosY(), car.getLastHeading(), car.getBattery(), CarStatus.MOVING);
+        car.updateStatus(car.getLastPosX(), car.getLastPosY(), car.getLastHeading(), car.getBattery(), CarStatus.MOVING, MissionStatus.RUNNING);
 
         // 2. 알림 전송
         MissionResponseDto response = MissionResponseDto.from(mission);

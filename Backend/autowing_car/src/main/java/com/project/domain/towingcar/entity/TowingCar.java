@@ -25,8 +25,8 @@ public class TowingCar {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private CarStatus status; // IDLE, TOWING, MOVING...
-    
+    private CarStatus carStatus; // IDLE, TOWING, MOVING...
+
     @Enumerated(EnumType.STRING)
     private MissionStatus missionStatus;
     @Column(nullable = false)
@@ -43,12 +43,13 @@ public class TowingCar {
     private Double lastHeading;
 
     // [비즈니스 로직] 상태 업데이트 메서드
-    public void updateStatus(Double x, Double y, Double heading, Integer battery, CarStatus status) {
+    public void updateStatus(Double x, Double y, Double heading, Integer battery, CarStatus carStatus, MissionStatus missionStatus) {
         this.lastPosX = x;
         this.lastPosY = y;
         this.lastHeading = heading;
         this.battery = battery;
-        this.status = status;
+        this.carStatus = carStatus;
+        this.missionStatus = missionStatus;
         // JPA Dirty Checking에 의해 트랜잭션 종료 시 자동 Update 쿼리 나감
     }
 }

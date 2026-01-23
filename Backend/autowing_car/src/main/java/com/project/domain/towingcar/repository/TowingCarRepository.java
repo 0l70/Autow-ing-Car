@@ -23,7 +23,7 @@ public interface TowingCarRepository extends JpaRepository<TowingCar, Long> {
     @Query("SELECT t FROM TowingCar t WHERE t.code = :code")
     Optional<TowingCar> findByCodeForUpdate(@Param("code") String code);
     // 쉬고 있는 차들 다 가져와!
-    List<TowingCar> findAllByStatus(CarStatus status);
+    List<TowingCar> findAllByCarStatus(CarStatus status);
     // 현재 사용 가능한(IDLE) 차량만 조회   
     // List<TowingCar> findByStatus(EntityStatus status);
 }
