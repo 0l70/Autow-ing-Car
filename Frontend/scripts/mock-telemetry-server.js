@@ -7,8 +7,8 @@ console.log(`[MockServer] Starting WebSocket Server on ws://localhost:${PORT}/ws
 
 // Mock Data State
 let aircrafts = [
-    { id: "TC01", x: 100, y: 100, yaw: 0, mode: "MOVING" },
-    { id: "TC02", x: 300, y: 200, yaw: 90, mode: "IDLE" }
+    { id: "TC01", x: 20, y: 20, yaw: 0, mode: "MOVING" },
+    { id: "TC02", x: 40, y: 40, yaw: 90, mode: "MOVING" }
 ];
 
 wss.on('connection', (ws) => {
@@ -19,7 +19,7 @@ wss.on('connection', (ws) => {
         aircrafts.forEach(ac => {
             // Simulate Movement
             if (ac.mode === 'MOVING') {
-                ac.x += (Math.random() - 0.5) * 5; 
+                ac.x += (Math.random() - 0.5) * 5;
                 ac.y += (Math.random() - 0.5) * 5;
                 ac.yaw += (Math.random() - 0.5) * 10;
             }
@@ -41,7 +41,7 @@ wss.on('connection', (ws) => {
                 ws.send(JSON.stringify(payload));
             }
         });
-    }, 100);
+    }, 1000);
 
     ws.on('close', () => {
         console.log('[MockServer] Client Disconnected');
