@@ -14,7 +14,7 @@ public class MqttTopics {
     
     // 2. Outbound (서버 -> 로봇)
     // 명령 보낼 때 사용 (String.format으로 carId 치환)
-    public static final String CMD_FORMAT = BASE + "/%s/cmd";
+    public static final String CMD_FORMAT = BASE + "/%s/mission";
 
 }
 /**
@@ -22,6 +22,5 @@ public class MqttTopics {
  *                                                           
  * OK - Robot이 명령 수신 완료
  * FAIL - Robot이 명령 수신 실패
- * 
  * STATE -> 이건 계속?
  */

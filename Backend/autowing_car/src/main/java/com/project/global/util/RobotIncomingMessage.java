@@ -1,4 +1,4 @@
-package com.project.infra.mqtt.util;
+package com.project.global.util;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
