@@ -37,7 +37,7 @@ def main():
         # --- 상태 머신 (State Machine) ---
         if STATE == "MARSHAL":
             # [모드 1] 제스처 인식
-            cmd, debug_frame = marshal_ai.predict(frame)
+            cmd, debug_frame = marshal_ai.detect_gesture(frame)
             
             # 여기서 cmd를 로봇 제어부(Serial/ROS)로 전송
             # ex) serial.write(f"{cmd}\n".encode())
