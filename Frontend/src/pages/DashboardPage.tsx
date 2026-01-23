@@ -11,8 +11,14 @@ import { MapMeta, Aircraft } from "@/entities/map/model/types";
 import { MOCK_EDGES, MOCK_NODES, MOCK_MAP_SIZE } from "@/entities/map/lib/mockData";
 import { useTelemetrySocket } from "@/features/map-visualizer/model/useTelemetrySocket";
 import { useMockAircraftMqtt } from "@/entities/map/lib/mockAircraft";
+import { useAuthStore } from "@/features/auth/model/useAuthStore";
+import { LoginPage } from "@/features/auth/ui/LoginPage";
+import { PilotDashboard } from "@/features/dashboard/PilotDashboard";
 
 export function DashboardPage() {
+    // 🔐 AUTH GUARD
+    const { isAuthenticated, user } = useAuthStore();
+
     const { loadGraph, setAircrafts } = useGraphStore();
     const [mapMeta, setMapMeta] = useState<MapMeta | null>(null);
     const [mapHeight, setMapHeight] = useState(0);
@@ -21,8 +27,8 @@ export function DashboardPage() {
     // --- DATA SOURCE CONTROL ---
     const USE_REAL_DATA = true; // Toggle this to true to use WebSocket URL
     
-    // 1. Real WebSocket
-    useTelemetrySocket('ws://localhost:8080/ws/telemetry', USE_REAL_DATA);
+    // 1. Real WebSocket (Only connects if authenticated inside hook)
+    useTelemetrySocket(undefined, USE_REAL_DATA);
     
     // 2. Mock Data (Fallback)
     const mockData = useMockAircraftMqtt();
@@ -51,6 +57,17 @@ export function DashboardPage() {
         resolution: 0.05
     }), []);
 
+    // 🔐 AUTH GUARD CHECK
+    if (!isAuthenticated) {
+        return <LoginPage />;
+    }
+
+    // ✈️ ROLE-BASED DYNAMIC RENDERING
+    if (user?.role === 'PILOT') {
+        return <PilotDashboard />;
+    }
+
+    // 📡 ATC CONTROLLER VIEW (Default)
     return (
     <MainLayout
         leftPanel={
