@@ -1,139 +1,154 @@
 import cv2
-import mediapipe as mp
 import numpy as np
-import math
+from ultralytics import YOLO
 
 class MarshallerAI:
     def __init__(self):
-        # MediaPipe Pose 모델 초기화
-        self.mp_pose = mp.solutions.pose
-        self.pose = self.mp_pose.Pose(
-            static_image_mode=False,
-            model_complexity=1,
-            smooth_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
-        )
-        self.mp_drawing = mp.solutions.drawing_utils
-        
+        self.model = YOLO('yolov8n-pose.pt') 
         self.status = "IDLE"
-        self.is_finished = False # 도킹 완료 상태 플래그
 
     def calculate_angle(self, a, b, c):
         """세 점 사이의 각도 계산"""
-        a = np.array(a)
-        b = np.array(b)
-        c = np.array(c)
+        a, b, c = np.array(a), np.array(b), np.array(c)
         radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
         angle = np.abs(radians*180.0/np.pi)
         if angle > 180.0: angle = 360-angle
         return angle
 
+    def draw_custom_skeleton(self, frame, kpts):
+        """상반신 커스텀 시각화"""
+        connections = [(5, 6), (5, 7), (7, 9), (6, 8), (8, 10)]
+        line_color = (0, 255, 0)
+        joint_color = (0, 0, 255)
+        
+        for start_idx, end_idx in connections:
+            if kpts[start_idx][2] > 0.5 and kpts[end_idx][2] > 0.5:
+                x1, y1 = int(kpts[start_idx][0]), int(kpts[start_idx][1])
+                x2, y2 = int(kpts[end_idx][0]), int(kpts[end_idx][1])
+                cv2.line(frame, (x1, y1), (x2, y2), line_color, 3)
+
+        for idx in [0, 5, 6, 7, 8, 9, 10]:
+             if kpts[idx][2] > 0.5:
+                cx, cy = int(kpts[idx][0]), int(kpts[idx][1])
+                cv2.circle(frame, (cx, cy), 6, joint_color, -1)
+
     def detect_gesture(self, frame):
-        # 이미 완료된 상태면 도킹 터미널 화면 유지
-        if self.is_finished:
-            cv2.rectangle(frame, (0,0), (frame.shape[1], frame.shape[0]), (0,0,0), -1)
-            cv2.putText(frame, "DOCKING TERMINAL", (50, 200), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 5, cv2.LINE_AA)
-            cv2.putText(frame, "SYSTEM STANDBY", (100, 300), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 1, (200, 200, 200), 2, cv2.LINE_AA)
-            return "FINISHED", frame
-
-        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        image.flags.writeable = False
-        results = self.pose.process(image)
-        image.flags.writeable = True
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-
+        h, w, _ = frame.shape
+        results = self.model(frame, verbose=False, conf=0.5)
+        
         current_action = "IDLE"
         info_text = ""
+        
+        has_person = False
+        if results[0].keypoints is not None and len(results[0].keypoints.data) > 0:
+            kpts_raw = results[0].keypoints.data[0].cpu().numpy()
+            if kpts_raw[5][2] > 0.5 and kpts_raw[6][2] > 0.5:
+                has_person = True
 
-        if results.pose_landmarks:
-            landmarks = results.pose_landmarks.landmark
+        if not has_person:
+            self.status = "IDLE"
+            box_w, box_h = 280, 80
+            x1, y1 = w - box_w, h - box_h
+            cv2.rectangle(frame, (x1, y1), (w, h), (100, 100, 100), -1)
+            cv2.putText(frame, "IDLE", (x1+10, y1+50), cv2.FONT_HERSHEY_SIMPLEX, 1, (200,200,200), 2, cv2.LINE_AA)
+            return "IDLE", frame
 
-            # 1. 주요 관절 좌표 추출
-            # 왼쪽
-            l_sh = [landmarks[self.mp_pose.PoseLandmark.LEFT_SHOULDER.value].x,
-                    landmarks[self.mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
-            l_el = [landmarks[self.mp_pose.PoseLandmark.LEFT_ELBOW.value].x,
-                    landmarks[self.mp_pose.PoseLandmark.LEFT_ELBOW.value].y]
-            l_wr = [landmarks[self.mp_pose.PoseLandmark.LEFT_WRIST.value].x,
-                    landmarks[self.mp_pose.PoseLandmark.LEFT_WRIST.value].y]
-            # 오른쪽
-            r_sh = [landmarks[self.mp_pose.PoseLandmark.RIGHT_SHOULDER.value].x,
-                    landmarks[self.mp_pose.PoseLandmark.RIGHT_SHOULDER.value].y]
-            r_el = [landmarks[self.mp_pose.PoseLandmark.RIGHT_ELBOW.value].x,
-                    landmarks[self.mp_pose.PoseLandmark.RIGHT_ELBOW.value].y]
-            r_wr = [landmarks[self.mp_pose.PoseLandmark.RIGHT_WRIST.value].x,
-                    landmarks[self.mp_pose.PoseLandmark.RIGHT_WRIST.value].y]
+        # -------------------------------------------------------------
+        # 로직 수행
+        # -------------------------------------------------------------
+        kpts_raw = results[0].keypoints.data[0].cpu().numpy()
+        def get_norm(idx): return [kpts_raw[idx][0]/w, kpts_raw[idx][1]/h]
 
-            # 각도 및 거리 계산
-            angle_l = self.calculate_angle(l_sh, l_el, l_wr)
-            angle_r = self.calculate_angle(r_sh, r_el, r_wr)
-            wrist_dist = abs(l_wr[0] - r_wr[0])
+        nose = get_norm(0) if kpts_raw[0][2] > 0.5 else None
 
-            # =========================================================
-            # 제스처 판단 로직 (우선순위: STOP/BRAKE/CUT > MOTION)
-            # =========================================================
+        l_sh, r_sh = get_norm(5), get_norm(6)   # 어깨
+        l_el, r_el = get_norm(7), get_norm(8)   # 팔꿈치
+        l_wr, r_wr = get_norm(9), get_norm(10)  # 손목
 
-            # [1] STOP: 팔이 X자로 교차 (최우선)
-            # 조건: 손이 어깨보다 높고, 손목이 겹치거나 매우 가까움
-            if (l_wr[1] < l_sh[1] and r_wr[1] < r_sh[1]) and \
-               (wrist_dist < 0.15 or l_wr[0] < r_wr[0]):
-                current_action = "STOP"
+        angle_l = self.calculate_angle(l_sh, l_el, l_wr)
+        angle_r = self.calculate_angle(r_sh, r_el, r_wr)
+        
+        wrist_dist_x = abs(l_wr[0] - r_wr[0])
+        shoulder_width = abs(l_sh[0] - r_sh[0])
 
-            # [2] ENGINE_CUT (종료 동작): 목 긋기
-            # 조건: 한 손은 아래, 다른 한 손은 반대쪽 어깨 근처(목)로 이동
-            # (왼손이 올라와서 오른쪽 어깨 근처로 감 OR 오른손이 올라와서 왼쪽 어깨 근처로 감)
-            elif (l_wr[1] < l_sh[1] + 0.15 and r_wr[1] > r_sh[1] and l_wr[0] < r_sh[0]) or \
-                 (r_wr[1] < r_sh[1] + 0.15 and l_wr[1] > l_sh[1] and r_wr[0] > l_sh[0]):
-                 
+        current_action = "READY"
+
+        # [1] STOP: X자 교차 OR 고공 초밀착 (최우선)
+        is_crossed = r_wr[0] > l_wr[0] 
+        is_high_touching = (wrist_dist_x < 0.05) and (l_wr[1] < l_sh[1] - 0.1)
+
+        if (is_crossed or is_high_touching) and (l_wr[1] < l_sh[1] + 0.4):
+            current_action = "STOP"
+
+        # =============================================================
+        # [2] ENGINE_CUT (목 긋기) - 가로 범위(Box) 대폭 확장
+        # =============================================================
+        else:
+            # 1. 세로 범위 (Y축): 코 ~ 겨드랑이 위 (여유 있게)
+            neck_top = nose[1] if nose else (l_sh[1] - 0.2)
+            neck_bottom = l_sh[1] + 0.2
+
+            # 2. 가로 범위 (X축): 어깨 바깥쪽까지 길게(Longer) 확장
+            # 어깨 너비의 절반만큼 양쪽으로 더 늘림 (총 2배 넓이)
+            margin = shoulder_width * 0.5 
+            
+            # r_sh[0]는 화면상 왼쪽(작은값), l_sh[0]는 화면상 오른쪽(큰값)
+            box_left_limit = r_sh[0] - margin # 화면상 왼쪽 끝 한계
+            box_right_limit = l_sh[0] + margin # 화면상 오른쪽 끝 한계
+
+            # 3. 왼손 체크: 높이는 목, 좌우는 확장된 박스 안
+            l_in_throat = (neck_top < l_wr[1] < neck_bottom) and \
+                          (box_left_limit < l_wr[0] < box_right_limit)
+
+            # 4. 오른손 체크
+            r_in_throat = (neck_top < r_wr[1] < neck_bottom) and \
+                          (box_left_limit < r_wr[0] < box_right_limit)
+
+            # 5. 반대 손은 내려가 있어야 함 (Set Brakes 방지)
+            r_is_down = r_wr[1] > r_sh[1] + 0.2
+            l_is_down = l_wr[1] > l_sh[1] + 0.2
+
+            if (l_in_throat and r_is_down) or (r_in_throat and l_is_down):
                  current_action = "ENGINE_CUT"
-                 self.is_finished = True # 완료 화면으로 전환
-
-            # [3] SET_BRAKES: 한 팔은 위(STOP위치), 한 팔은 아래로 내림
-            # 조건: 한 손은 어깨 위, 한 손은 어깨 아래
-            elif (l_wr[1] < l_sh[1] and r_wr[1] > r_sh[1]) or \
-                 (r_wr[1] < r_sh[1] and l_wr[1] > l_sh[1]):
+            
+            # [3] SET_BRAKES
+            elif (l_wr[1] < l_sh[1] and r_wr[1] > r_sh[1] + 0.2) or \
+                 (r_wr[1] < r_sh[1] and l_wr[1] > l_sh[1] + 0.2):
                 current_action = "SET_BRAKES"
 
-            # [4] APPROACHING: 팔을 쭉 펴서 머리 위로 (Y자 형태)
-            # 조건: 손이 어깨보다 높고, 팔꿈치가 펴져 있음(>130)
-            elif (l_wr[1] < l_sh[1] and r_wr[1] < r_sh[1]) and \
-                 (angle_l > 130 and angle_r > 130):
-                current_action = "APPROACHING"
-                # 손 간격에 따른 속도 피드백
-                if wrist_dist > 0.5: info_text = "SPEED: FAST"
-                elif wrist_dist > 0.2: info_text = "SPEED: SLOW"
-                else: info_text = "PREPARE STOP"
-
-            # [5] FACE_ME: 양팔을 수평으로 쭉 뻗음 (T자)
-            # 조건: 손 높이와 어깨 높이가 비슷, 팔꿈치 펴짐
-            elif abs(l_wr[1] - l_sh[1]) < 0.2 and abs(r_wr[1] - r_sh[1]) < 0.2 and \
-                 angle_l > 140 and angle_r > 140:
-                current_action = "FACE_ME"
-
-            # [6] FORWARD: T자에서 팔꿈치만 굽힘 (ㄴ자, W자 모양)
-            # 조건: 어깨-팔꿈치는 수평 유지, 팔꿈치 각도는 90도 근처
+            # [4] FORWARD
             elif abs(l_el[1] - l_sh[1]) < 0.2 and abs(r_el[1] - r_sh[1]) < 0.2 and \
-                 angle_l < 120 and angle_r < 120:
+                 l_wr[1] < l_el[1] and r_wr[1] < r_el[1] and \
+                 angle_l < 125 and angle_r < 125:
                 current_action = "FORWARD"
 
-            else:
-                current_action = "IDLE"
+            # [5] APPROACHING
+            elif angle_l > 130 and angle_r > 130:
+                if l_wr[1] > l_sh[1] + 0.25 and r_wr[1] > r_sh[1] + 0.25:
+                    if wrist_dist_x > shoulder_width * 1.5:
+                        current_action = "APPROACHING"
+                        info_text = "SPEED: FAST"
+                    else:
+                        current_action = "READY"
+                elif l_wr[1] < l_sh[1] + 0.25 and r_wr[1] < r_sh[1] + 0.25:
+                    if wrist_dist_x < shoulder_width * 1.0:
+                         current_action = "APPROACHING"
+                         info_text = "SPEED: VERY SLOW"
+                    elif wrist_dist_x < shoulder_width * 1.6:
+                         current_action = "APPROACHING"
+                         info_text = "SPEED: SLOW"
+                    else:
+                        current_action = "APPROACHING"
+                        info_text = "SPEED: NORMAL"
 
-            # 뼈대 그리기
-            self.mp_drawing.draw_landmarks(
-                image, results.pose_landmarks, self.mp_pose.POSE_CONNECTIONS)
-
+        self.draw_custom_skeleton(frame, kpts_raw)
         self.status = current_action
         
-        # 정보창 그리기
-        h, w, _ = image.shape
-        x1, y1 = w - 280, h - 80
-        cv2.rectangle(image, (x1, y1), (w, h), (245, 117, 16), -1)
-        cv2.putText(image, current_action, (x1+10, y1+35), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2)
+        box_w, box_h = 280, 80
+        x1, y1 = w - box_w, h - box_h
+        cv2.rectangle(frame, (x1, y1), (w, h), (245, 117, 16), -1)
+        cv2.putText(frame, current_action, (x1+10, y1+35), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2, cv2.LINE_AA)
         if info_text:
-            cv2.putText(image, info_text, (x1+10, y1+65), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,0), 1)
+            cv2.putText(frame, info_text, (x1+10, y1+65), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,0), 1, cv2.LINE_AA)
 
-        return current_action, image
+        return current_action, frame
