@@ -1,23 +1,12 @@
 import cv2
-import mediapipe as mp
 import numpy as np
-import math
+from ultralytics import YOLO
 
 class MarshallerAI:
     def __init__(self):
-        # MediaPipe Pose 모델 초기화
-        self.mp_pose = mp.solutions.pose
-        self.pose = self.mp_pose.Pose(
-            static_image_mode=False,
-            model_complexity=1,
-            smooth_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
-        )
-        self.mp_drawing = mp.solutions.drawing_utils
-        
+        # YOLOv8 Pose 모델 로드
+        self.model = YOLO('yolov8n-pose.pt') 
         self.status = "IDLE"
-        self.is_finished = False # 도킹 완료 상태 플래그
 
     def calculate_angle(self, a, b, c):
         """세 점 사이의 각도 계산"""
@@ -29,111 +18,124 @@ class MarshallerAI:
         if angle > 180.0: angle = 360-angle
         return angle
 
+    def draw_custom_skeleton(self, frame, kpts):
+        """상반신 커스텀 시각화"""
+        connections = [(5, 6), (5, 7), (7, 9), (6, 8), (8, 10)]
+        line_color = (0, 255, 0)
+        joint_color = (0, 0, 255)
+        
+        for start_idx, end_idx in connections:
+            if kpts[start_idx][2] > 0.5 and kpts[end_idx][2] > 0.5:
+                x1, y1 = int(kpts[start_idx][0]), int(kpts[start_idx][1])
+                x2, y2 = int(kpts[end_idx][0]), int(kpts[end_idx][1])
+                cv2.line(frame, (x1, y1), (x2, y2), line_color, 3)
+
+        relevant_indices = [0, 5, 6, 7, 8, 9, 10]
+        for idx in relevant_indices:
+             if kpts[idx][2] > 0.5:
+                cx, cy = int(kpts[idx][0]), int(kpts[idx][1])
+                cv2.circle(frame, (cx, cy), 8, (255, 255, 255), -1)
+                cv2.circle(frame, (cx, cy), 6, joint_color, -1)
+
     def detect_gesture(self, frame):
-        # 이미 완료된 상태면 도킹 터미널 화면 유지
-        if self.is_finished:
-            cv2.rectangle(frame, (0,0), (frame.shape[1], frame.shape[0]), (0,0,0), -1)
-            cv2.putText(frame, "DOCKING TERMINAL", (50, 200), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 5, cv2.LINE_AA)
-            cv2.putText(frame, "SYSTEM STANDBY", (100, 300), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 1, (200, 200, 200), 2, cv2.LINE_AA)
-            return "FINISHED", frame
-
-        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        image.flags.writeable = False
-        results = self.pose.process(image)
-        image.flags.writeable = True
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-
+        h, w, _ = frame.shape
+        results = self.model(frame, verbose=False, conf=0.5)
+        
         current_action = "IDLE"
         info_text = ""
+        
+        if results[0].keypoints is not None and len(results[0].keypoints.data) > 0:
+            kpts_raw = results[0].keypoints.data[0].cpu().numpy()
+            
+            # 어깨 감지 확인
+            if kpts_raw[5][2] > 0.5 and kpts_raw[6][2] > 0.5:
+                
+                # 좌표 정규화 함수
+                def get_norm_point(idx):
+                    return [kpts_raw[idx][0] / w, kpts_raw[idx][1] / h]
 
-        if results.pose_landmarks:
-            landmarks = results.pose_landmarks.landmark
+                l_sh = get_norm_point(5)  # Left Shoulder
+                r_sh = get_norm_point(6)  # Right Shoulder
+                l_el = get_norm_point(7)  # Left Elbow
+                r_el = get_norm_point(8)  # Right Elbow
+                l_wr = get_norm_point(9)  # Left Wrist
+                r_wr = get_norm_point(10) # Right Wrist
 
-            # 1. 주요 관절 좌표 추출
-            # 왼쪽
-            l_sh = [landmarks[self.mp_pose.PoseLandmark.LEFT_SHOULDER.value].x,
-                    landmarks[self.mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
-            l_el = [landmarks[self.mp_pose.PoseLandmark.LEFT_ELBOW.value].x,
-                    landmarks[self.mp_pose.PoseLandmark.LEFT_ELBOW.value].y]
-            l_wr = [landmarks[self.mp_pose.PoseLandmark.LEFT_WRIST.value].x,
-                    landmarks[self.mp_pose.PoseLandmark.LEFT_WRIST.value].y]
-            # 오른쪽
-            r_sh = [landmarks[self.mp_pose.PoseLandmark.RIGHT_SHOULDER.value].x,
-                    landmarks[self.mp_pose.PoseLandmark.RIGHT_SHOULDER.value].y]
-            r_el = [landmarks[self.mp_pose.PoseLandmark.RIGHT_ELBOW.value].x,
-                    landmarks[self.mp_pose.PoseLandmark.RIGHT_ELBOW.value].y]
-            r_wr = [landmarks[self.mp_pose.PoseLandmark.RIGHT_WRIST.value].x,
-                    landmarks[self.mp_pose.PoseLandmark.RIGHT_WRIST.value].y]
+                angle_l = self.calculate_angle(l_sh, l_el, l_wr)
+                angle_r = self.calculate_angle(r_sh, r_el, r_wr)
+                wrist_dist = abs(l_wr[0] - r_wr[0])
 
-            # 각도 및 거리 계산
-            angle_l = self.calculate_angle(l_sh, l_el, l_wr)
-            angle_r = self.calculate_angle(r_sh, r_el, r_wr)
-            wrist_dist = abs(l_wr[0] - r_wr[0])
+                # ----------------------------------------------------------------
+                # 제스처 판단 로직
+                # ----------------------------------------------------------------
 
-            # =========================================================
-            # 제스처 판단 로직 (우선순위: STOP/BRAKE/CUT > MOTION)
-            # =========================================================
+                # [1] STOP: 확실한 교차 (Cross)
+                # 좌표계: 왼쪽 손목(9)이 화면상 오른쪽, 오른쪽 손목(10)이 화면상 왼쪽
+                # 정상 상태: l_wr[0] > r_wr[0] (사람 기준 왼쪽이 화면 오른쪽이니까)
+                # 교차 상태: l_wr[0] < r_wr[0] (좌우 반전됨) -> STOP
+                # 또는 거리가 극도로 가까우면서(0.05 미만) 손 높이가 비슷할 때
+                
+                # 먼저 손목이 교차되었는지 확인 (좌표 역전 현상)
+                # 사람 기준 왼손(l_wr)은 화면상 오른쪽에 있어야 함 (x값이 커야 함)
+                # 사람 기준 오른손(r_wr)은 화면상 왼쪽에 있어야 함 (x값이 작아야 함)
+                # 즉, l_wr[0] < r_wr[0] 이면 팔이 꼬인 것임 -> STOP
+                is_crossed = l_wr[0] < r_wr[0] 
 
-            # [1] STOP: 팔이 X자로 교차 (최우선)
-            # 조건: 손이 어깨보다 높고, 손목이 겹치거나 매우 가까움
-            if (l_wr[1] < l_sh[1] and r_wr[1] < r_sh[1]) and \
-               (wrist_dist < 0.15 or l_wr[0] < r_wr[0]):
-                current_action = "STOP"
+                if is_crossed: 
+                    current_action = "STOP"
 
-            # [2] ENGINE_CUT (종료 동작): 목 긋기
-            # 조건: 한 손은 아래, 다른 한 손은 반대쪽 어깨 근처(목)로 이동
-            # (왼손이 올라와서 오른쪽 어깨 근처로 감 OR 오른손이 올라와서 왼쪽 어깨 근처로 감)
-            elif (l_wr[1] < l_sh[1] + 0.15 and r_wr[1] > r_sh[1] and l_wr[0] < r_sh[0]) or \
-                 (r_wr[1] < r_sh[1] + 0.15 and l_wr[1] > l_sh[1] and r_wr[0] > l_sh[0]):
-                 
-                 current_action = "ENGINE_CUT"
-                 self.is_finished = True # 완료 화면으로 전환
+                # [2] ENGINE_CUT (목 긋기)
+                elif (l_wr[1] < l_sh[1] + 0.15 and r_wr[1] > r_sh[1] and l_wr[0] < r_sh[0]) or \
+                     (r_wr[1] < r_sh[1] + 0.15 and l_wr[1] > l_sh[1] and r_wr[0] > l_sh[0]):
+                     current_action = "ENGINE_CUT"
 
-            # [3] SET_BRAKES: 한 팔은 위(STOP위치), 한 팔은 아래로 내림
-            # 조건: 한 손은 어깨 위, 한 손은 어깨 아래
-            elif (l_wr[1] < l_sh[1] and r_wr[1] > r_sh[1]) or \
-                 (r_wr[1] < r_sh[1] and l_wr[1] > l_sh[1]):
-                current_action = "SET_BRAKES"
+                # [3] SET_BRAKES (한 손 위, 한 손 아래)
+                elif (l_wr[1] < l_sh[1] and r_wr[1] > r_sh[1]) or \
+                     (r_wr[1] < r_sh[1] and l_wr[1] > l_sh[1]):
+                    current_action = "SET_BRAKES"
 
-            # [4] APPROACHING: 팔을 쭉 펴서 머리 위로 (Y자 형태)
-            # 조건: 손이 어깨보다 높고, 팔꿈치가 펴져 있음(>130)
-            elif (l_wr[1] < l_sh[1] and r_wr[1] < r_sh[1]) and \
-                 (angle_l > 130 and angle_r > 130):
-                current_action = "APPROACHING"
-                # 손 간격에 따른 속도 피드백
-                if wrist_dist > 0.5: info_text = "SPEED: FAST"
-                elif wrist_dist > 0.2: info_text = "SPEED: SLOW"
-                else: info_text = "PREPARE STOP"
+                # [4] FORWARD (오라고 손짓 + 흔들기 허용)
+                # 조건: 팔꿈치가 어깨 높이 근처(수평) + 손이 팔꿈치보다 위에 있음
+                # 각도 제한을 완화하여 손을 흔들어도 인식되게 함
+                elif abs(l_el[1] - l_sh[1]) < 0.2 and abs(r_el[1] - r_sh[1]) < 0.2 and \
+                     l_wr[1] < l_el[1] and r_wr[1] < r_el[1]:
+                    current_action = "FORWARD"
 
-            # [5] FACE_ME: 양팔을 수평으로 쭉 뻗음 (T자)
-            # 조건: 손 높이와 어깨 높이가 비슷, 팔꿈치 펴짐
-            elif abs(l_wr[1] - l_sh[1]) < 0.2 and abs(r_wr[1] - r_sh[1]) < 0.2 and \
-                 angle_l > 140 and angle_r > 140:
-                current_action = "FACE_ME"
+                # [5] APPROACHING (진입 / 속도 조절)
+                # 조건: 팔을 펴고(Straight) + 겨드랑이가 30도 이상 벌어짐 (Low V ~ High V)
+                # STOP과 구분: 위에서 Cross 체크를 통과했으므로, 여기선 '안 겹친 상태'임
+                elif (angle_l > 130 and angle_r > 130):
+                    # 손이 허리(또는 어깨 아래 일정 수준)보다는 높아야 바닥이랑 구분됨
+                    # 어깨보다 조금 아래(Low V)까지 허용 (l_sh[1] + 0.3)
+                    if l_wr[1] < l_sh[1] + 0.4 and r_wr[1] < r_sh[1] + 0.4:
+                        current_action = "APPROACHING"
+                        
+                        # 속도 가이드 (거리 기반)
+                        if wrist_dist > 0.6: 
+                            info_text = "SPEED: FAST"
+                        elif wrist_dist > 0.15: # 0.15 ~ 0.6 사이
+                            info_text = "SPEED: SLOW"
+                        else: # 0.15 이하 (거의 붙음)
+                            info_text = "PREPARE STOP"
+                
+                # [6] FACE_ME (T자 수평)
+                # Approaching이랑 겹칠 수 있는데, 이건 '수평'이 매우 중요
+                elif abs(l_wr[1] - l_sh[1]) < 0.15 and abs(r_wr[1] - r_sh[1]) < 0.15 and \
+                     angle_l > 150 and angle_r > 150:
+                    current_action = "FACE_ME"
 
-            # [6] FORWARD: T자에서 팔꿈치만 굽힘 (ㄴ자, W자 모양)
-            # 조건: 어깨-팔꿈치는 수평 유지, 팔꿈치 각도는 90도 근처
-            elif abs(l_el[1] - l_sh[1]) < 0.2 and abs(r_el[1] - r_sh[1]) < 0.2 and \
-                 angle_l < 120 and angle_r < 120:
-                current_action = "FORWARD"
-
-            else:
-                current_action = "IDLE"
-
-            # 뼈대 그리기
-            self.mp_drawing.draw_landmarks(
-                image, results.pose_landmarks, self.mp_pose.POSE_CONNECTIONS)
+                else:
+                    current_action = "IDLE"
+            
+            self.draw_custom_skeleton(frame, kpts_raw)
 
         self.status = current_action
         
-        # 정보창 그리기
-        h, w, _ = image.shape
-        x1, y1 = w - 280, h - 80
-        cv2.rectangle(image, (x1, y1), (w, h), (245, 117, 16), -1)
-        cv2.putText(image, current_action, (x1+10, y1+35), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2)
+        box_w, box_h = 280, 80
+        x1, y1 = w - box_w, h - box_h
+        cv2.rectangle(frame, (x1, y1), (w, h), (245, 117, 16), -1)
+        cv2.putText(frame, current_action, (x1+10, y1+35), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2, cv2.LINE_AA)
         if info_text:
-            cv2.putText(image, info_text, (x1+10, y1+65), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,0), 1)
+            cv2.putText(frame, info_text, (x1+10, y1+65), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,0), 1, cv2.LINE_AA)
 
-        return current_action, image
+        return current_action, frame
