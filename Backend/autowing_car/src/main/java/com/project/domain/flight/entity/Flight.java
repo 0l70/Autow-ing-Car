@@ -1,6 +1,7 @@
 package com.project.domain.flight.entity;
 
 import com.project.domain.aircraft.entity.Aircraft;
+import com.project.domain.towingcar.entity.TowingCar;
 import com.project.domain.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
@@ -20,7 +21,7 @@ public class Flight {
     @Column(name = "flight_schedule_id")
     private Long id;
 
-    @Column(name = "flight_number", length = 20)
+    @Column(name = "flight_number", length = 20, unique = true)
     private String flightNumber;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -32,6 +33,10 @@ public class Flight {
     @JoinColumn(name = "pilot_id")
     // , nullable = false)
     private User pilot;
+
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "towing_car_id")
+    private TowingCar towingCar;
 
     @Column(name = "gate_number", length = 10)
     private String gateNumber;

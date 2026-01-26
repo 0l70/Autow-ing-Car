@@ -1,6 +1,7 @@
 package com.project.domain.mission.entity;
 
 import com.project.domain.common.MissionStatus;
+import com.project.domain.common.MissionType;
 import com.project.domain.flight.entity.Flight;
 import com.project.domain.towingcar.entity.TowingCar;
 import com.project.global.util.StringListConverter;
@@ -37,7 +38,10 @@ public class Mission {
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
     private MissionStatus status; // WAITING, RUNNING...
-
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private MissionType type;
+    
     @Column(name = "depart_node", length = 30)
     private String departNode;
 

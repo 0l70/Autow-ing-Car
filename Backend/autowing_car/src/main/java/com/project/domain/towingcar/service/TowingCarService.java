@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.project.domain.common.CarStatus;
 import com.project.domain.common.MissionStatus;
+import com.project.domain.mission.entity.Mission;
 import com.project.domain.towingcar.entity.DrivingLog;
 import com.project.domain.towingcar.entity.TowingCar;
 
@@ -53,13 +54,23 @@ public void processCarMonitoring(String carCode, JsonNode payload) {
     // 로봇이 보내주는 status 문자열 (MOVING, IDLE 등)
     
     String newCarStatus = payload.has("mode") ? payload.get("mode").asText() : "IDLE";
-    String newMissionStatus = payload.has("phase") ? payload.get("mission_status").asText() : "WAITING"; 
     CarStatus newCarStatusEnum = CarStatus.valueOf(newCarStatus); // 예외처리 필요
-    MissionStatus newMissionStatusEnum = MissionStatus.valueOf(newMissionStatus);
 
+    Mission newMission = null;
+    MissionStatus newMissionStatus = MissionStatus.IDLE;
+    if (payload.has("missionStatus")) {
+        String missionStatusStr = payload.get("missionStatus").asText();
+        newMissionStatus = MissionStatus.valueOf(missionStatusStr);
+    }
+
+    newMission = car.getMission(); // 현재 연결된 미션
     // 3. [핵심] DB 업데이트 여부 판단 로직
     boolean isStatusChanged = car.getCarStatus() != newCarStatusEnum;
     boolean isBatteryChanged = Math.abs(car.getBattery() - newBattery) >= BATTERY_THRESHOLD_PERCENT;
+    boolean isMissionStatusChanged = newMission.getStatus() != newMissionStatus;
+
+    
+
     // C. 이동 거리 체크 (유클리드 거리 계산)
     double dx = newX - (car.getLastPosX() != null ? car.getLastPosX() : 0.0);
     double dy = newY - (car.getLastPosY() != null ? car.getLastPosY() : 0.0);
@@ -67,18 +78,21 @@ public void processCarMonitoring(String carCode, JsonNode payload) {
 
     boolean isMovedEnough = distanceMoved >= DISTANCE_THRESHOLD_METERS;
 
-    if (isStatusChanged || isBatteryChanged || isMovedEnough) {
+    if (isStatusChanged || isBatteryChanged || isMovedEnough || isMissionStatusChanged) {
             
-            // Snapshot 업데이트
-            car.updateStatus(newX, newY, newHeading, newBattery, newCarStatusEnum, newMissionStatusEnum); // Heading 등은 payload에 있다면 추가
-
-            
-            // 이력(Log) 저장
-            saveDrivingLog(car, newX, newY, newHeading, newBattery, newVelocity);
-            
-            log.debug("DB Committed [{}]: StatusChange={}, BattChange={}, Moved={}", 
+        if(isMissionStatusChanged) {
+            newMission.updateStatus(newMissionStatus);
+        }
+        // Snapshot 업데이트
+        car.updateStatus(newX, newY, newHeading, newBattery, newCarStatusEnum,newMission); // Heading 등은 payload에 있다면 추가
+        
+        // 이력(Log) 저장
+        saveDrivingLog(car, newX, newY, newHeading, newBattery, newVelocity);
+        
+        log.debug("DB Committed [{}]: StatusChange={}, BattChange={}, Moved={}", 
                     carCode, isStatusChanged, isBatteryChanged, String.format("%.2fm", distanceMoved));
-    } else {
+    }   
+    else {
             // 변화가 미미하면 DB 건너뜀 (Skip)
             log.trace("DB Skipped [{}]: Moved only {:.2f}m", carCode, distanceMoved);
     }

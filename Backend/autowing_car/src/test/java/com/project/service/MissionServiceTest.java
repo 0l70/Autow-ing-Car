@@ -2,6 +2,7 @@ package com.project.service;
 
 import com.project.domain.common.CarStatus;
 import com.project.domain.common.MissionStatus;
+import com.project.domain.common.MissionType;
 import com.project.domain.flight.entity.Flight;
 import com.project.domain.flight.repository.FlightRepository;
 import com.project.domain.mission.dto.MissionWebSocketDtos.*;
@@ -46,7 +47,8 @@ class MissionServiceTest {
         PilotRequestDto request = new PilotRequestDto();
         request.setDepartNode("GATE_101");
         request.setDestNode("RUNWAY_A");
-        request.setFlightId(1L);
+        request.setFlightNumber("KE001");
+        request.setMissionType(MissionType.TRANSPORT);
 
         // Mocking: "이 메서드가 호출되면 이런 값을 리턴해라"라고 설정
         Flight mockFlight = Flight.builder().id(1L).flightNumber("KE001").build();
