@@ -9,15 +9,15 @@ const WS_URL_DEV = import.meta.env.VITE_WS_BASE_URL || 'ws://i14a402.p.ssafy.io:
 
 export function useTelemetrySocket(url: string = WS_URL_DEV, enabled: boolean = true) {
     const { updateAircraft } = useGraphStore();
-    const { token } = useAuthStore();
+    const { socketToken } = useAuthStore();
     const wsRef = useRef<WebSocket | null>(null);
 
     useEffect(() => {
-        if (!enabled || !token) return;
+        if (!enabled || !socketToken) return;
 
         // 1. Build Secure URL (Append Token)
         // Spring Security Interceptor checks 'token' param
-        const wsUrl = `${url}?token=${token}`;
+        const wsUrl = `${url}?socket_token=${socketToken}`;
         console.log(`[TelemetrySocket] Connecting to ${wsUrl}...`);
         
         const ws = new WebSocket(wsUrl);
@@ -93,5 +93,5 @@ export function useTelemetrySocket(url: string = WS_URL_DEV, enabled: boolean = 
                 ws.close();
             }
         };
-    }, [url, enabled, updateAircraft, token]); 
+    }, [url, enabled, updateAircraft, socketToken]); 
 }
