@@ -31,7 +31,7 @@ export function LoginPage() {
 
             const data = await response.json();
             // AuthDtos.TokenResponse: { accessToken, role, grantType }
-            login(data.accessToken, data.role, email);
+            login(data.accessToken, data.socketToken, data.role, email);
             
             // App will re-render and route to Dashboard
         } catch (err: any) {
