@@ -6,6 +6,11 @@ interface GraphState {
   // Data
   nodes: GraphNode[];
   edges: GraphEdge[];
+  mapMeta: import('./types').MapMeta | null;
+  corners: import('@/shared/realtime/api/map.schema').MapCorners | null;
+  mapWidth: number;
+  mapHeight: number;
+
   
   // Editor State
   selectedId: string | null;           // ID of selected Node or Edge
@@ -40,11 +45,18 @@ interface GraphState {
   aircrafts: import('./types').Aircraft[];
   updateAircraft: (data: import('./types').Aircraft) => void;
   setAircrafts: (list: import('./types').Aircraft[]) => void;
+  setMapMeta: (meta: import('./types').MapMeta) => void;
+  setCorners: (corners: import('@/shared/realtime/api/map.schema').MapCorners) => void;
+  setMapDimensions: (width: number, height: number) => void;
 }
 
 export const useGraphStore = create<GraphState>((set, get) => ({
   nodes: [],
   edges: [],
+  mapMeta: null,
+  corners: null,
+  mapWidth: 2000, // Default fallback
+  mapHeight: 1500, // Default fallback
   selectedId: null,
   hoveredId: null,
   interactionMode: 'SELECT',
@@ -136,4 +148,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       }
   }),
   setAircrafts: (list) => set({ aircrafts: list }),
+  setMapMeta: (meta) => set({ mapMeta: meta }),
+  setCorners: (corners) => set({ corners: corners }),
+  setMapDimensions: (width, height) => set({ mapWidth: width, mapHeight: height }),
 }));

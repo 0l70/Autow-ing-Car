@@ -2,7 +2,25 @@ import { useEffect, useCallback } from 'react';
 import { useGraphStore } from '@/entities/map/model/store';
 import { Aircraft } from '@/entities/map/model/types';
 import { useAuthStore } from '@/features/auth/model/useAuthStore';
-import { useStompClient } from '@/shared/api/websocket/useStompClient';
+import { useStompClient } from '@/shared/realtime/clients/useStompClient';
+import { WS_TOPICS } from '@/shared/realtime/config/topics';
+import { z } from 'zod';
+
+// Basic validation schema
+const AircraftStatusSchema = z.enum(['IDLE', 'MOVING', 'DOCKING', 'HOLD', 'ERROR']);
+
+const TelemetrySchema = z.object({
+    car_id: z.string().optional(),
+    carId: z.string().optional(),
+    x: z.number().default(0),
+    y: z.number().default(0),
+    yaw: z.number().default(0),
+    v: z.number().default(0),
+    mode: AircraftStatusSchema.catch('IDLE'), // Fallback to IDLE if invalid
+    battery: z.number().default(0),
+    currentMission: z.any().optional(),
+    is_loaded: z.boolean().default(false)
+});
 
 // TODO: .env 파일로 이동 필요
 const WS_URL_DEV = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8080/ws/telemetry';
@@ -11,48 +29,58 @@ export function useTelemetrySocket(url: string = WS_URL_DEV, enabled: boolean = 
     const { updateAircraft } = useGraphStore();
     const { socketToken } = useAuthStore();
 
-    // 1. Use Shared Stomp Client
+    // 1. OnConnect Callback
+    const handleConnect = useCallback((sendFn: (cmd: string, headers: Record<string, string>, body?: string) => void) => {
+        console.log("[TelemetrySocket] Session Ready. Subscribing...");
+        
+        // 1. Subscribe to Monitoring
+        sendFn("SUBSCRIBE", {
+            id: "sub-0",
+            destination: WS_TOPICS.MONITORING('*')
+        });
+
+        // 2. Subscribe to Responses
+        sendFn("SUBSCRIBE", {
+            id: "sub-1",
+            destination: WS_TOPICS.APP_RESPONSES
+        });
+    }, []);
+
+    // 2. Use Shared Stomp Client
     const { isConnected, request, send, onMessage } = useStompClient({
         url,
         token: socketToken,
         enabled,
-        onConnect: (sendFn) => {
-            console.log("[TelemetrySocket] Session Ready. Subscribing...");
-            
-            // 1. Subscribe to Monitoring
-            sendFn("SUBSCRIBE", {
-                id: "sub-0",
-                destination: "/topic/car/*/monitoring"
-            });
-
-            // 2. Subscribe to Responses
-            sendFn("SUBSCRIBE", {
-                id: "sub-1",
-                destination: "/topic/app/responses"
-            });
-        }
+        onConnect: handleConnect
     });
 
     // 2. Data Processing Logic (Specific to Map Feature)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleTelemetryMessage = useCallback((parseData: any) => {
-        // Handle Aircraft Data
-        if (parseData.car_id || parseData.carId) {
+        const result = TelemetrySchema.safeParse(parseData);
+        if (!result.success) {
+            // console.warn("Invalid Telemetry Data:", result.error);
+            return;
+        }
+        
+        const data = result.data;
+        const rawId = data.car_id || data.carId;
+
+        if (rawId) {
             const aircraft: Aircraft = {
-                id: parseData.car_id || parseData.carId || 'Unknown',
-                callsign: parseData.car_id || parseData.carId || 'Unknown',
-                
+                id: rawId,
+                callsign: rawId, // using ID as callsign for now
                 type: 'TUG',
                 position: {
-                    x: parseData.x || 0,
-                    y: parseData.y || 0,
-                    r: (parseData.yaw || 0) * (Math.PI / 180)
+                    x: data.x,
+                    y: data.y,
+                    r: data.yaw * (Math.PI / 180)
                 },
-                status: parseData.mode || 'IDLE',
-                battery: parseData.battery || 0,
-                speed: parseData.v || 0,
-                currentMission: parseData.currentMission,
-                isLoaded: parseData.is_loaded || false
+                status: data.mode, // Now strictly typed as AircraftStatus
+                battery: data.battery,
+                speed: data.v,
+                currentMission: data.currentMission,
+                isLoaded: data.is_loaded
             };
             updateAircraft(aircraft);
         }

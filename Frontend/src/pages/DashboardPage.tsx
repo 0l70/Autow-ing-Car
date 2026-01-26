@@ -10,6 +10,7 @@ import { useGraphStore } from "@/entities/map/model/store";
 import { MapMeta, Aircraft } from "@/entities/map/model/types";
 import { MOCK_EDGES, MOCK_NODES, MOCK_MAP_SIZE } from "@/entities/map/lib/mockData";
 import { useTelemetrySocket } from "@/features/map-visualizer/model/useTelemetrySocket";
+import { useMapSync } from "@/features/map-visualizer/model/useMapSync";
 import { useMockAircraftMqtt } from "@/entities/map/lib/mockAircraft";
 import { useAuthStore } from "@/features/auth/model/useAuthStore";
 import { LoginPage } from "@/features/auth/ui/LoginPage";
@@ -29,21 +30,28 @@ export function DashboardPage() {
     
     // 1. Real WebSocket (Only connects if authenticated inside hook)
     useTelemetrySocket(undefined, USE_REAL_DATA);
+    useMapSync(USE_REAL_DATA); // Sync Map Data
     
     // 2. Mock Data (Fallback)
     const mockData = useMockAircraftMqtt();
     
+    // Access Map Dimensions from Store
+    const { mapWidth: storeMapWidth, mapHeight: storeMapHeight, corners } = useGraphStore();
+
     useEffect(() => {
         if (!USE_REAL_DATA) {
             setAircrafts(mockData);
         }
-    }, [mockData, setAircrafts]); // Only update store from mock if Real Data is OFF
+    }, [mockData, setAircrafts, USE_REAL_DATA]); // Only update store from mock if Real Data is OFF
     // ---------------------------
 
     // Initial Data Load (Simulate Fetch from Edge)
     useEffect(() => {
-        loadGraph(MOCK_NODES, MOCK_EDGES);
-    }, [loadGraph]);
+        // Only load mock graph if no real map data is present yet
+        if (!corners) {
+            loadGraph(MOCK_NODES, MOCK_EDGES);
+        }
+    }, [loadGraph, corners]);
 
     // UseCallback to prevent infinite re-rendering loop in MapCanvas
     const handleMapLoad = useCallback((info: { meta: MapMeta; width: number; height: number }) => {
@@ -52,10 +60,10 @@ export function DashboardPage() {
     }, []);
 
     const gridMetadata = useMemo(() => ({
-        width: MOCK_MAP_SIZE.width,
-        height: MOCK_MAP_SIZE.height,
+        width: storeMapWidth || MOCK_MAP_SIZE.width,
+        height: storeMapHeight || MOCK_MAP_SIZE.height,
         resolution: 0.05
-    }), []);
+    }), [storeMapWidth, storeMapHeight]);
 
     // 🔐 AUTH GUARD CHECK
     if (!isAuthenticated) {
@@ -110,7 +118,8 @@ export function DashboardPage() {
                 {/* 2. Aircraft Overlay (Simulated) */}
                 <AircraftLayer 
                     meta={mapMeta} 
-                    mapHeight={mapHeight} 
+                    mapWidth={storeMapWidth || MOCK_MAP_SIZE.width}
+                    mapHeight={storeMapHeight || MOCK_MAP_SIZE.height}
                     onAircraftClick={(ac) => {
                         console.log("Selected Aircraft:", ac.callsign);
                         setSelectedAircraft(ac);

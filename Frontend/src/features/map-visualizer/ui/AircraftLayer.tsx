@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { Aircraft, MapMeta } from "@/entities/map/model/types";
 import { worldToPixel } from "@/entities/map/lib/coordinate";
 import { useGraphStore } from "@/entities/map/model/store";
+import { useSmoothAnimation } from "@/features/map-visualizer/lib/useSmoothAnimation";
 
 // Colors for status
 const STATUS_COLORS: Record<string, string> = {
@@ -14,44 +15,19 @@ const STATUS_COLORS: Record<string, string> = {
 
 interface AircraftLayerProps {
     meta: MapMeta | null;
+    mapWidth: number;
     mapHeight: number;
     onAircraftClick?: (aircraft: Aircraft) => void;
 }
 
-export function AircraftLayer({ meta, mapHeight, onAircraftClick }: AircraftLayerProps) {
-    // OLD: const aircraftList = useMockAircraftMqtt(); 
-    // NEW: Get from Store
+export function AircraftLayer({ meta, mapWidth, mapHeight, onAircraftClick }: AircraftLayerProps) {
     const aircraftList = useGraphStore((state) => state.aircrafts);
+    
+    // Apply Smooth Animation (Interpolation)
+    const animatedList = useSmoothAnimation(aircraftList, 300); // 300ms smooth transition
+
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
-    // Initial heading offset (if 0 rad = East, but Icon points North, rotate +90deg)
-    // Canvas standard: 0 = East (Right). 
-    // If our "Triangle" drawing points Right by default, match 0. 
-    // If it points Up, subtract 90deg? 
-    // Let's assume standard math: 0 = Right.
-    // Drawing below: Nose is at (10, 0), Left Wing (-8, 7), Right Wing (-8, -7).
-    // This points RIGHT (Positive X). So it matches Math.
-    // User says "Heading is weird". Maybe ROS/MQTT sends 0 = North?
-    // Navigation standard (North-East-Down): 0 = North, 90 = East.
-    // Math standard: 0 = East, 90 = North (CCW) or South (CW)?
-    // Let's assume ROS/MQTT is standard ENU (East-North-Up): 0 = East.
-    // If user says "weird", maybe they use Compass (0=North, CW)?
-    
-    // Trial 1: Add -90 degrees (Math.PI/2) just in case they meant North-based.
-    // Actually, Canvas Y is Down. 
-    // Standard Math: +Rotation = Clockwise in Canvas 2D (since Y is inverted visually? No, Y is down).
-    // Wait, coordinate.ts inverts Y. 
-    // Let's stick to standard and verify with user if it's 90 off. 
-    // But since user complained, I'll rotate 90 deg (PI/2) as a guess or fix if it was pointing wrong relative to path.
-    // The previous code had `ctx.rotate(ac.position.r)`. 
-    // If vehicle moves +Y (Up visually in inverted map?), 
-    // In Canvas space (Y down), +Y movement means Heading should be 90 deg (Down)?
-    // No, `worldToPixel` inverts Y. So +WorldY = -CanvasY (Up).
-    // So if vehicle moves UP, heading is 90 deg (Math/ROS).
-    // In Canvas: Math.atan2(-1, 0) = -90 deg.
-    // So we likely need to Negate rotation? 
-    // Let's try `ctx.rotate(-ac.position.r)`.
-    
     const handleClick = (e: React.MouseEvent) => {
         if (!onAircraftClick || !canvasRef.current || !meta) return;
         
@@ -59,13 +35,9 @@ export function AircraftLayer({ meta, mapHeight, onAircraftClick }: AircraftLaye
         const mouseX = (e.clientX - rect.left) * (canvasRef.current.width / rect.width);
         const mouseY = (e.clientY - rect.top) * (canvasRef.current.height / rect.height);
 
-        // Find clicked aircraft (Simple radius check in Pixel Space)
-        // Since we don't store pixel pos, re-calculate or approximate.
-        // Better: Iterate list again check distance.
-        
-        for (const ac of aircraftList) {
+        for (const ac of animatedList) {
              const pixel = worldToPixel(ac.position, meta, mapHeight);
-             // Distance squared
+             // Distance squared (radius check)
              const distSq = (mouseX - pixel.x) ** 2 + (mouseY - pixel.y) ** 2;
              if (distSq < 400) { // 20px radius
                  onAircraftClick(ac);
@@ -75,65 +47,74 @@ export function AircraftLayer({ meta, mapHeight, onAircraftClick }: AircraftLaye
     };
 
     useEffect(() => {
-        // ... Render Logic ...
-        if (!meta || mapHeight === 0 || !canvasRef.current) return;
+        if (!meta || mapHeight === 0 || mapWidth === 0 || !canvasRef.current) return;
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        aircraftList.forEach(ac => {
+        animatedList.forEach(ac => {
             const pixel = worldToPixel(ac.position, meta, mapHeight);
             
             ctx.save();
             ctx.translate(pixel.x, pixel.y);
             
-            // Correction: World +Y is Up. Canvas +Y is Down.
-            // Angle increases CCW in World. Angle increases CW in Canvas (if Y is Down).
-            // So we need to Negate the angle.
-            // Also, if 0 = East in World (Right), and 0 = Right in Canvas, valid.
-            // If 0 = North in World (Up), then we need offset.
-            // Let's try Negating first because of Y-flip.
+            // Rotation Correction: 
+            // World Coordinate System: +Y is UP, +Angle is CCW (Standard Math).
+            // Canvas Coordinate System: +Y is DOWN.
+            // When rendering World to Canvas, Y is flipped.
+            // This flips the coordinate space handedness. 
+            // A positive rotation (CCW) in World becomes a positive rotation (CW) in Canvas IF we just map numbers?
+            // Wait. Canvas Y is inverted relative to World Y.
+            // X is same.
+            // Rotation is defined as rotation from X axis towards Y axis usually?
+            // In World: X (Right) -> Y (Up) is CCW.
+            // In Canvas: X (Right) -> Y (Down) is CW.
+            // If an object is rotated +90 deg in World (pointing Up),
+            // We want it to point Up in Canvas (which is -Y).
+            // In Canvas, -Y is -90 deg (270).
+            // So +90 World -> -90 Canvas.
+            // So we Negate the angle.
             ctx.rotate(-ac.position.r); 
 
             // Draw Body
-            // ... (Same drawing)
             const color = STATUS_COLORS[ac.status] || '#FFFFFF';
             ctx.fillStyle = color;
-            // ...
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 10;
             
             ctx.beginPath();
-            // Larger Triangle: 
-            ctx.moveTo(30, 0);   // Nose (was 10)
-            ctx.lineTo(-20, 16); // Left Wing (was -8, 7)
-            ctx.lineTo(-10, 0);  // Tail Indent (was -4)
-            ctx.lineTo(-20, -16);// Right Wing (was -8, -7)
+            // Triangle pointing East (0 deg)
+            ctx.moveTo(35, 0);   // Nose
+            ctx.lineTo(-25, 20); // Left Wing
+            ctx.lineTo(-15, 0);  // Tail Indent
+            ctx.lineTo(-25, -20);// Right Wing
             ctx.closePath();
             ctx.fill();
             
+            ctx.shadowBlur = 0; // Reset
             ctx.restore();
             
             // Label
             ctx.save();
             ctx.translate(pixel.x, pixel.y);
-            ctx.fillStyle = 'white';
-            ctx.font = '10px monospace';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.font = 'bold 12px monospace';
             ctx.textAlign = 'center';
-            ctx.fillText(ac.callsign, 0, -15);
+            // Offset label below aircraft
+            ctx.fillText(ac.callsign, 0, 35);
             ctx.restore();
         });
 
-    }, [aircraftList, meta, mapHeight]);
+    }, [animatedList, meta, mapWidth, mapHeight]);
 
-    // ...
-    // Note: Add onClick handler to Canvas
     return (
         <canvas 
             ref={canvasRef}
-            width={2000}
-            height={1500}
-            className="absolute inset-0 z-20 cursor-pointer" // Pointer events enabled
+            width={mapWidth}
+            height={mapHeight}
+            className="absolute inset-0 z-20 cursor-pointer pointer-events-auto"
             onClick={handleClick}
         />
     );
