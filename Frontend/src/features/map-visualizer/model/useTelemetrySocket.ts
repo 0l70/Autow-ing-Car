@@ -7,8 +7,10 @@ import { v4 as uuidv4 } from 'uuid';
 // TODO: .env 파일로 이동 필요
 // 원격 개발 서버
 // const WS_URL_DEV = import.meta.env.VITE_WS_BASE_URL || 'ws://i14a402.p.ssafy.io:8080/ws-server/websocket';
+const WS_URL_DEV = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8080/ws-server/websocket';
+
 // 로컬 개발 서버
-const WS_URL_DEV = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8080/ws/telemetry'; // TEST: Connect to local Mock Server
+// const WS_URL_DEV = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8080/ws/telemetry'; // TEST: Connect to local Mock Server
 
 
 interface ResponseMessage {
@@ -84,7 +86,7 @@ export function useTelemetrySocket(url: string = WS_URL_DEV, enabled: boolean = 
     useEffect(() => {
         if (!enabled || !token) return;
 
-        const wsUrl = `${url}?token=${token}`;
+        const wsUrl = `${url}?socket_token=${token}`;
         console.log(`[TelemetrySocket] Connecting to ${wsUrl}...`);
 
         const ws = new WebSocket(wsUrl);

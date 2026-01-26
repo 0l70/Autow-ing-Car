@@ -34,7 +34,7 @@ public class AuthHandshakeInterceptor implements HandshakeInterceptor {
                 return true; 
             }
 
-            String token = httpRequest.getParameter("token");
+            String token = httpRequest.getParameter("socket_token");
             log.info("[WS Interceptor] 핸드쉐이크 시도. Path: {}, Token 존재여부: {}", path, (token != null));
 
             if (token != null && jwtTokenProvider.validateToken(token)) {

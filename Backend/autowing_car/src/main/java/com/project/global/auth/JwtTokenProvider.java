@@ -46,7 +46,7 @@ public class JwtTokenProvider {
      * @return
      */
     public String createSocketToken(Authentication authentication) {
-        return buildToken(authentication, 100000,TOKEN_TYPE_SOCKET); // 10000ms = 10초
+        return buildToken(authentication, 1000000,TOKEN_TYPE_SOCKET); // 10000ms = 10초
     }
 
     private String buildToken(Authentication authentication, long duration,String type) {
