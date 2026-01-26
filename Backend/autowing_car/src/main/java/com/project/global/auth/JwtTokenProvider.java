@@ -33,46 +33,35 @@ public class JwtTokenProvider {
         this.tokenValidityInMilliseconds = tokenValidityInMilliseconds;
     }
 
-    // 토큰 생성
+    // Access Token 생성
     public String createToken(Authentication authentication) {
-        String authorities = authentication.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .collect(Collectors.joining(","));
-
-        long now = (new Date()).getTime();
-        Date validity = new Date(now + this.tokenValidityInMilliseconds);
-
-        return Jwts.builder()
-                .setSubject(authentication.getName())
-                .claim("auth", authorities)
-                .setIssuedAt(new Date(now))
-                .setExpiration(validity)
-                .signWith(key, SignatureAlgorithm.HS256)
-                .compact();
+        return buildToken(authentication, this.tokenValidityInMilliseconds);
     }
 
     /**
-     * 
+     * WEBSOCKET용 토큰 생성 (짧은 유효기간)
      * @param authentication
      * @return
      */
     public String createSocketToken(Authentication authentication) {
+        return buildToken(authentication, 10000); // 10000ms = 10초
+    }
+
+    private String buildToken(Authentication authentication, long duration) {
         String authorities = authentication.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .collect(Collectors.joining(","));
 
         long now = (new Date()).getTime();
-        Date validity = new Date(now + 10000); // 10초 유효
+        Date validity = new Date(now + duration);
 
         return Jwts.builder()
                 .setSubject(authentication.getName())
                 .claim("auth", authorities)
-                .claim("type", "socket")
                 .setIssuedAt(new Date(now))
                 .setExpiration(validity)
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
-        
     }
 
     public String getUserId(String token) {

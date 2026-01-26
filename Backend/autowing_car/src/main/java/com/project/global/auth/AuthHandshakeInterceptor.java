@@ -1,5 +1,6 @@
 package com.project.global.auth;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.server.ServerHttpRequest;
@@ -21,30 +22,35 @@ public class AuthHandshakeInterceptor implements HandshakeInterceptor {
     @Override
     public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
             WebSocketHandler wsHandler, Map<String, Object> attributes) throws Exception {
-        if (request instanceof ServletServerHttpRequest) {
-            ServletServerHttpRequest servletRequest = (ServletServerHttpRequest) request;
-            String token = servletRequest.getServletRequest().getParameter("access_token");
+        
+        if (request instanceof ServletServerHttpRequest servletRequest) {
+            HttpServletRequest httpRequest = servletRequest.getServletRequest();
+            String path = httpRequest.getRequestURI();
+            
+            // SockJS의 /info 요청 등은 통과시키거나, 여기서도 토큰 검사를 할지 결정해야 함.
+            // 보통 /info 요청은 인증을 생략하고 실제 websocket upgrade 요청만 막아도 됨.
+            if (path.endsWith("/info")) {
+                log.debug("[WS Interceptor] SockJS Info 요청 통과");
+                return true; 
+            }
+
+            String token = httpRequest.getParameter("token");
+            log.info("[WS Interceptor] 핸드쉐이크 시도. Path: {}, Token 존재여부: {}", path, (token != null));
 
             if (token != null && jwtTokenProvider.validateToken(token)) {
-                // 토큰이 유효하면 attributes에 사용자 정보 저장 (필요 시)
-                // Authentication auth = jwtTokenProvider.getAuthentication(token);
-                // attributes.put("USER_PRINCIPAL", auth);
                 String userId = jwtTokenProvider.getUserId(token);
                 attributes.put("USER_ID", userId);
-                
-                log.info("[WS Handshake] 연결 승인: {}", userId);
+                log.info("[WS Interceptor] 인증 성공. UserID: {}", userId);
                 return true;
-            } 
+            }
         }
-
-        log.warn("WebSocket Handshake Failed: Invalid or Missing Token");
-
+        
+        log.warn("[WS Interceptor] 인증 실패. 연결 거부.");
         return false;
     }
 
     @Override
     public void afterHandshake(ServerHttpRequest request, ServerHttpResponse response,
             WebSocketHandler wsHandler, Exception exception) {
-        // Handshake 후 처리 (로깅 등)
     }
 }

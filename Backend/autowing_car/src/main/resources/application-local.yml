@@ -24,6 +24,8 @@ logging:
   level:
     org.springframework.web: DEBUG
     com.project: DEBUG
+    org.springframework.session: DEBUG
+    org.springframework.security.web.session: DEBUG
 
 jwt:
   secret: "c2lsdmVybGlnaHQtdGVzdC1zZWNyZXQtbmVvbi1sYXNlci1hdGMtY29udHJvbC1jZW50ZXItMTIzNDU2Nzg=" # Base64 encoded dummy key (at least 256 bits)
