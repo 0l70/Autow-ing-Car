@@ -24,6 +24,8 @@ public class JwtTokenProvider {
 
     private final Key key;
     private final long tokenValidityInMilliseconds;
+    private final String TOKEN_TYPE_SOCKET = "SOCKET";
+    private final String TOKEN_TYPE_ACCESS = "ACCESS";
 
     public JwtTokenProvider(
             @Value("${jwt.secret}") String secret,
@@ -33,50 +35,54 @@ public class JwtTokenProvider {
         this.tokenValidityInMilliseconds = tokenValidityInMilliseconds;
     }
 
-    // 토큰 생성
+    // Access Token 생성
     public String createToken(Authentication authentication) {
-        String authorities = authentication.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .collect(Collectors.joining(","));
-
-        long now = (new Date()).getTime();
-        Date validity = new Date(now + this.tokenValidityInMilliseconds);
-
-        return Jwts.builder()
-                .setSubject(authentication.getName())
-                .claim("auth", authorities)
-                .setIssuedAt(new Date(now))
-                .setExpiration(validity)
-                .signWith(key, SignatureAlgorithm.HS256)
-                .compact();
+        return buildToken(authentication, this.tokenValidityInMilliseconds,TOKEN_TYPE_ACCESS);
     }
 
     /**
-     * 
+     * WEBSOCKET용 토큰 생성 (짧은 유효기간)
      * @param authentication
      * @return
      */
     public String createSocketToken(Authentication authentication) {
+        return buildToken(authentication, 1000000,TOKEN_TYPE_SOCKET); // 10000ms = 10초
+    }
+
+    private String buildToken(Authentication authentication, long duration,String type) {
         String authorities = authentication.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .collect(Collectors.joining(","));
 
         long now = (new Date()).getTime();
-        Date validity = new Date(now + 10000); // 10초 유효
+        Date validity = new Date(now + duration);
 
         return Jwts.builder()
                 .setSubject(authentication.getName())
                 .claim("auth", authorities)
-                .claim("type", "socket")
+                .claim("token_type", type)
                 .setIssuedAt(new Date(now))
                 .setExpiration(validity)
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
-        
     }
 
     public String getUserId(String token) {
         return parseClaims(token).getSubject();
+    }
+
+    /*
+    소켓 토큰인지 확인
+    */
+    public boolean isSocketToken(String token) {
+        try {
+            String type = parseClaims(token).get("token_type", String.class);
+            log.info("토큰 타입: {}", type);
+            return TOKEN_TYPE_SOCKET.equals(type);
+        } catch (Exception e) {
+            log.error("토큰 타입 확인 실패: {}", e.getMessage());
+            return false;
+        }
     }
     // 인증 정보 조회
     public Authentication getAuthentication(String token) {

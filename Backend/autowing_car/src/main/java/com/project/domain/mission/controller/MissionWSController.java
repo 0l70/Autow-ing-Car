@@ -55,7 +55,7 @@ public class MissionWSController {
     @MessageMapping("/mission/decide")
     public void decideMission(@Payload ATCDecisionDto decisionDto, Principal principal) {
         validatePrincipal(principal);
-        String controllerId = (principal != null) ? principal.getName() : "Admin";
+        String controllerId = (principal != null) ? principal.getName() : "ATC";
 
         log.info("[WS] Admin Decision from: {}, Approved: {}", controllerId, decisionDto.isApproved());
         missionService.approveMission(controllerId, decisionDto);
