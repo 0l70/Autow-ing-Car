@@ -38,11 +38,17 @@ public class AuthHandshakeInterceptor implements HandshakeInterceptor {
             log.info("[WS Interceptor] 핸드쉐이크 시도. Path: {}, Token 존재여부: {}", path, (token != null));
 
             if (token != null && jwtTokenProvider.validateToken(token)) {
+
+                if (!jwtTokenProvider.isSocketToken(token)) {
+                    log.warn("[WS Interceptor] 연결 거부: Access Token으로는 연결할 수 없습니다.");
+                    return false;
+                }
                 String userId = jwtTokenProvider.getUserId(token);
                 attributes.put("USER_ID", userId);
                 log.info("[WS Interceptor] 인증 성공. UserID: {}", userId);
                 return true;
             }
+        
         }
         
         log.warn("[WS Interceptor] 인증 실패. 연결 거부.");
