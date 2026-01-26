@@ -53,18 +53,18 @@ public class AuthController {
     @GetMapping("/session/debug")
     public Map<String, Object> getConnectedSessions() {
         Map<String, Object> response = new HashMap<>();
-
+        
         // 1. 전체 연결 수
         response.put("total_users", userRegistry.getUserCount());
-
+        
         // 2. 사용자별 세션 상세 정보
         List<Map<String, Object>> userList = new ArrayList<>();
-
+        
         for (SimpUser user : userRegistry.getUsers()) {
             Map<String, Object> userInfo = new HashMap<>();
             userInfo.put("username", user.getName()); // Principal Name (예: pilot@atc.com)
             userInfo.put("has_sessions", user.hasSessions());
-
+            
             // 한 사용자가 여러 기기에서 접속할 수 있으므로 세션은 리스트임
             List<Map<String, String>> sessions = user.getSessions().stream()
                     .map(session -> {
@@ -74,11 +74,11 @@ public class AuthController {
                         return sessionInfo;
                     })
                     .collect(Collectors.toList());
-
+            
             userInfo.put("sessions", sessions);
             userList.add(userInfo);
         }
-
+        
         response.put("users", userList);
         return response;
     }

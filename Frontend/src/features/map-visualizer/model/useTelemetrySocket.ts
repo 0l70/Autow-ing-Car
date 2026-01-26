@@ -23,7 +23,7 @@ interface ResponseMessage {
 
 export function useTelemetrySocket(url: string = WS_URL_DEV, enabled: boolean = true) {
     const { updateAircraft } = useGraphStore();
-    const { token } = useAuthStore();
+    const { socketToken } = useAuthStore();
     const wsRef = useRef<WebSocket | null>(null);
 
     // Dispatcher: 요청 ID(CorrelationId)와 Promise(resolve, reject)를 매핑하여 저장
@@ -84,9 +84,11 @@ export function useTelemetrySocket(url: string = WS_URL_DEV, enabled: boolean = 
     }, [sendFrame]);
 
     useEffect(() => {
-        if (!enabled || !token) return;
+        if (!enabled || !socketToken) return;
 
-        const wsUrl = `${url}?socket_token=${token}`;
+        // 1. Build Secure URL (Append Token)
+        // Spring Security Interceptor checks 'token' param
+        const wsUrl = `${url}?socket_token=${socketToken}`;
         console.log(`[TelemetrySocket] Connecting to ${wsUrl}...`);
 
         const ws = new WebSocket(wsUrl);
@@ -177,7 +179,7 @@ export function useTelemetrySocket(url: string = WS_URL_DEV, enabled: boolean = 
                 ws.close();
             }
         };
-    }, [url, enabled, updateAircraft, token]);
+    }, [url, enabled, updateAircraft, socketToken]);
 
     return {
         isConnected: wsRef.current?.readyState === WebSocket.OPEN,
