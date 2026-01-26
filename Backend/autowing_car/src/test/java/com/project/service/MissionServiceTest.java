@@ -2,7 +2,6 @@ package com.project.service;
 
 import com.project.domain.common.CarStatus;
 import com.project.domain.common.MissionStatus;
-import com.project.domain.common.MissionType;
 import com.project.domain.flight.entity.Flight;
 import com.project.domain.flight.repository.FlightRepository;
 import com.project.domain.mission.dto.MissionWebSocketDtos.*;
@@ -48,20 +47,26 @@ class MissionServiceTest {
         request.setDepartNode("GATE_101");
         request.setDestNode("RUNWAY_A");
         request.setFlightNumber("KE001");
-        request.setMissionType(MissionType.TRANSPORT);
+
 
         // Mocking: "이 메서드가 호출되면 이런 값을 리턴해라"라고 설정
-        Flight mockFlight = Flight.builder().id(1L).flightNumber("KE001").build();
+        // Flight mockFlight = Flight.builder().id(1L).flightNumber("KE001").build();
+        TowingCar idleCar = TowingCar.builder().code("TC01").carStatus(CarStatus.IDLE).battery(90).build();
+        given(towingCarRepository.findByCode("TC01")).willReturn(Optional.of(idleCar));
+        given(towingCarRepository.findAllByCarStatus(CarStatus.IDLE)).willReturn(List.of(idleCar));
+
+        Flight mockFlight = Flight.builder().id(1L).flightNumber("KE001").assignedTowingCar(idleCar).build();
+        given(flightRepository.findByFlightNumber(request.getFlightNumber())).willReturn(Optional.of(mockFlight));
+
         given(flightRepository.findById(1L)).willReturn(Optional.of(mockFlight));
 
         Mission mockMission = Mission.builder().id(100L).status(MissionStatus.WAITING).build();
         given(missionRepository.save(any(Mission.class))).willReturn(mockMission);
 
-        TowingCar idleCar = TowingCar.builder().code("TC01").carStatus(CarStatus.IDLE).battery(90).build();
-        given(towingCarRepository.findAllByCarStatus(CarStatus.IDLE)).willReturn(List.of(idleCar));
+        
 
         // when (실행)
-        missionService.createMissionRequest(pilotId, request);
+        missionService.createTransportMission(pilotId, request);
 
         // then (검증)
         // 1. 미션이 저장을 위해 호출되었는가?

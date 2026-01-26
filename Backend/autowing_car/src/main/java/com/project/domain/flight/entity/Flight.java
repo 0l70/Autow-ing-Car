@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "flight")
 @Getter
+@Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
@@ -34,9 +35,9 @@ public class Flight {
     // , nullable = false)
     private User pilot;
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "towing_car_id")
-    private TowingCar towingCar;
+    @OneToOne(fetch = FetchType.LAZY) 
+    @JoinColumn(name = "assigned_towing_car_id")
+    private TowingCar assignedTowingCar;
 
     @Column(name = "gate_number", length = 10)
     private String gateNumber;
@@ -48,4 +49,14 @@ public class Flight {
     @Column(name = "scheduled_time")
     // nullable = false)
     private LocalDateTime scheduledTime;
+
+    // 차량 배정 (Dispatch)
+    public void assignCar(TowingCar car) {
+        this.assignedTowingCar = car;
+    }
+
+    // 배정 해제 (완전히 미션 완료 후)
+    public void releaseCar() {
+        this.assignedTowingCar = null;
+    }
 }

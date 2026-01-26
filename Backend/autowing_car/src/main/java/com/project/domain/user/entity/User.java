@@ -37,4 +37,19 @@ public class User {
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+
+    @PrePersist
+    public void prePersist() {
+        this.createdAt = LocalDateTime.now();
+    }
+
+    @Builder
+    public User(String email, String password, String username, String employeeCode, UserRole role) {
+        this.email = email;
+        this.password = password;
+        this.username = username;
+        this.employeeCode = employeeCode;
+        this.role = role;
+    }
 }

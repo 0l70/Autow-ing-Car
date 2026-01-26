@@ -2,7 +2,6 @@ package com.project.websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.project.domain.common.MissionType;
 import com.project.domain.mission.dto.MissionWebSocketDtos.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -79,7 +78,7 @@ public class AutowingE2ETest {
         });
 
         // 3. 요청 전송
-        PilotRequestDto request = new PilotRequestDto("GATE_1", "RWY_A", "KE001", MissionType.TRANSPORT);
+        PilotRequestDto request = new PilotRequestDto("GATE_1", "RWY_A", "KE001");
         request.setFlightNumber("KE001"); // FlightId는 null로
         session.send("/app/mission/request", request);
 

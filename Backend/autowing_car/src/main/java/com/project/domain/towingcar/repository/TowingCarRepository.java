@@ -1,6 +1,7 @@
 package com.project.domain.towingcar.repository;
 
 import com.project.domain.common.CarStatus;
+import com.project.domain.mission.entity.Mission;
 import com.project.domain.towingcar.entity.TowingCar;
 
 import io.lettuce.core.dynamic.annotation.Param;
@@ -26,4 +27,6 @@ public interface TowingCarRepository extends JpaRepository<TowingCar, Long> {
     List<TowingCar> findAllByCarStatus(CarStatus status);
     // 현재 사용 가능한(IDLE) 차량만 조회   
     // List<TowingCar> findByStatus(EntityStatus status);
+
+    Optional<TowingCar> findFirstByCarStatusOrderByBatteryDesc(CarStatus idle);
 }

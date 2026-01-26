@@ -139,7 +139,7 @@ public class LocalDataInit implements CommandLineRunner {
         // Flight 엔티티 생성 및 저장 로직 구현
         Flight flight = Flight.builder()
                 .flightNumber(flightNumber)
-                .towingCar(towingCar.get())
+                .assignedTowingCar(towingCar.orElse(null))
                 .pilot(pilot.get())
                 .build();
         flightRepository.save(flight);

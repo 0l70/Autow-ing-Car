@@ -37,7 +37,7 @@ public class MissionWSController {
         String pilotId = (principal != null) ? principal.getName() : "AnonymousPilot";
         
         log.info("[WS] Mission Request received from: {}", pilotId);
-        missionService.createMissionRequest(pilotId, requestDto);
+        missionService.createTransportMission(pilotId, requestDto);
     }
 
     /**

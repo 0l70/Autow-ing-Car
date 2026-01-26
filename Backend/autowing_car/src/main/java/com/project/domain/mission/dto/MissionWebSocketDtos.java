@@ -1,7 +1,6 @@
 package com.project.domain.mission.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.project.domain.common.MissionType;
 import com.project.domain.mission.entity.Mission;
 import lombok.*;
 
@@ -17,8 +16,6 @@ public class MissionWebSocketDtos {
         private String departNode;
         private String destNode;
         private String flightNumber;
-
-        private MissionType missionType;
     }
 
     // 2. [서버 -> 관제사]
