@@ -43,6 +43,10 @@ public class JwtTokenProvider {
     /**
      * WEBSOCKET용 토큰 생성 (짧은 유효기간)
      * 
+     * }
+     * 
+     * /**
+     * 
      * @param authentication
      * @return
      */
@@ -56,16 +60,17 @@ public class JwtTokenProvider {
                 .collect(Collectors.joining(","));
 
         long now = (new Date()).getTime();
-        Date validity = new Date(now + duration);
+        Date validity = new Date(now + 3600000); // 1시간 유효 (테스트용)
 
         return Jwts.builder()
-                .setSubject(authentication.getName())
+                .setSubject(authentication.getName()) // Employee Code 사용
                 .claim("auth", authorities)
                 .claim("token_type", type)
                 .setIssuedAt(new Date(now))
                 .setExpiration(validity)
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
+
     }
 
     public String getUserId(String token) {

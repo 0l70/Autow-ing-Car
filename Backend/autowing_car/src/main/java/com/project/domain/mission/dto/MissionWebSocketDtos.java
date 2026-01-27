@@ -25,6 +25,7 @@ public class MissionWebSocketDtos {
     @AllArgsConstructor
     public static class AdminAlertDto {
         private Long missionId;
+        private Long flightId;
         private String pilotId;
         private String departNode;
         private String destNode;
@@ -70,6 +71,7 @@ public class MissionWebSocketDtos {
     @AllArgsConstructor
     public static class ATCDecisionDto {
         private Long missionId;
+        private Long flightId;
 
         @JsonProperty("approved") // JSON 필드명 명시 권장
         private boolean approved;
@@ -103,6 +105,45 @@ public class MissionWebSocketDtos {
     @AllArgsConstructor
     public static class PilotControlDto {
         private Long missionId;
-        private String command;
+        private String command; // "PAUSE", "RESUME"
+    }
+
+    // 5. [기장 -> 서버] 연결 요청 (Scenario A)
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ConnectRequestDto {
+        private Long scheduleId; // 항공편 스케줄 ID
+        private String type; // "CONNECT"
+    }
+
+    // 6. [서버 -> 기장] 연결 응답 (Scenario A)
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ConnectResponseDto {
+        private Long towingCarId;
+        private String towingCarCode;
+        private String status; // "CONNECTING", "CONNECTED"
+    }
+
+    // 7. [기장 -> 서버] 해제 요청 (Scenario C)
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DisconnectRequestDto {
+        private Long missionId;
+        private String command; // "DISCONNECT_START"
+    }
+
+    // 8. [서버 -> 기장] 해제 응답 (Scenario C)
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DisconnectResponseDto {
+        private Long missionId;
+        private String status; // "DISCONNECTING", "DISCONNECTED"
     }
 }

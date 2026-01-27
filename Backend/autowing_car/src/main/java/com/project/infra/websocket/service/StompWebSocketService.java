@@ -14,20 +14,19 @@ public class StompWebSocketService implements WebSocketService {
 
     @Override
     public void notifyAdminRequest(Object payload) {
-        // 관제사는 '/topic/admin/requests'를 보고 있다고 가정
-        String destination = "/topic/admin/requests";
+        // 관제사는 '/topic/controller/requests'를 보고 있다고 가정
+        String destination = "/topic/controller/requests";
         messagingTemplate.convertAndSend(destination, payload);
         log.info("관제사 알림 전송: {}", payload);
     }
 
     @Override
     public void notifyPilotResult(String pilotUsername, Object payload) {
-        // 기장은 '/user/queue/reply'를 구독 중
+        // 기장은 '/user/queue/reply'를 구독 중 (개별 메시지)
         messagingTemplate.convertAndSendToUser(
-            pilotUsername, 
-            "/queue/reply", 
-            payload
-        );
+                pilotUsername,
+                "/queue/reply",
+                payload);
     }
 
     @Override
@@ -40,9 +39,16 @@ public class StompWebSocketService implements WebSocketService {
         messagingTemplate.convertAndSendToUser(username, "/queue/errors", message);
     }
 
-    // 특정 차의 상태를 실시간으로 브로드캐스트하는 메서드 추가 가능
+    // 특정 차의 상태를 실시간으로 브로드캐스트하는 메서드
     @Override
     public void broadcastCarStatus(String carCode, Object monitoringPayload) {
-        messagingTemplate.convertAndSend("/topic/car/" + carCode + "/monitoring", monitoringPayload);
+        // 요청 사항: /topic/towingcar/{towingCarId}
+        messagingTemplate.convertAndSend("/topic/towingcar/" + carCode, monitoringPayload);
+    }
+
+    @Override
+    public void notifyFlightChannel(Long scheduleId, Object payload) {
+        // 요청 사항: /topic/flight/{scheduleId}
+        messagingTemplate.convertAndSend("/topic/flight/" + scheduleId, payload);
     }
 }

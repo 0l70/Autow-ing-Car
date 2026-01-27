@@ -25,4 +25,8 @@ public class FlightDBAdaptor {
     public Flight save(Flight flight) {
         return flightRepository.save(flight);
     }
+
+    public Flight findFlightByTowingCar(com.project.domain.towingcar.entity.TowingCar towingCar) {
+        return flightRepository.findByTowingCar(towingCar).orElse(null);
+    }
 }

@@ -20,6 +20,8 @@ public interface TowingCarRepository extends JpaRepository<TowingCar, Long> {
     // 차량 코드로 조회 (예: "TC01")
     Optional<TowingCar> findByCode(String code);
 
+    boolean existsByCode(String code);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE) // 다른 트랜잭션이 끝날 때까지 대기
     @Query("SELECT t FROM TowingCar t WHERE t.code = :code")
     Optional<TowingCar> findByCodeForUpdate(@Param("code") String code);
