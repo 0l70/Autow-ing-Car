@@ -27,14 +27,16 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws-server")
                 .setAllowedOriginPatterns(
-                        "http://127.0.0.1:3000","http://localhost:3000")
+                        "http://127.0.0.1:3000", "http://localhost:3000")
                 .addInterceptors(authHandshakeInterceptor) // 👈 Interceptor 추가
                 .setHandshakeHandler(new DefaultHandshakeHandler() { // 2. 핸들러: Principal 승격
                     @Override
-                    protected Principal determineUser(ServerHttpRequest request, WebSocketHandler wsHandler, Map<String, Object> attributes) {
+                    protected Principal determineUser(ServerHttpRequest request, WebSocketHandler wsHandler,
+                            Map<String, Object> attributes) {
                         // 세션에서 USER_ID 꺼내기
                         String userId = (String) attributes.get("USER_ID");
-                        if (userId == null) return null;
+                        if (userId == null)
+                            return null;
                         return new StompPrincipal(userId);
                     }
                 })
@@ -50,8 +52,14 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     public static class StompPrincipal implements Principal {
         private final String name;
-        public StompPrincipal(String name) { this.name = name; }
+
+        public StompPrincipal(String name) {
+            this.name = name;
+        }
+
         @Override
-        public String getName() { return name; }
+        public String getName() {
+            return name;
+        }
     }
 }
