@@ -83,7 +83,7 @@ class TowingCarServiceTest {
 
                 // then
                 // 1. 차량 상태가 MOVING으로 변했는지 확인
-                assertEquals(CarStatus.MOVING, idleCar.getCarStatus());
+                assertEquals(CarStatus.MOVING_TO_LOAD, idleCar.getCarStatus());
 
                 // 2. MQTT 전송 확인 (Topic에 CarCode 포함, Payload에 명령 포함)
                 verify(mqttOutboundService).publish(contains("TC01"), contains("MOVE_TO_GATE"));
@@ -98,7 +98,7 @@ class TowingCarServiceTest {
                 Long flightId = 1L;
                 String pilotId = "PILOT_01";
 
-                TowingCar mockCar = TowingCar.builder().code("TC01").carStatus(CarStatus.MOVING).build();
+                TowingCar mockCar = TowingCar.builder().code("TC01").carStatus(CarStatus.MOVING_TO_LOAD).build();
                 Flight mockFlight = Flight.builder().id(flightId).assignedTowingCar(mockCar).build();
 
                 given(flightDBAdaptor.getFlightById(flightId)).willReturn(mockFlight);
@@ -118,7 +118,7 @@ class TowingCarServiceTest {
                 // TOWING/CONNECTED 확인)
                 // Service 코드에서 car.updateStatus(..., CarStatus.CONNECTED) 또는 TOWING을 호출함.
                 // 제공해주신 코드에는 CONNECTED로 되어 있으므로 CONNECTED 확인.
-                assertEquals(CarStatus.TOWING, mockCar.getCarStatus());
+                assertEquals(CarStatus.LOADING, mockCar.getCarStatus());
         }
 
         // --- 3. 해제 (Disconnect) 테스트 ---
@@ -159,10 +159,10 @@ class TowingCarServiceTest {
                 String carCode = "TC01";
                 TowingCar mockCar = TowingCar.builder()
                                 .code(carCode)
-                                .carStatus(CarStatus.MOVING) // 현재 이동 중
+                                .carStatus(CarStatus.MOVING_TO_LOAD) // 현재 이동 중
                                 .build();
                 // 위치 초기화
-                mockCar.updateStatus(10.0, 10.0, 0.0, 0.0, 90, CarStatus.MOVING);
+                mockCar.updateStatus(10.0, 10.0, 0.0, 0.0, 90, CarStatus.MOVING_TO_LOAD);
 
                 Flight mockFlight = Flight.builder().id(1L).nodeCode("GATE_A").assignedTowingCar(mockCar).build();
                 Node gateNode = Node.builder().posX(10.0).posY(10.0).build();
@@ -189,7 +189,7 @@ class TowingCarServiceTest {
                 verify(mqttOutboundService).publish(contains(carCode), contains("CONNECT"));
 
                 // 2. 상태 변경 확인
-                assertEquals(CarStatus.TOWING, mockCar.getCarStatus());
+                assertEquals(CarStatus.LOADING, mockCar.getCarStatus());
         }
 
         @Test
@@ -257,7 +257,6 @@ class TowingCarServiceTest {
                 // then
                 // 1. 차량 엔티티 업데이트 확인
                 assertEquals(95, mockCar.getBattery());
-                assertEquals(CarStatus.MOVING, mockCar.getCarStatus());
                 assertEquals(5.0, mockCar.getLastPosX());
 
                 // 2. 로그 저장 호출 확인

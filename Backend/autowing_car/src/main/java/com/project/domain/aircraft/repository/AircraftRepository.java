@@ -9,5 +9,5 @@ import com.project.domain.aircraft.entity.Aircraft;
 
 @Repository
 public interface AircraftRepository extends JpaRepository<Aircraft, Long> {
-    Optional<Aircraft> indByRegistrationNum(String registrationNum);
+    Optional<Aircraft> findByRegistrationNum(String registrationNum);
 }

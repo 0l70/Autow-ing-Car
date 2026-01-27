@@ -66,7 +66,7 @@ public class TowingCar {
     // 미션 시작 시 호출
     public void assignMission(Long missionId) {
         this.currentMissionId = missionId;
-        this.carStatus = CarStatus.MOVING;
+        this.carStatus = CarStatus.MOVING_TO_LOAD;
     }
 
     // 미션 종료 시 호출

@@ -56,7 +56,7 @@ public class TowingCarService {
 
         // 이동 중 상태로 변경
         car.updateStatus(car.getLastPosX(), car.getLastPosY(), car.getLastHeading(),
-                car.getLastVelocity(), car.getBattery(), CarStatus.MOVING);
+                car.getLastVelocity(), car.getBattery(), CarStatus.MOVING_TO_LOAD);
 
         log.info("🚗 [Dispatch] {} -> {}", car.getCode(), flightNumber);
         sendMqttCommand(car.getCode(), "MOVE_TO_GATE", Map.of("targetNode", flight.getNodeCode()));
@@ -80,7 +80,7 @@ public class TowingCarService {
 
         // 상태 즉시 반영 (또는 로봇 응답 대기)
         car.updateStatus(car.getLastPosX(), car.getLastPosY(), car.getLastHeading(),
-                car.getLastVelocity(), car.getBattery(), CarStatus.TOWING);
+                car.getLastVelocity(), car.getBattery(), CarStatus.LOADING);
     }
 
     /**
@@ -137,7 +137,7 @@ public class TowingCarService {
             return;
 
         // Auto Connect
-        if (isAutoConnectEnabled && car.getCarStatus() == CarStatus.MOVING) { // DB상 배차이동중
+        if (isAutoConnectEnabled && car.getCarStatus() == CarStatus.MOVING_TO_LOAD) { // DB상 배차이동중
             Flight flight = flightDBAdaptor.getFlightByAssignedCar(car);
             if (flight != null && isArrivedAt(x, y, flight.getNodeCode())) {
                 connectCar("SYSTEM", new CarConnectRequestDto(flight.getId()));

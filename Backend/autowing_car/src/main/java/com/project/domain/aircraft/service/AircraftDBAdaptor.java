@@ -13,7 +13,7 @@ public class AircraftDBAdaptor {
     private final AircraftRepository aircraftRepository;
 
     public Aircraft getAircraftByRegistrationNum(String registrationNum) {
-        return aircraftRepository.indByRegistrationNum(registrationNum)
+        return aircraftRepository.findByRegistrationNum(registrationNum)
                 .orElseThrow(() -> new IllegalArgumentException("No Aircraft: " + registrationNum));
     }
 

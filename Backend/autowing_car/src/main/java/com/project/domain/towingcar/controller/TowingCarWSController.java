@@ -1,8 +1,6 @@
 package com.project.domain.towingcar.controller;
 
 import java.security.Principal;
-import java.util.Map;
-
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -13,7 +11,6 @@ import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.CarDisconnectRequ
 import com.project.domain.towingcar.service.TowingCarService;
 
 import lombok.RequiredArgsConstructor;
-import lombok.extern.java.Log;
 import lombok.extern.slf4j.Slf4j;
 
 @Controller
