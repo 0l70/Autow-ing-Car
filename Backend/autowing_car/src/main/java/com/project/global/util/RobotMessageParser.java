@@ -14,14 +14,14 @@ public class RobotMessageParser {
     private final ObjectMapper objectMapper;
 
     // 예: autowing_car/v1/TC01/monitoring -> carId=TC01, type=monitoring
-    // 예: autowing_car/v1/TC01/ack       -> carId=TC01, type=event
+    // 예: autowing_car/v1/TC01/ack -> carId=TC01, type=event
     public RobotIncomingMessage parse(String topic, String payloadString) {
         try {
             // 1. 토픽 분해
             String[] parts = topic.split("/");
-            
+
             // 유효성 검사 (최소 길이 체크)
-            if (parts.length < 4) { 
+            if (parts.length < 4) {
                 throw new IllegalArgumentException("토픽 구조가 너무 짧습니다: " + topic);
             }
 
@@ -44,4 +44,3 @@ public class RobotMessageParser {
         }
     }
 }
-

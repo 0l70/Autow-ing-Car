@@ -7,5 +7,5 @@ import com.project.domain.map.entity.Node;
 
 @Repository
 public interface NodeRepository extends JpaRepository<Node, Long> {
-    
+
 }

@@ -15,7 +15,7 @@ public class MissionWebSocketDtos {
     public static class PilotRequestDto {
         private String departNode;
         private String destNode;
-        private Long flightId;
+        private String flightNumber;
     }
 
     // 2. [서버 -> 관제사]
@@ -70,10 +70,10 @@ public class MissionWebSocketDtos {
     @AllArgsConstructor
     public static class ATCDecisionDto {
         private Long missionId;
-        
+
         @JsonProperty("approved") // JSON 필드명 명시 권장
         private boolean approved;
-        
+
         private String selectedCarCode;
         private List<String> selectedEdgeIds;
         private String rejectReason;
@@ -88,7 +88,7 @@ public class MissionWebSocketDtos {
         private Long missionId;
         private String status;
         private String message;
-        
+
         public static MissionResponseDto from(Mission mission) {
             return MissionResponseDto.builder()
                     .missionId(mission.getId())

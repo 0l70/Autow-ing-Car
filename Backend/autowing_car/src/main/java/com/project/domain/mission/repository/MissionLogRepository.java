@@ -8,5 +8,6 @@ import java.util.List;
 @Repository
 public interface MissionLogRepository extends JpaRepository<MissionLog, Long> {
     // 특정 미션의 로그 전체 조회
-    List<MissionLog> findByMission_IdOrderByCreatedAtDesc(Long missionId);
+    List<MissionLog> findByMissionIdOrderByCreatedAtDesc(Long missionId);
+
 }

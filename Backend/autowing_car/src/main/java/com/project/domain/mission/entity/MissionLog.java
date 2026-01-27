@@ -1,18 +1,16 @@
 package com.project.domain.mission.entity;
 
 import com.project.domain.common.LogType;
-import com.project.domain.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "mission_log")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@AllArgsConstructor
-@Builder
+@Table(name = "mission_log", indexes = {
+        @Index(name = "idx_mission_log_mission_id", columnList = "MISSION_ID")
+})
 public class MissionLog {
 
     @Id
@@ -20,22 +18,29 @@ public class MissionLog {
     @Column(name = "log_id")
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "mission_id", nullable = false)
-    private Mission mission;
+    @Column(nullable = false, updatable = false)
+    private LocalDateTime createdAt;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "actor_id") // Nullable (시스템인 경우)
-    private User actor;
+    @Column(nullable = false)
+    private String message;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private LogType type;
 
-    @Column(nullable = false)
-    private String message;
+    // ★ FK 없이 ID값만 저장 (데이터 보존 및 성능)
+    @Column(name = "actor_id")
+    private Long actorId;
 
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    @Column(name = "mission_id")
+    private Long missionId;
+
+    @Builder
+    public MissionLog(String message, LogType type, Long actorId, Long missionId) {
+        this.createdAt = LocalDateTime.now();
+        this.message = message;
+        this.type = type;
+        this.actorId = actorId;
+        this.missionId = missionId;
+    }
 }

@@ -20,7 +20,7 @@ public interface MissionRepository extends JpaRepository<Mission, Long> {
 
     // 2. 특정 항공편에 배정된 미션 조회
     // Optional<Mission> findByFlight_Id(Long flightId);
-    
+
     // 3. 최근 완료된 미션 순 조회 (이력용)
     List<Mission> findTop10ByTowingCarOrderByCompletedAtDesc(TowingCar towingCar);
 }

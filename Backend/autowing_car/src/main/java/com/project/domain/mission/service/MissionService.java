@@ -2,17 +2,18 @@ package com.project.domain.mission.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.project.domain.common.CarStatus;
+import com.project.domain.common.LogType;
 import com.project.domain.common.MissionStatus;
 import com.project.domain.flight.entity.Flight;
-import com.project.domain.flight.repository.FlightRepository;
+import com.project.domain.flight.service.FlightDBAdaptor;
+import com.project.domain.flight.service.FlightService;
 import com.project.domain.mission.dto.MissionWebSocketDtos.*;
 import com.project.domain.mission.entity.Mission;
-import com.project.domain.mission.repository.MissionRepository;
 import com.project.domain.towingcar.entity.TowingCar;
-import com.project.domain.towingcar.repository.TowingCarRepository;
+import com.project.domain.towingcar.service.TowingCarDBAdaptor;
 import com.project.infra.mqtt.MqttTopics;
 import com.project.infra.mqtt.service.MqttOutboundService;
-import com.project.infra.websocket.service.WebSocketService; // ★ 필수: 웹소켓 서비스 주입
+import com.project.infra.websocket.service.WebSocketService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -20,196 +21,208 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
+import java.util.*;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class MissionService {
 
-    private final MissionRepository missionRepository;
-    private final TowingCarRepository towingCarRepository;
-    private final FlightRepository flightRepository;
-    private final WebSocketService webSocketService; // 관제사에게 알림 보내는 배달부
+    private final MissionDBAdaptor missionDBAdaptor;
+    private final TowingCarDBAdaptor towingCarReader;
+    private final FlightDBAdaptor flightDBAdaptor;
+
+    private final WebSocketService webSocketService;
     private final MqttOutboundService mqttOutboundService;
     private final ObjectMapper objectMapper;
 
+    // =========================================================================
+    // Phase 1. 차량 호출 및 연결 (Dispatch & Connection) - 미션 생성 X
+    // =========================================================================
+
     /**
-     * 1. [기장 요청] 출발 요청 -> 분석 -> 관제사에게 결재 올림
+     * 기장이 "차량 호출" 버튼을 눌렀을 때 실행.
+     * 미션을 만들지 않고, Flight에 차량을 배정(Assign)하고 로봇을 부른다.
      */
     @Transactional
-    public void createMissionRequest(String pilotId, PilotRequestDto request) {
-        log.info("기장 요청 수신: {} ({} -> {})", pilotId, request.getDepartNode(), request.getDestNode());
+    public void dispatchCarToFlight(String flightNumber) {
+        Flight flight = flightDBAdaptor.findFlightByFlightNumber(flightNumber);
 
-        // Flight 정보 조회 (필수)
-        Flight flight = null;
-        if (request.getFlightId() != null) {
-            flight = flightRepository.findById(request.getFlightId())
-                    .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 항공편 ID: " + request.getFlightId()));
+        // 1. 이미 배정된 차가 있는지 확인
+        if (flight.getAssignedTowingCar() != null) {
+            throw new IllegalStateException("이미 배정된 차량이 있습니다: " + flight.getAssignedTowingCar().getCode());
         }
 
-        // 1. 미션 저장 (WAITING)
+        // 2. 가용 차량(IDLE) 찾기 (배터리 많은 순)
+        TowingCar car = towingCarReader.findFirstByCarStatusOrderByBatteryDesc(CarStatus.IDLE);
+
+        // 3. 항공편에 차량 예약 (DB 업데이트)
+        flight.setAssignedTowingCar(car); // Flight 엔티티에 setAssignedTowingCar(car)
+
+        // 4. 차량 상태 변경 (이동 중)
+        car.updateStatus(car.getLastPosX(), car.getLastPosY(), car.getLastHeading(),
+                car.getLastVelocity(), car.getBattery(), CarStatus.MOVING); // 아직 Mission ID는 없음
+        log.info("🚗 [배차 완료] Flight={} <-> Car={}", flightNumber, car.getCode());
+
+        // 5. 로봇에게 "게이트로 이동하라" 명령 전송
+        sendMqttAfterCommit(car.getCode(), "MOVE_TO_GATE", Map.of(
+                "targetNode", flight.getGateNumber(),
+                "flightNumber", flightNumber));
+    }
+
+    // =========================================================================
+    // Phase 2. 운송 미션 생성 및 시작 (Mission Creation & Transport) - 미션 생성 O
+    // =========================================================================
+
+    /**
+     * 차량이 도착하고 물리적 연결(Connect)이 완료된 후,
+     * 기장이 "운송 시작(Go to Runway)"을 요청했을 때 실행.
+     */
+    @Transactional
+    public void createTransportMission(String pilotId, PilotRequestDto request) {
+        Flight flight = flightDBAdaptor.findFlightByFlightNumber(request.getFlightNumber());
+
+        // 1. 사전 조건 검사: 차량이 배정되어 있어야 함
+        TowingCar car = flight.getAssignedTowingCar(); // Flight 엔티티에 추가했던 getter
+        if (car == null) {
+            throw new IllegalStateException("배정된 차량이 없습니다. 먼저 차량을 호출하세요.");
+        }
+
+        // 2. 중복 미션 검사 (이미 실행 중인 미션이 있으면 안됨)
+        // (필요 시 missionRepository.exists... 로직 추가)
+
+        // 3. ★ 미션 엔티티 생성 (비로소 DB에 Mission 기록)
         Mission mission = Mission.builder()
-                .pilotId(pilotId)
-                .flight(flight) // Flight 연결
-                .departNode(request.getDepartNode())
-                .destNode(request.getDestNode())
-                .status(MissionStatus.WAITING)
-                .build();
-        
-        Mission savedMission = missionRepository.save(mission);
-
-        // 2. 가용 차량 조회 (배터리순 정렬)
-        List<AvailableCarDto> carOptions = towingCarRepository.findAllByCarStatus(CarStatus.IDLE).stream()
-                .sorted(Comparator.comparing(TowingCar::getBattery).reversed())
-                .map(car -> AvailableCarDto.builder()
-                        .carCode(car.getCode())
-                        .battery(car.getBattery())
-                        .currentLocation(car.getLastPosX() + "," + car.getLastPosY())
-                        .build())
-                .collect(Collectors.toList());
-
-        // 3. 추천 경로 생성 (Mockup: 실제로는 PathFindingService 호출)
-        List<PathOptionDto> pathOptions = new ArrayList<>();
-        pathOptions.add(PathOptionDto.builder()
-                .optionId(1L)
-                .label("추천: 최단 경로")
-                // 예시 간선 ID들 (DB의 Edge테이블에 있는 edge_code여야 함)
-                .edgeIds(List.of("E_G101_TW1", "E_TW1_RWY")) 
-                .nodes(List.of(
-                    NodeDto.builder().code(request.getDepartNode()).x(10.0).y(10.0).build(),
-                    NodeDto.builder().code(request.getDestNode()).x(50.0).y(50.0).build()
-                ))
-                .build());
-
-        // 4. 관제사에게 알림 전송 (Topic: /topic/admin/requests)
-        AdminAlertDto alertData = AdminAlertDto.builder()
-                .missionId(savedMission.getId())
-                .pilotId(pilotId)
-                .departNode(request.getDepartNode())
-                .destNode(request.getDestNode())
-                .availableCars(carOptions)
-                .pathOptions(pathOptions)
+                .pilot(flight.getPilot())
+                .flight(flight)
+                .towingCar(car)
+                .status(MissionStatus.WAITING) // 관제 승인 대기 상태로 시작
+                .departNode(request.getDepartNode()) // 현재 게이트
+                .destNode(request.getDestNode()) // 목적지 (활주로)
                 .build();
 
-        // JSON 변환 및 전송
-        try {
-            String json = objectMapper.writeValueAsString(alertData);
-            webSocketService.notifyAdminRequest(alertData);
-        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-            log.error("JSON 변환 실패", e);
-        }
-        log.info("→ 관제사에게 승인 요청 전송 완료 (MissionID: {})", savedMission.getId());
+        Mission savedMission = missionDBAdaptor.save(mission);
+
+        // 4. 로그 기록
+        missionDBAdaptor.saveLog(savedMission, LogType.REQUEST,
+                "Transport Request: " + request.getDepartNode() + " -> " + request.getDestNode());
+
+        // 5. 관제사에게 승인 요청 (알림 전송)
+        notifyAdminForApproval(savedMission);
+
+        log.info("📄 [미션 생성] Transport Mission Created: ID={}", savedMission.getId());
     }
 
     /**
-     * 2. [관제사 승인] 결정 -> 차량 배차 -> 로봇 명령 -> 알림
+     * 관제사가 "승인(Approve)"을 눌렀을 때 실행.
+     * 실제 로봇이 항공기를 끌고 움직이기 시작함.
      */
     @Transactional
     public void approveMission(String controllerId, ATCDecisionDto decision) {
-        Mission mission = missionRepository.findById(decision.getMissionId())
-                .orElseThrow(() -> new IllegalArgumentException("미션 없음"));
+        Mission mission = missionDBAdaptor.getMissionById(decision.getMissionId());
 
-        // 반려 처리
         if (!decision.isApproved()) {
-            mission.updateStatus(MissionStatus.REJECTED); // Status Enum에 REJECTED 추가 필요 (없으면 CANCELLED 등)
-            // 기장에게 알림
-            if (mission.getPilotId() != null) {
-                webSocketService.notifyPilotResult(mission.getPilotId(), 
-                    MissionResponseDto.builder().status("REJECTED").message(decision.getRejectReason()).build());
-            }
+            handleMissionRejection(mission, controllerId, decision.getRejectReason());
             return;
         }
 
-        // 승인 처리
-        TowingCar car = towingCarRepository.findByCodeForUpdate(decision.getSelectedCarCode())
-                .orElseThrow(() -> new IllegalArgumentException("차량 없음"));
-
-        if (car.getCarStatus() != CarStatus.IDLE) {
-            webSocketService.sendErrorToUser(controllerId, "차량이 이미 작업 중입니다.");
-            return;
-        }
-
-        // 1. 상태 업데이트
-        mission.assignCar(car, decision.getSelectedEdgeIds());
+        // 1. 미션 상태 변경 (RUNNING)
         mission.updateStatus(MissionStatus.RUNNING);
-        car.updateStatus(car.getLastPosX(), car.getLastPosY(), car.getLastHeading(), car.getBattery(), CarStatus.MOVING, MissionStatus.RUNNING);
 
-        // 2. 알림 전송
+        // 2. 경로 설정 (관제사가 승인한 경로)
+        mission.setRouteEdgeIds(decision.getSelectedEdgeIds()); // 엔티티에 setter 필요
+
+        // 3. 차량 정보 업데이트 (현재 수행중인 미션 ID 매핑)
+        TowingCar car = mission.getTowingCar();
+        car.assignMission(mission.getId()); // TowingCar.currentMissionId = missionId
+
+        missionDBAdaptor.saveLog(mission, LogType.APPROVE, "Approved by " + controllerId);
+
+        // 4. 알림 전송
+        notifyMissionUpdate(mission);
+
+        // 5. 로봇에게 "운송 시작" 명령 전송
+        sendMqttAfterCommit(car.getCode(), "START_TRANSPORT", Map.of(
+                "path", decision.getSelectedEdgeIds(),
+                "missionId", mission.getId(),
+                "destNode", mission.getDestNode()));
+    }
+
+    // =========================================================================
+    // Phase 3. 제어 (Control)
+    // =========================================================================
+
+    /**
+     * 기장/관제사가 비상 정지(STOP) 등을 눌렀을 때
+     */
+    public void controlMission(String userId, PilotControlDto controlDto) {
+        Mission mission = missionDBAdaptor.getMissionById(controlDto.getMissionId());
+
+        String cmd = controlDto.getCommand(); // "STOP", "RESUME"
+        missionDBAdaptor.saveLog(mission, LogType.CONTROL, userId + ": " + cmd);
+
+        // 즉시 전송
+        sendMqttImmediate(mission.getTowingCar().getCode(), cmd, Map.of());
+
+        // DB 상태 업데이트 (옵션)
+        if ("STOP".equals(cmd))
+            mission.updateStatus(MissionStatus.PAUSED);
+        if ("RESUME".equals(cmd))
+            mission.updateStatus(MissionStatus.RUNNING);
+    }
+
+    // =========================================================================
+    // Private Helpers
+    // =========================================================================
+    private void notifyAdminForApproval(Mission mission) {
+        // 관제사에게 보낼 데이터 구성 (이전 코드 활용)
+        // ... (availableCars, pathOptions 등 로직)
+        AdminAlertDto alert = AdminAlertDto.builder()
+                .missionId(mission.getId())
+                .pilotId(mission.getPilot().getUsername())
+                .departNode(mission.getDepartNode())
+                .destNode(mission.getDestNode())
+                .build();
+        webSocketService.notifyAdminRequest(alert);
+    }
+
+    private void handleMissionRejection(Mission mission, String controllerId, String reason) {
+        mission.updateStatus(MissionStatus.REJECTED);
+        missionDBAdaptor.saveLog(mission, LogType.REJECT, reason);
+        webSocketService.notifyPilotResult(mission.getPilot().getUsername(), MissionResponseDto.from(mission));
+    }
+
+    private void notifyMissionUpdate(Mission mission) {
         MissionResponseDto response = MissionResponseDto.from(mission);
-        
-        // 기장에게
-        if (mission.getPilotId() != null) {
-            webSocketService.notifyPilotResult(mission.getPilotId(), response);
-        }
-        // 관제사 전체에게 (현황판 갱신)
+        if (mission.getPilot() != null)
+            webSocketService.notifyPilotResult(mission.getPilot().getUsername(), response);
         webSocketService.broadcastMissionUpdate(response);
+    }
 
-
-        // ★ 수정: 트랜잭션 커밋 성공 후에만 실행되도록 예약
+    private void sendMqttAfterCommit(String carCode, String cmd, Map<String, Object> data) {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-            sendMissionToRobot(car.getCode(), decision.getSelectedEdgeIds());
-            log.info("Transaction Committed. MQTT Command Sent to {}", car.getCode());
+                sendMqttImmediate(carCode, cmd, data);
             }
-        }); 
-        log.info("미션 승인 완료: By {}, Car {}", controllerId, car.getCode());
+        });
     }
 
-    /**
-     * 3. [기장 제어] 비상 정지/재개
-     */
-    public void controlMission(String pilotId, PilotControlDto controlDto) {
-        Mission mission = missionRepository.findById(controlDto.getMissionId())
-                .orElseThrow(() -> new IllegalArgumentException("미션 없음"));
-
-        // 권한 체크
-        if (!mission.getPilotId().equals(pilotId)) {
-            throw new SecurityException("본인의 미션만 제어 가능합니다.");
-        }
-        
-        if (mission.getTowingCar() == null) {
-             throw new IllegalStateException("배차된 차량이 없습니다.");
-        }
-
-        // MQTT 전송
+    private void sendMqttImmediate(String carCode, String cmd, Map<String, Object> data) {
         try {
-            Map<String, Object> payload = Map.of(
-                "cmd", controlDto.getCommand(), // "PAUSE" or "RESUME"
-                "timestamp", System.currentTimeMillis()
-            );
-            String json = objectMapper.writeValueAsString(payload);
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("cmd", cmd);
+            payload.put("timestamp", System.currentTimeMillis());
+            if (data != null)
+                payload.put("data", data);
 
-            String topic = String.format(MqttTopics.CMD_FORMAT, mission.getTowingCar().getCode());
-            
-            mqttOutboundService.publish(topic, json);
-            log.info("기장 제어 명령: {} -> {}", pilotId, controlDto.getCommand());
-            
-        } catch (Exception e) {
-            log.error("제어 명령 전송 실패", e);
-            throw new RuntimeException("명령 전송 실패");
-        }
-    }
-
-    // 내부 메서드: 로봇에게 주행 시작 명령
-    private void sendMissionToRobot(String carCode, List<String> pathEdges) {
-        try {
-            Map<String, Object> payload = Map.of(
-                "cmd", "START_MISSION",
-                "path", pathEdges
-            );
             String json = objectMapper.writeValueAsString(payload);
             String topic = String.format(MqttTopics.CMD_FORMAT, carCode);
-            
             mqttOutboundService.publish(topic, json);
-            log.info("MQTT 발송 [Topic: {}] Payload: {}", topic, json);
+            log.info("📡 MQTT Sent: {}", json);
         } catch (Exception e) {
-            log.error("MQTT 발송 실패", e);
+            log.error("MQTT Error", e);
         }
     }
+
 }

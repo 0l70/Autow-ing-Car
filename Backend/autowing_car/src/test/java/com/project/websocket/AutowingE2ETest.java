@@ -78,7 +78,8 @@ public class AutowingE2ETest {
         });
 
         // 3. 요청 전송
-        PilotRequestDto request = new PilotRequestDto("GATE_1", "RWY_A", null); // FlightId는 null로
+        PilotRequestDto request = new PilotRequestDto("GATE_1", "RWY_A", "KE001");
+        request.setFlightNumber("KE001"); // FlightId는 null로
         session.send("/app/mission/request", request);
 
         // 4. 검증

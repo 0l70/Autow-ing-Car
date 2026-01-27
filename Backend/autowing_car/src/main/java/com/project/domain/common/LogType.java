@@ -1,5 +1,5 @@
 package com.project.domain.common;
 
 public enum LogType {
-    COMMAND, ALERT
+    COMMAND, ALERT, REQUEST, CONTROL, DISPATCH, APPROVE, REJECT
 }

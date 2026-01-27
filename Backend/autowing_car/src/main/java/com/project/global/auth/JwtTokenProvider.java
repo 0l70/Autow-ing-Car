@@ -37,19 +37,20 @@ public class JwtTokenProvider {
 
     // Access Token 생성
     public String createToken(Authentication authentication) {
-        return buildToken(authentication, this.tokenValidityInMilliseconds,TOKEN_TYPE_ACCESS);
+        return buildToken(authentication, this.tokenValidityInMilliseconds, TOKEN_TYPE_ACCESS);
     }
 
     /**
      * WEBSOCKET용 토큰 생성 (짧은 유효기간)
+     * 
      * @param authentication
      * @return
      */
     public String createSocketToken(Authentication authentication) {
-        return buildToken(authentication, 1000000,TOKEN_TYPE_SOCKET); // 10000ms = 10초
+        return buildToken(authentication, 1000000, TOKEN_TYPE_SOCKET); // 10000ms = 10초
     }
 
-    private String buildToken(Authentication authentication, long duration,String type) {
+    private String buildToken(Authentication authentication, long duration, String type) {
         String authorities = authentication.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .collect(Collectors.joining(","));
@@ -72,8 +73,8 @@ public class JwtTokenProvider {
     }
 
     /*
-    소켓 토큰인지 확인
-    */
+     * 소켓 토큰인지 확인
+     */
     public boolean isSocketToken(String token) {
         try {
             String type = parseClaims(token).get("token_type", String.class);
@@ -84,6 +85,7 @@ public class JwtTokenProvider {
             return false;
         }
     }
+
     // 인증 정보 조회
     public Authentication getAuthentication(String token) {
         Claims claims = parseClaims(token);
