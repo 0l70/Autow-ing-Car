@@ -30,6 +30,11 @@ public class Flight {
     // nullable = false)
     private Aircraft aircraft;
 
+    // 명세서 요구사항: Flight에 towing_car_id가 사전 배정됨
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "towing_car_id")
+    private TowingCar towingCar;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "pilot_id")
     // , nullable = false)
@@ -39,8 +44,8 @@ public class Flight {
     @JoinColumn(name = "assigned_towing_car_id")
     private TowingCar assignedTowingCar;
 
-    @Column(name = "gate_number", length = 10)
-    private String gateNumber;
+    @Column(name = "node_code", length = 30) // 기존 gate_number 대신 node_code로 변경
+    private String nodeCode;
 
     @Column(name = "departure_date")
     // nullable = false)
