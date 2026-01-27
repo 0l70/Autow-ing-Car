@@ -40,6 +40,7 @@ case "$TYPE" in
     "test")     EMOJI="✅"; LABEL="Test" ;;
     "chore")    EMOJI="🔨"; LABEL="Chore" ;;
     "design")   EMOJI="💄"; LABEL="Design" ;;
+    "hotfix")   EMOJI="🚑️"; LABEL="Hotfix" ;;
     *)          EMOJI="✨"; LABEL="Feat" ;; # 기본값
 esac
 
