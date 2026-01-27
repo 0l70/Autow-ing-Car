@@ -27,7 +27,7 @@ public class TowingCar {
     @Column(nullable = false, length = 20)
     private CarStatus carStatus; // IDLE, TOWING, MOVING...
 
-    //성능 최적화용 역정규화 컬럼 (현재 수행중인 미션 ID)
+    // 성능 최적화용 역정규화 컬럼 (현재 수행중인 미션 ID)
     // FK를 걸지 않거나, 걸더라도 nullable로 설정
     @Column(name = "CURRENT_MISSION_ID")
     private Long currentMissionId;

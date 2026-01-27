@@ -1,15 +1,21 @@
 package com.project.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.project.domain.common.CarStatus;
 import com.project.domain.common.MissionStatus;
 import com.project.domain.flight.entity.Flight;
 import com.project.domain.flight.repository.FlightRepository;
+import com.project.domain.flight.service.FlightDBAdaptor;
 import com.project.domain.mission.dto.MissionWebSocketDtos.*;
 import com.project.domain.mission.entity.Mission;
+import com.project.domain.mission.repository.MissionLogRepository;
 import com.project.domain.mission.repository.MissionRepository;
+import com.project.domain.mission.service.MissionDBAdaptor;
 import com.project.domain.mission.service.MissionService;
 import com.project.domain.towingcar.entity.TowingCar;
 import com.project.domain.towingcar.repository.TowingCarRepository;
+import com.project.domain.towingcar.service.TowingCarDBAdaptor;
+import com.project.infra.mqtt.service.MqttOutboundService;
 import com.project.infra.websocket.service.WebSocketService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,6 +44,14 @@ class MissionServiceTest {
     @Mock private FlightRepository flightRepository;
     @Mock private WebSocketService webSocketService;
 
+    @Mock private MissionLogRepository missionLogRepository; // 이게 없어서 NPE 발생!
+    @Mock private MqttOutboundService mqttOutboundService;   // 얘도 필요할 겁니다
+    @Mock private ObjectMapper objectMapper;
+
+    @Mock private MissionDBAdaptor missionDBAdaptor;
+    @Mock private TowingCarDBAdaptor towingCarReader;
+    @Mock private FlightDBAdaptor flightDBAdaptor;
+
     @Test
     @DisplayName("기장이 미션을 요청하면 -> 저장되고 -> 관제사에게 알림이 가야 한다")
     void createMissionRequestTest() {
@@ -47,32 +61,33 @@ class MissionServiceTest {
         request.setDepartNode("GATE_101");
         request.setDestNode("RUNWAY_A");
         request.setFlightNumber("KE001");
-
-
-        // Mocking: "이 메서드가 호출되면 이런 값을 리턴해라"라고 설정
-        // Flight mockFlight = Flight.builder().id(1L).flightNumber("KE001").build();
+    
         TowingCar idleCar = TowingCar.builder().code("TC01").carStatus(CarStatus.IDLE).battery(90).build();
-        given(towingCarRepository.findByCode("TC01")).willReturn(Optional.of(idleCar));
-        given(towingCarRepository.findAllByCarStatus(CarStatus.IDLE)).willReturn(List.of(idleCar));
-
-        Flight mockFlight = Flight.builder().id(1L).flightNumber("KE001").assignedTowingCar(idleCar).build();
-        given(flightRepository.findByFlightNumber(request.getFlightNumber())).willReturn(Optional.of(mockFlight));
-
-        given(flightRepository.findById(1L)).willReturn(Optional.of(mockFlight));
-
+        Flight mockFlight = Flight.builder()
+                .id(1L)
+                .flightNumber("KE001")
+                .assignedTowingCar(idleCar)
+                .build();
+    
+        // ❌ [삭제] Repository Mocking은 이제 의미가 없습니다 (Service가 직접 호출하지 않음)
+        // given(flightRepository.findByFlightNumber(request.getFlightNumber())).willReturn(Optional.of(mockFlight));
+    
+        // ✅ [수정] Service가 실제로 사용하는 Adaptor를 Mocking 해야 합니다!
+        // (Adaptor 메서드명이 getFlightByNumber 라고 가정합니다)
+        given(flightDBAdaptor.getFlightByFlightNumber("KE001")).willReturn(mockFlight);
+    
+        // Mission 저장 Mocking
         Mission mockMission = Mission.builder().id(100L).status(MissionStatus.WAITING).build();
         given(missionRepository.save(any(Mission.class))).willReturn(mockMission);
-
         
-
+        // (옵션) Adaptor 안에서 중복 체크 등을 한다면 그에 대한 Mocking도 필요
+        // given(missionDBAdaptor.existsActiveMission(...)).willReturn(false);
+    
         // when (실행)
         missionService.createTransportMission(pilotId, request);
-
+    
         // then (검증)
-        // 1. 미션이 저장을 위해 호출되었는가?
         verify(missionRepository, times(1)).save(any(Mission.class));
-        
-        // 2. 관제사에게 알림 메서드가 호출되었는가? (핵심 로직 검증)
         verify(webSocketService, times(1)).notifyAdminRequest(any(AdminAlertDto.class));
     }
 }

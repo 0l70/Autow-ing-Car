@@ -11,4 +11,4 @@ public class H2ServerConfig {
     public org.h2.tools.Server h2TcpServer() throws SQLException {
         return org.h2.tools.Server.createTcpServer("-tcp", "-tcpAllowOthers", "-tcpPort", "9092");
     }
-} 
+}

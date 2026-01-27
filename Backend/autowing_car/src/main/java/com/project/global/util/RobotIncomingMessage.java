@@ -10,7 +10,7 @@ import lombok.ToString;
 @Builder
 @ToString
 public class RobotIncomingMessage {
-    private String carId;       // 차량 ID (TC01)
+    private String carId; // 차량 ID (TC01)
     private String messageType; // 토픽의 마지막 부분 (monitoring, event, ack ...)
-    private JsonNode payload;   // 내용은 아직 뭔지 모르니 JsonNode로 유연하게 받음
+    private JsonNode payload; // 내용은 아직 뭔지 모르니 JsonNode로 유연하게 받음
 }

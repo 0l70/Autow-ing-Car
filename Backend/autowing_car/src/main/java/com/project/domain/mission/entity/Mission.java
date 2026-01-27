@@ -40,7 +40,7 @@ public class Mission {
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
     private MissionStatus status; // WAITING, RUNNING...
-    
+
     @Column(name = "depart_node", length = 30)
     private String departNode;
 
@@ -71,7 +71,6 @@ public class Mission {
         this.destNode = destNode;
         this.assignedAt = LocalDateTime.now();
     }
-    
 
     public void assignCar(TowingCar car, List<String> confirmedPath) {
         this.towingCar = car;
@@ -88,7 +87,6 @@ public class Mission {
             this.completedAt = LocalDateTime.now();
         }
     }
-
 
     public void setRouteEdgeIds(List<String> selectedEdgeIds) {
         this.routeEdgeIds = selectedEdgeIds;

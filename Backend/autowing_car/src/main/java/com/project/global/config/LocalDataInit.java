@@ -38,12 +38,13 @@ public class LocalDataInit implements CommandLineRunner {
     private final TowingCarRepository towingCarRepository;
     private final FlightRepository flightRepository;
     private final UserRepository userRepository;
+
     @Override
     // @Transactional
     public void run(String... args) throws Exception {
         log.info("############ Local Data Initialization Start ############");
 
-         if (!userRepository.existsByEmployeeCode("P001")) {
+        if (!userRepository.existsByEmployeeCode("P001")) {
             User pilot = User.builder()
                     .email("pilot@atc.com")
                     .password(passwordEncoder.encode("1234")) // 비밀번호: 1234
@@ -82,7 +83,7 @@ public class LocalDataInit implements CommandLineRunner {
         // Gate -> Taxiway
         createAndSaveEdge("E_G101_TW1", gate101, tw1, 100.0);
         createAndSaveEdge("E_G102_TW1", gate102, tw1, 100.0);
-        
+
         // Taxiway -> Taxiway
         createAndSaveEdge("E_TW1_TW2", tw1, tw2, 100.0);
         createAndSaveEdge("E_TW2_TW1", tw2, tw1, 100.0); // 양방향 가정
@@ -95,7 +96,8 @@ public class LocalDataInit implements CommandLineRunner {
         createAndSaveCar("TC02", 10.0, 20.0, 80);
 
         // 4. Flight 데이터 생성
-        createAndSaveFlight("KE001",userRepository.findByEmail("pilot@atc.com"),towingCarRepository.findByCode("TC01"));
+        createAndSaveFlight("KE001", userRepository.findByEmail("pilot@atc.com"),
+                towingCarRepository.findByCode("TC01"));
 
         log.info("############ Local Data Initialization Finished ############");
     }
@@ -135,7 +137,7 @@ public class LocalDataInit implements CommandLineRunner {
         towingCarRepository.save(car);
     }
 
-    private void createAndSaveFlight(String flightNumber,Optional<User> pilot,Optional<TowingCar> towingCar) {
+    private void createAndSaveFlight(String flightNumber, Optional<User> pilot, Optional<TowingCar> towingCar) {
         // Flight 엔티티 생성 및 저장 로직 구현
         Flight flight = Flight.builder()
                 .flightNumber(flightNumber)

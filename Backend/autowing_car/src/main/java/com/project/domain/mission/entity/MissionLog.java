@@ -9,11 +9,12 @@ import java.time.LocalDateTime;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(name = "mission_log", indexes = {
-    @Index(name = "idx_mission_log_mission_id", columnList = "MISSION_ID")
+        @Index(name = "idx_mission_log_mission_id", columnList = "MISSION_ID")
 })
 public class MissionLog {
 
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "log_id")
     private Long id;
 

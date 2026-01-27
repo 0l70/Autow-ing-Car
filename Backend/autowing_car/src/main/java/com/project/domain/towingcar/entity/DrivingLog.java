@@ -10,11 +10,12 @@ import java.time.LocalDateTime;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(name = "driving_log", indexes = {
-    @Index(name = "idx_driving_log_car_time", columnList = "TOWING_CAR_ID, CREATED_AT")
+        @Index(name = "idx_driving_log_car_time", columnList = "TOWING_CAR_ID, CREATED_AT")
 })
 public class DrivingLog {
 
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "log_id")
     private Long id;
 
@@ -44,7 +45,7 @@ public class DrivingLog {
 
     @Builder
     public DrivingLog(Double posX, Double posY, Double heading, Double velocity, Integer battery,
-                      CarStatus carStatus, MissionStatus missionStatus, Long towingCarId, Long missionId) {
+            CarStatus carStatus, MissionStatus missionStatus, Long towingCarId, Long missionId) {
         this.createdAt = LocalDateTime.now();
         this.posX = posX;
         this.posY = posY;

@@ -22,16 +22,16 @@ public class AuthHandshakeInterceptor implements HandshakeInterceptor {
     @Override
     public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
             WebSocketHandler wsHandler, Map<String, Object> attributes) throws Exception {
-        
+
         if (request instanceof ServletServerHttpRequest servletRequest) {
             HttpServletRequest httpRequest = servletRequest.getServletRequest();
             String path = httpRequest.getRequestURI();
-            
+
             // SockJS의 /info 요청 등은 통과시키거나, 여기서도 토큰 검사를 할지 결정해야 함.
             // 보통 /info 요청은 인증을 생략하고 실제 websocket upgrade 요청만 막아도 됨.
             if (path.endsWith("/info")) {
                 log.debug("[WS Interceptor] SockJS Info 요청 통과");
-                return true; 
+                return true;
             }
 
             String token = httpRequest.getParameter("socket_token");
@@ -48,9 +48,9 @@ public class AuthHandshakeInterceptor implements HandshakeInterceptor {
                 log.info("[WS Interceptor] 인증 성공. UserID: {}", userId);
                 return true;
             }
-        
+
         }
-        
+
         log.warn("[WS Interceptor] 인증 실패. 연결 거부.");
         return false;
     }

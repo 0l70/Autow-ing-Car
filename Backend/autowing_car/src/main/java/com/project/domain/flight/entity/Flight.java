@@ -27,7 +27,7 @@ public class Flight {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "aircraft_id")
-    //  nullable = false)
+    // nullable = false)
     private Aircraft aircraft;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -35,7 +35,7 @@ public class Flight {
     // , nullable = false)
     private User pilot;
 
-    @OneToOne(fetch = FetchType.LAZY) 
+    @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assigned_towing_car_id")
     private TowingCar assignedTowingCar;
 
