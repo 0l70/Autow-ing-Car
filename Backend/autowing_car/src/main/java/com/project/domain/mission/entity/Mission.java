@@ -3,6 +3,7 @@ package com.project.domain.mission.entity;
 import com.project.domain.common.MissionStatus;
 import com.project.domain.flight.entity.Flight;
 import com.project.domain.towingcar.entity.TowingCar;
+import com.project.domain.user.entity.User;
 import com.project.global.util.StringListConverter;
 import jakarta.persistence.*;
 import lombok.*;
@@ -23,6 +24,7 @@ public class Mission {
     @Column(name = "mission_id")
     private Long id;
 
+    // 관계 매핑
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "flight_schedule_id")
     private Flight flight;
@@ -31,8 +33,9 @@ public class Mission {
     @JoinColumn(name = "towing_car_id")
     private TowingCar towingCar;
 
-    @Column(name = "pilot_id", updatable = false)
-    private String pilotId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "PILOT_ID") // User 테이블 참조
+    private User pilot;
 
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
@@ -59,13 +62,33 @@ public class Mission {
     @Column(name = "route_edge_ids", columnDefinition = "TEXT")
     private List<String> routeEdgeIds;
 
-    public void updateStatus(MissionStatus newStatus) {
-        this.status = newStatus;
+    @Builder
+    public Mission(User pilot, Flight flight, MissionStatus status, String departNode, String destNode) {
+        this.pilot = pilot;
+        this.flight = flight;
+        this.status = status;
+        this.departNode = departNode;
+        this.destNode = destNode;
+        this.assignedAt = LocalDateTime.now();
     }
 
     public void assignCar(TowingCar car, List<String> confirmedPath) {
         this.towingCar = car;
         this.routeEdgeIds = confirmedPath;
         this.assignedAt = LocalDateTime.now();
+        car.assignMission(this.getId());
+    }
+
+    public void updateStatus(MissionStatus newStatus) {
+        this.status = newStatus;
+        if (newStatus == MissionStatus.RUNNING && this.startedAt == null) {
+            this.startedAt = LocalDateTime.now();
+        } else if (newStatus == MissionStatus.COMPLETED) {
+            this.completedAt = LocalDateTime.now();
+        }
+    }
+
+    public void setRouteEdgeIds(List<String> selectedEdgeIds) {
+        this.routeEdgeIds = selectedEdgeIds;
     }
 }

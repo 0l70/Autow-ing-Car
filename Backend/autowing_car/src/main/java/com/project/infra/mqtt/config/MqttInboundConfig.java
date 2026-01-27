@@ -35,14 +35,13 @@ public class MqttInboundConfig {
     // 2. 어댑터 설정 (와일드카드 토픽 구독)
     @Bean
     public MessageProducer inboundAdapter() {
-        
+
         MqttPahoMessageDrivenChannelAdapter adapter = new MqttPahoMessageDrivenChannelAdapter(
                 clientId,
                 mqttClientFactory,
                 MqttTopics.SUB_MONITORING,
-                MqttTopics.SUB_ACK
-        );
-        
+                MqttTopics.SUB_ACK);
+
         adapter.setCompletionTimeout(5000);
         adapter.setConverter(new DefaultPahoMessageConverter());
         adapter.setQos(1);
@@ -53,7 +52,7 @@ public class MqttInboundConfig {
     // 3. 핸들러 연결
     @Bean
     @ServiceActivator(inputChannel = "mqttInputChannel")
-    public MessageHandler  inboundMessageHandler() {
+    public MessageHandler inboundMessageHandler() {
         return message -> mqttInboundHandler.handleMessage(message);
     }
 }

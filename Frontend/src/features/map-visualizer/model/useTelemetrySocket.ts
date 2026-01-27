@@ -23,7 +23,21 @@ const TelemetrySchema = z.object({
 });
 
 // TODO: .env 파일로 이동 필요
-const WS_URL_DEV = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8080/ws/telemetry';
+// 원격 개발 서버
+// const WS_URL_DEV = import.meta.env.VITE_WS_BASE_URL || 'ws://i14a402.p.ssafy.io:8080/ws-server/websocket';
+const WS_URL_DEV = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8080/ws-server/websocket';
+
+// 로컬 개발 서버
+// const WS_URL_DEV = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8080/ws/telemetry'; // TEST: Connect to local Mock Server
+
+
+interface ResponseMessage {
+    correlationId?: string;
+    status?: 'SUCCESS' | 'FAIL' | 'ACCEPTED' | 'REJECTED';
+    message?: string;
+    data?: any;
+    [key: string]: any;
+}
 
 export function useTelemetrySocket(url: string = WS_URL_DEV, enabled: boolean = true) {
     const { updateAircraft } = useGraphStore();
