@@ -17,7 +17,7 @@ public class FlightDBAdaptor {
         return flightRepository.findById(id).orElse(null);
     }
 
-    public Flight findFlightByFlightNumber(String flightNumber) {
+    public Flight getFlightByFlightNumber(String flightNumber) {
         return flightRepository.findByFlightNumber(flightNumber)
                 .orElseThrow(() -> new IllegalArgumentException("No Flight: " + flightNumber));
     }

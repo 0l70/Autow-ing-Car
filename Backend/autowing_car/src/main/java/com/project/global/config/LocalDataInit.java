@@ -2,7 +2,6 @@ package com.project.global.config;
 
 import com.project.domain.common.CarStatus;
 import com.project.domain.common.MapStatus;
-import com.project.domain.common.MissionStatus;
 import com.project.domain.common.UserRole;
 import com.project.domain.flight.entity.Flight;
 import com.project.domain.flight.repository.FlightRepository;
@@ -20,8 +19,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.util.List;
 import java.util.Optional;
 

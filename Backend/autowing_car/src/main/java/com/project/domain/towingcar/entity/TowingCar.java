@@ -1,9 +1,6 @@
 package com.project.domain.towingcar.entity;
 
 import com.project.domain.common.CarStatus;
-import com.project.domain.common.MissionStatus;
-import com.project.domain.mission.entity.Mission;
-
 import jakarta.persistence.*;
 import lombok.*;
 

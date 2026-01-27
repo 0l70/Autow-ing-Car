@@ -43,7 +43,7 @@ public class TowingCarService {
      */
     @Transactional
     public void dispatchCarToFlight(String flightNumber) {
-        Flight flight = flightDBAdaptor.findFlightByFlightNumber(flightNumber);
+        Flight flight = flightDBAdaptor.getFlightByFlightNumber(flightNumber);
 
         if (flight.getAssignedTowingCar() != null) {
             throw new IllegalStateException("이미 배정된 차량이 있습니다.");
