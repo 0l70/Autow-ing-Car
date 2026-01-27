@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 export interface StompClientOptions {
     url: string;
     token?: string | null;
-    enabled?: boolean;
+    enabled?: boolean; // Default true
     onConnect?: (send: (cmd: string, headers: Record<string, string>, body?: string) => void) => void;
 }
 
@@ -100,9 +100,6 @@ export function useStompClient({ url, token, enabled = true, onConnect }: StompC
                 if (data.startsWith("CONNECTED")) {
                     console.log("[StompClient] STOMP Session Established");
                     setIsConnected(true);
-                    // Use a direct reference to sendFrame to avoid dependency cycles or closure issues
-                    // But here we can just define a local helper or use the ref if stable.
-                    // Actually, 'sendFrame' uses wsRef.current, which is set.
                     
                     // Trigger onConnect callback to let caller subscribe
                     if (onConnect) {

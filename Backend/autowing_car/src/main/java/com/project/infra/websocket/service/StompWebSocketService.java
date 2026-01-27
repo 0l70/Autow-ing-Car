@@ -51,4 +51,9 @@ public class StompWebSocketService implements WebSocketService {
         // 요청 사항: /topic/flight/{scheduleId}
         messagingTemplate.convertAndSend("/topic/flight/" + scheduleId, payload);
     }
+
+    @Override
+    public void broadcastMapInfo(Object payload) {
+        messagingTemplate.convertAndSend("/topic/sys/map/info", payload); // 프론트와 토픽 일치시킴
+    }
 }

@@ -81,6 +81,21 @@ export function LoginPage() {
                             {loading ? 'Logging in...' : 'Sign/Tune In'}
                         </Button>
                     </form>
+                    
+                    {/* Mock Login for Testing */}
+                    <div className="mt-4 pt-4 border-t border-slate-800 text-center">
+                         <div className="text-xs text-slate-500 mb-2">Dev Options</div>
+                         <Button 
+                            type="button"
+                            variant="outline"
+                            className="w-full border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800"
+                            onClick={() => {
+                                login('mock-access-token', 'mock-socket-token', 'ATC', 'admin@test.com');
+                            }}
+                        >
+                            Mock Login (ATC)
+                        </Button>
+                    </div>
                 </CardContent>
             </Card>
         </div>

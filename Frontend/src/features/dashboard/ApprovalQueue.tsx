@@ -1,5 +1,4 @@
 import { AlertCircle, XOctagon } from "lucide-react";
-import { cn } from "@/shared/lib/utils";
 
 export function ApprovalQueue() {
   return (

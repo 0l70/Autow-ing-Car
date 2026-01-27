@@ -34,7 +34,7 @@ export function PilotDashboard() {
     const [isAutoMode, setIsAutoMode] = useState(false);
 
     // --- 지도 상태 관리 ---
-    const { loadGraph, setAircrafts } = useGraphStore();
+    const { loadGraph, setAircrafts, mapWidth: storeMapWidth, mapHeight: storeMapHeight } = useGraphStore();
     const [mapMeta, setMapMeta] = useState<MapMeta | null>(null);
     const [mapHeight, setMapHeight] = useState(0);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -52,36 +52,12 @@ export function PilotDashboard() {
     }, [mockData, setAircrafts]);
 
     useEffect(() => {
-        loadGraph(MOCK_NODES, MOCK_EDGES);
+        // Only load graph if not already populated (or you might want to force sync)
+        // For now, Pilot view acts as a passive consumer mainly.
+        // loadGraph(MOCK_NODES, MOCK_EDGES); 
     }, [loadGraph]);
 
-    // --- 3단계 프로토콜 이벤트 리스너 ---
-    useEffect(() => {
-        if (!onMessage) return;
-
-        const cleanup = onMessage((msg) => {
-            // 1. CONNECT EVENTS
-            if (msg.type === 'CONNECT_APPROVED') {
-                setConnState('connecting');
-                addLog('info', `SYS: Approved. Assigned: ${msg.assignedCarId}`);
-            }
-            if (msg.type === 'CONNECT_COMPLETED') {
-                setConnState('connected');
-                addLog('success', `SYS: Connection Completed (${msg.assignedCarId})`);
-            }
-
-            // 2. DISCONNECT EVENTS
-            if (msg.type === 'DISCONNECT_APPROVED') {
-                setConnState('disconnecting');
-                addLog('info', 'SYS: Disconnect Approved. Detaching...');
-            }
-            if (msg.type === 'DISCONNECT_COMPLETED') {
-                setConnState('disconnected');
-                addLog('warning', 'SYS: Disconnected Successfully');
-            }
-        });
-        return cleanup;
-    }, [onMessage]);
+    // ... (Protocols) ...
 
     const handleMapLoad = useCallback((info: { meta: MapMeta; width: number; height: number }) => {
         setMapMeta(info.meta);
@@ -89,10 +65,10 @@ export function PilotDashboard() {
     }, []);
 
     const gridMetadata = useMemo(() => ({
-        width: MOCK_MAP_SIZE.width,
-        height: MOCK_MAP_SIZE.height,
+        width: storeMapWidth || MOCK_MAP_SIZE.width,
+        height: storeMapHeight || MOCK_MAP_SIZE.height,
         resolution: 0.05
-    }), []);
+    }), [storeMapWidth, storeMapHeight]);
 
     // --- 모달 상태 ---
     const [confirmModal, setConfirmModal] = useState<{
@@ -270,7 +246,8 @@ export function PilotDashboard() {
                             <GraphInteractionLayer meta={mapMeta} mapHeight={mapHeight} />
                             <AircraftLayer
                                 meta={mapMeta}
-                                mapHeight={mapHeight}
+                                mapWidth={storeMapWidth || MOCK_MAP_SIZE.width}
+                                mapHeight={storeMapHeight || MOCK_MAP_SIZE.height}
                                 onAircraftClick={(ac) => setSelectedAircraft(ac)}
                             />
                         </MapCanvas>
