@@ -6,6 +6,7 @@ spec:
       description: "Backend 프로젝트의 상대 경로"
 ---
 stages:
+  - test
   - package
   - deploy
 
@@ -13,6 +14,22 @@ variables:
   BACKEND_DIR: "Backend/autowing_car"
   BACKEND_IMAGE: $CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHORT_SHA
   DOCKER_TLS_CERTDIR: ""
+
+# ---------------------------------------------------------------------------
+# [0. Test Stage] - Build Test (MR to dev)
+# ---------------------------------------------------------------------------
+backend-build-test:
+  stage: test
+  image: eclipse-temurin:17-jdk-alpine
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"'
+      changes:
+        - Backend/**/*
+  script:
+    - echo "🏗️ [Backend] Build Test for Merge Request"
+    - cd $BACKEND_DIR
+    - chmod +x ./gradlew
+    - ./gradlew clean build -x test
 
 # ---------------------------------------------------------------------------
 # [1. Package Stage] - Docker build (Gradle build 포함)
