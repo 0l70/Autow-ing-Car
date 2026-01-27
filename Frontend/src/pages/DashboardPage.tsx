@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { MainLayout } from "@/shared/ui/layout/MainLayout";
+import { RootLayout } from "@/shared/ui/layout/RootLayout";
 import { ApprovalQueue } from "@/features/dashboard/ApprovalQueue";
 import { ActivityTimeline } from "@/features/dashboard/ActivityTimeline";
 import { MissionInspector } from "@/features/dashboard/MissionInspector";
@@ -70,65 +71,67 @@ export function DashboardPage() {
         return <LoginPage />;
     }
 
-    // ✈️ ROLE-BASED DYNAMIC RENDERING
-    if (user?.role === 'PILOT') {
-        return <PilotDashboard />;
-    }
+    const content = user?.role === 'PILOT' ? (
+        <PilotDashboard />
+    ) : (
+        <MainLayout
+            leftPanel={
+                <>
+                    <ApprovalQueue />
+                    <ActivityTimeline />
+                </>
+            }
+            rightPanel={<MissionInspector selectedAircraft={selectedAircraft} />}
+        >
+            <div className="absolute inset-0 flex items-center justify-center p-8">
+                {/* Map Container */}
+                <div className="relative w-full h-full border border-white/5 rounded-lg flex items-center justify-center bg-black/20 overflow-hidden">
 
-    // 📡 ATC CONTROLLER VIEW (Default)
-    return (
-    <MainLayout
-        leftPanel={
-            <>
-                <ApprovalQueue />
-                <ActivityTimeline />
-            </>
-        }
-        rightPanel={<MissionInspector selectedAircraft={selectedAircraft} />}
-    >
-      <div className="absolute inset-0 flex items-center justify-center p-8">
-         {/* Map Container */}
-         <div className="relative w-full h-full border border-white/5 rounded-lg flex items-center justify-center bg-black/20 overflow-hidden">
-            
-            {/* Map Legend */}
-            <div className="absolute top-4 left-4 p-3 bg-black/80 rounded-lg border border-white/10 text-xs shadow-lg backdrop-blur z-20 pointer-events-none">
-                <div className="text-gray-400 font-bold mb-2 uppercase tracking-wider text-[10px]">Map Legend</div>
-                <div className="flex items-center gap-2 mb-1">
-                    <span className="w-6 h-0.5 bg-accent-orange shadow-[0_0_5px_rgba(255,120,0,1)]"></span> 
-                    <span className="text-white font-mono">Confirmed Route</span>
-                </div>
-                <div className="flex items-center gap-2 mb-1">
-                    <span className="w-6 h-0.5 bg-accent-cyan/50 dashed border-b border-dashed border-accent-cyan"></span> 
-                    <span className="text-gray-400 font-mono">Candidate Route</span>
+                    {/* Map Legend */}
+                    <div className="absolute top-4 left-4 p-3 bg-black/80 rounded-lg border border-white/10 text-xs shadow-lg backdrop-blur z-20 pointer-events-none">
+                        <div className="text-gray-400 font-bold mb-2 uppercase tracking-wider text-[10px]">Map Legend</div>
+                        <div className="flex items-center gap-2 mb-1">
+                            <span className="w-6 h-0.5 bg-accent-orange shadow-[0_0_5px_rgba(255,120,0,1)]"></span>
+                            <span className="text-white font-mono">Confirmed Route</span>
+                        </div>
+                        <div className="flex items-center gap-2 mb-1">
+                            <span className="w-6 h-0.5 bg-accent-cyan/50 dashed border-b border-dashed border-accent-cyan"></span>
+                            <span className="text-gray-400 font-mono">Candidate Route</span>
+                        </div>
+                    </div>
+
+                    {/* NEON GRID MAP SYSTEM */}
+                    <MapCanvas
+                        mapName="virtual_grid"
+                        visualStyle="abstract"
+                        gridMetadata={gridMetadata}
+                        className="w-full h-full"
+                        onMapLoad={handleMapLoad}
+                        onMapClick={(pos) => console.log("Dashboard Click:", pos)}
+                    >
+                        {/* 1. Topological Graph Layer (Nodes & Edges) */}
+                        <GraphInteractionLayer meta={mapMeta} mapHeight={mapHeight} />
+
+                        {/* 2. Aircraft Overlay (Simulated) */}
+                        <AircraftLayer
+                            meta={mapMeta}
+                            mapWidth={storeMapWidth || MOCK_MAP_SIZE.width}
+                            mapHeight={storeMapHeight || MOCK_MAP_SIZE.height}
+                            onAircraftClick={(ac) => {
+                                console.log("Selected Aircraft:", ac.callsign);
+                                setSelectedAircraft(ac);
+                            }}
+                        />
+                    </MapCanvas>
+
                 </div>
             </div>
+        </MainLayout>
+    );
 
-            {/* NEON GRID MAP SYSTEM */}
-            <MapCanvas 
-                mapName="virtual_grid"
-                visualStyle="abstract"
-                gridMetadata={gridMetadata}
-                className="w-full h-full"
-                onMapLoad={handleMapLoad}
-                onMapClick={(pos) => console.log("Dashboard Click:", pos)}
-            >
-                {/* 1. Topological Graph Layer (Nodes & Edges) */}
-                <GraphInteractionLayer meta={mapMeta} mapHeight={mapHeight} />
-                
-                {/* 2. Aircraft Overlay (Simulated) */}
-                <AircraftLayer 
-                    meta={mapMeta} 
-                    mapWidth={storeMapWidth || MOCK_MAP_SIZE.width}
-                    mapHeight={storeMapHeight || MOCK_MAP_SIZE.height}
-                    onAircraftClick={(ac) => {
-                        console.log("Selected Aircraft:", ac.callsign);
-                        setSelectedAircraft(ac);
-                    }}
-                />
-            </MapCanvas>
-
-         </div>
-      </div>
-    </MainLayout>
-  );
+    return (
+        <RootLayout>
+            {content}
+        </RootLayout>
+    );
 }

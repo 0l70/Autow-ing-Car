@@ -10,13 +10,7 @@ export function MainLayout({
     children: React.ReactNode;
 }) {
   return (
-    <div className="relative flex h-screen w-screen overflow-hidden bg-bg-primary text-foreground">
-      {/* GLOBAL BACKGROUND LAYERS */}
-      {/* 1. Base Grid Pattern (Covers entire screen) */}
-      <div className="absolute inset-0 bg-grid-pattern opacity-40 pointer-events-none z-0" />
-      
-      {/* 2. Global Vignette (Darkens edges) */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(6,10,20,0.8)_100%)] pointer-events-none z-0" />
+    <div className="relative flex h-full w-full overflow-hidden text-foreground">
 
       {/* Zone A: Left Sidebar (Floating Widgets) */}
       <aside className="w-[360px] flex flex-col z-10 p-4 gap-4 pointer-events-none relative">
