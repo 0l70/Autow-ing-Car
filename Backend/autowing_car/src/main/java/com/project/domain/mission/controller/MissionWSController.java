@@ -85,4 +85,30 @@ public class MissionWSController {
         log.info("[WS] Mission Control from: {}, Command: {}", pilotId, controlDto.getCommand());
         missionService.controlMission(pilotId, controlDto);
     }
+
+    /**
+     * 시나리오 A: [기장] 연결 요청
+     * - Endpoint: /app/mission/connect
+     */
+    @MessageMapping("/mission/connect")
+    public void connectMission(@Payload ConnectRequestDto requestDto, Principal principal) {
+        validatePrincipal(principal);
+        String pilotId = (principal != null) ? principal.getName() : "AnonymousPilot";
+
+        log.info("[WS] Connection Request: {}", pilotId);
+        missionService.processConnectionRequest(pilotId, requestDto);
+    }
+
+    /**
+     * 시나리오 C: [기장] 연결 해제 요청
+     * - Endpoint: /app/mission/disconnect
+     */
+    @MessageMapping("/mission/disconnect")
+    public void disconnectMission(@Payload DisconnectRequestDto requestDto, Principal principal) {
+        validatePrincipal(principal);
+        String pilotId = (principal != null) ? principal.getName() : "AnonymousPilot";
+
+        log.info("[WS] Disconnect Request: {}", pilotId);
+        missionService.disconnectMission(pilotId, requestDto);
+    }
 }

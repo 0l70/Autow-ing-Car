@@ -34,4 +34,8 @@ public class MissionDBAdaptor {
                 .build();
         return missionLogRepository.save(log);
     }
+
+    public Mission findActiveMissionByCar(com.project.domain.towingcar.entity.TowingCar car) {
+        return missionRepository.findActiveMissionByCar(car).orElse(null);
+    }
 }
