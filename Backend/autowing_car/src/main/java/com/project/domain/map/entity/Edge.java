@@ -1,6 +1,5 @@
 package com.project.domain.map.entity;
 
-import com.project.domain.common.CarStatus;
 import com.project.domain.common.MapStatus;
 
 import jakarta.persistence.*;

@@ -3,85 +3,48 @@ package com.project.domain.mission.dto;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.project.domain.mission.entity.Mission;
 import lombok.*;
-
 import java.util.List;
 
 public class MissionWebSocketDtos {
 
-    // 1. [기장 -> 서버]
+    // [기장 -> 서버] 운송 요청
     @Data
-    @NoArgsConstructor // 👈 Jackson 필수
-    @AllArgsConstructor // 👈 테스트 코드에서 new PilotRequestDto(...) 쓸 때 필요
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class PilotRequestDto {
-        private String departNode;
-        private String destNode;
-        private String flightNumber;
+        private Long flightId;
     }
 
-    // 2. [서버 -> 관제사]
+    // [서버 -> 관제사] 승인 요청 알림
     @Data
     @Builder
-    @NoArgsConstructor // 👈 Jackson 필수 (이게 없어서 테스트 실패함)
+    @NoArgsConstructor
     @AllArgsConstructor
     public static class AdminAlertDto {
-        private Long missionId;
         private Long flightId;
+        private String flightNumber;
         private String pilotId;
-        private String departNode;
-        private String destNode;
-
-        private List<AvailableCarDto> availableCars;
+        private String currentGate;
+        private String activeRunway;
         private List<PathOptionDto> pathOptions;
     }
 
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class AvailableCarDto {
-        private String carCode;
-        private Integer battery;
-        private String currentLocation;
-    }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class PathOptionDto {
-        private Long optionId;
-        private String label;
-        private List<String> edgeIds;
-        private List<NodeDto> nodes;
-    }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class NodeDto {
-        private String code;
-        private Double x;
-        private Double y;
-    }
-
-    // 3. [관제사 -> 서버]
+    // [관제사 -> 서버] 승인/반려 결정
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ATCDecisionDto {
-        private Long missionId;
         private Long flightId;
-
-        @JsonProperty("approved") // JSON 필드명 명시 권장
+        @JsonProperty("approved")
         private boolean approved;
-
-        private String selectedCarCode;
-        private List<String> selectedEdgeIds;
         private String rejectReason;
+
+        // 승인 시 필수 (관제사가 선택한 값)
+        private List<String> selectedEdgeIds;
+        private String destNode;
     }
 
-    // 4. [서버 -> 기장/로봇]
+    // [서버 -> 클라이언트] 상태 응답
     @Data
     @Builder
     @NoArgsConstructor
@@ -100,50 +63,14 @@ public class MissionWebSocketDtos {
         }
     }
 
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class PilotControlDto {
-        private Long missionId;
-        private String command; // "PAUSE", "RESUME"
-    }
-
-    // 5. [기장 -> 서버] 연결 요청 (Scenario A)
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class ConnectRequestDto {
-        private Long scheduleId; // 항공편 스케줄 ID
-        private String type; // "CONNECT"
-    }
-
-    // 6. [서버 -> 기장] 연결 응답 (Scenario A)
+    // [보조 DTO]
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class ConnectResponseDto {
-        private Long towingCarId;
-        private String towingCarCode;
-        private String status; // "CONNECTING", "CONNECTED"
-    }
-
-    // 7. [기장 -> 서버] 해제 요청 (Scenario C)
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class DisconnectRequestDto {
-        private Long missionId;
-        private String command; // "DISCONNECT_START"
-    }
-
-    // 8. [서버 -> 기장] 해제 응답 (Scenario C)
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class DisconnectResponseDto {
-        private Long missionId;
-        private String status; // "DISCONNECTING", "DISCONNECTED"
+    public static class PathOptionDto {
+        Long optionId;
+        String label;
+        List<String> edgeIds;
     }
 }

@@ -5,6 +5,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.project.domain.flight.entity.Flight;
 import com.project.domain.flight.repository.FlightRepository;
+import com.project.domain.towingcar.entity.TowingCar;
+
 import lombok.RequiredArgsConstructor;
 
 @Service
@@ -17,7 +19,7 @@ public class FlightDBAdaptor {
         return flightRepository.findById(id).orElse(null);
     }
 
-    public Flight findFlightByFlightNumber(String flightNumber) {
+    public Flight getFlightByFlightNumber(String flightNumber) {
         return flightRepository.findByFlightNumber(flightNumber)
                 .orElseThrow(() -> new IllegalArgumentException("No Flight: " + flightNumber));
     }
@@ -27,6 +29,17 @@ public class FlightDBAdaptor {
     }
 
     public Flight findFlightByTowingCar(com.project.domain.towingcar.entity.TowingCar towingCar) {
-        return flightRepository.findByTowingCar(towingCar).orElse(null);
+        return flightRepository.findByTowingCar(towingCar)
+                .orElseThrow(() -> new IllegalArgumentException("No Flight for TowingCar: " + towingCar.getCode()));
+    }
+
+    public Flight getFlightByAssignedCar(TowingCar car) {
+        // TODO Auto-generated method stub
+        return flightRepository.findByTowingCar(car)
+                .orElseThrow(() -> new IllegalArgumentException("No Flight for TowingCar: " + car.getCode()));
+    }
+
+    public void delete(Flight flight) {
+        flightRepository.delete(flight);    
     }
 }

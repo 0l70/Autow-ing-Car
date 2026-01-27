@@ -1,7 +1,6 @@
 package com.project.domain.towingcar.repository;
 
 import com.project.domain.common.CarStatus;
-import com.project.domain.mission.entity.Mission;
 import com.project.domain.towingcar.entity.TowingCar;
 
 import io.lettuce.core.dynamic.annotation.Param;
