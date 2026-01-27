@@ -20,7 +20,7 @@ export function useMapSync(enabled: boolean = true) {
 
     // Use shared client
     const { isConnected, onMessage } = useStompClient({
-        url: import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8080/ws/telemetry',
+        url: import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8080/ws-server/websocket',
         token: socketToken,
         enabled,
         onConnect: handleConnect

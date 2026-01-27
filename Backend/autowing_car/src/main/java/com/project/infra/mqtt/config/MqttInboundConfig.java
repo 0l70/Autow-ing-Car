@@ -40,6 +40,7 @@ public class MqttInboundConfig {
                 clientId,
                 mqttClientFactory,
                 MqttTopics.SUB_MONITORING,
+                MqttTopics.SUB_MAP_INFO, // [NEW]
                 MqttTopics.SUB_ACK);
 
         adapter.setCompletionTimeout(5000);

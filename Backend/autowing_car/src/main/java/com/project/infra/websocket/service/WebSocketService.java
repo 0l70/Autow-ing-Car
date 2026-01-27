@@ -18,4 +18,7 @@ public interface WebSocketService {
 
     // 6. 특정 항공편 채널 전송 (기장 & 관제사 공유) -> /topic/flight/{scheduleId}
     void notifyFlightChannel(Long scheduleId, Object payload);
+
+    // 7. 맵 정보 전체 브로드캐스트 (Added via Merge)
+    void broadcastMapInfo(Object payload);
 }

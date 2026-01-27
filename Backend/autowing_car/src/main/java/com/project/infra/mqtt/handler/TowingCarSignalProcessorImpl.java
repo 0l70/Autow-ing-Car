@@ -37,6 +37,10 @@ public class TowingCarSignalProcessorImpl implements TowingCarSignalProcessor {
 
                 // B. 웹소켓 전송 (관제 화면 갱신)
                 webSocketService.broadcastCarStatus(carId, msg.getPayload());
+            } else if ("map".equals(type)) {
+                // [NEW] 맵 정보 수신 시 브로드캐스트
+                log.info("Map Info Received from {}: Broadcasting...", carId);
+                webSocketService.broadcastMapInfo(msg.getPayload());
             }
             // else if ("event".equals(type)) {
             // // 예: 장애물 감지, 배터리 부족 등 이벤트 처리
