@@ -37,7 +37,7 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<Void> logout(HttpServletRequest request) {
+    public ResponseEntity<Void> logout(HttpServletRequest request, jakarta.servlet.http.HttpServletResponse response) {
         // 1. SecurityContext 초기화 (현재 스레드의 인증 정보 제거)
         SecurityContextHolder.clearContext();
 
@@ -46,7 +46,31 @@ public class AuthController {
         if (session != null) {
             session.invalidate();
         }
+
+        // 3. 쿠키 삭제 (JSESSIONID 등 안전하게 제거)
+        // jakarta.servlet.http.Cookie cookie = new
+        // jakarta.servlet.http.Cookie("JSESSIONID", null);
+        // cookie.setPath("/");
+        // cookie.setHttpOnly(true);
+        // cookie.setMaxAge(0); // 즉시 만료
+        // response.addCookie(cookie);
+
+        // 4. [Client Side Action Required]
+        // 서버에 Redis 같은 별도의 블랙리스트 저장소가 없으므로,
+        // 클라이언트에서 가지고 있는 Access Token과 Socket Token을 반드시 스스로 삭제해야 합니다.
+
         return ResponseEntity.ok().build();
+    }
+
+    /**
+     * WebSocket 연결이 끊겼을 때, AccessToken을 확인하고 새로운 SocketToken 발급
+     */
+    @GetMapping("/token/websocket")
+    public ResponseEntity<Map<String, String>> getWebSocketToken() {
+        String newSocketToken = authService.createSocketTokenFromAuth();
+        Map<String, String> result = new HashMap<>();
+        result.put("socket_token", newSocketToken);
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/session/debug")
