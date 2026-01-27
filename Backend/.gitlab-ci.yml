@@ -19,7 +19,7 @@ variables:
 # [0. Test Stage] - Build Test (MR to dev)
 # ---------------------------------------------------------------------------
 backend-build-test:
-  stage: test
+  stage: build
   image: eclipse-temurin:17-jdk-alpine
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"'
