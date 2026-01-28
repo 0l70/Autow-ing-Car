@@ -7,7 +7,7 @@ export const WS_TOPICS = {
      * Car Telemetry Monitoring
      * @param carId - Specific car ID or '*' for all cars
      */
-    MONITORING: (carId: string = '*') => `/topic/car/${carId}/monitoring`,
+    MONITORING: (carId: string = '*') => `/topic/towingcar/${carId}`,
 
     /**
      * System Map Information
