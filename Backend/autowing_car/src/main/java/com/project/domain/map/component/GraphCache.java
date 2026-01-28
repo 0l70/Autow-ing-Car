@@ -7,6 +7,7 @@ import java.util.Map;
 
 import jakarta.annotation.PostConstruct;
 
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import com.project.domain.map.entity.Edge;
@@ -26,7 +27,7 @@ public class GraphCache {
     // srcNodeId -> outgoing edges
     private Map<Long, List<Edge>> adjacencyMap = new HashMap<>();
 
-    @PostConstruct
+    @Scheduled(fixedRate = 60 * 1000) // 1분마다 실행
     public void load() {
         log.info("[GraphCache] Loading edges from DB...");
         List<Edge> allEdges = mapDBAdaptor.findAllEdges();
