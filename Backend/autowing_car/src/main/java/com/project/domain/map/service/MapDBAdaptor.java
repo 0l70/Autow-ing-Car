@@ -44,6 +44,6 @@ public class MapDBAdaptor {
 
     // [GraphCache] 전체 간선 조회
     public List<Edge> findAllEdges() {
-        return edgeRepository.findAll();
+        return edgeRepository.findAllWithNodes();
     }
 }

@@ -5,10 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
-import com.project.domain.common.UserRole;
-import com.project.domain.flight.entity.Flight;
 import com.project.domain.flight.service.FlightDBAdaptor;
-import com.project.domain.towingcar.entity.TowingCar;
 import com.project.domain.towingcar.service.TowingCarDBAdaptor;
 import com.project.domain.user.service.UserDBAdaptor;
 
@@ -18,10 +15,6 @@ import com.project.domain.user.service.UserDBAdaptor;
 public class StompWebSocketService implements WebSocketService {
 
     private final SimpMessagingTemplate messagingTemplate;
-
-    private final TowingCarDBAdaptor towingCarDBAdaptor;
-    private final FlightDBAdaptor flightDBAdaptor;
-    private final UserDBAdaptor userDBAdaptor;
 
     @Override
     public void notifyAdminRequest(Object payload) {

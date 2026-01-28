@@ -68,11 +68,11 @@ public class LocalDataInit implements CommandLineRunner {
             for (int j = 0; j < 3; j++) {
                 // Horizontal (to Right)
                 if (i < 2) {
-                    createAndSaveBiEdge(grid[i][j], grid[i + 1][j], 50.0);
+                    createAndSaveBiEdge(grid[i][j], grid[i + 1][j], 50.0 + i * 13 + j * 1);
                 }
                 // Vertical (to Bottom)
                 if (j < 2) {
-                    createAndSaveBiEdge(grid[i][j], grid[i][j + 1], 50.0);
+                    createAndSaveBiEdge(grid[i][j], grid[i][j + 1], 50.0 + i * 12 + j * 2);
                 }
             }
         }

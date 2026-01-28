@@ -5,10 +5,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import jakarta.annotation.PostConstruct;
-
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.project.domain.map.entity.Edge;
 import com.project.domain.map.entity.Node;
@@ -25,13 +26,26 @@ public class GraphCache {
     private final MapDBAdaptor mapDBAdaptor;
 
     // srcNodeId -> outgoing edges
+    // srcNodeId -> outgoing edges
     private Map<Long, List<Edge>> adjacencyMap = new HashMap<>();
 
-    @Scheduled(fixedRate = 60 * 1000) // 1분마다 실행
-    public void load() {
-        log.info("[GraphCache] Loading edges from DB...");
-        List<Edge> allEdges = mapDBAdaptor.findAllEdges();
+    @EventListener(ApplicationReadyEvent.class)
+    @Transactional
+    public void init() {
+        log.info("[GraphCache] Initializing... (After Context Ready)");
+        reload();
+    }
 
+    @Scheduled(fixedRate = 60 * 1000) // 1분마다 갱신
+    public void scheduledReload() {
+        reload();
+    }
+
+    public synchronized void reload() {
+        log.info("[GraphCache] Reloading edges from DB...");
+        adjacencyMap.clear();
+
+        List<Edge> allEdges = mapDBAdaptor.findAllEdges();
         for (Edge edge : allEdges) {
             adjacencyMap
                     .computeIfAbsent(edge.getSrcNode().getId(), k -> new ArrayList<>())
@@ -44,9 +58,9 @@ public class GraphCache {
         return adjacencyMap.getOrDefault(node.getId(), List.of());
     }
 
-    // 맵 변경 시 캐시 갱신용 메서드 (추후 구현)
-    public void reload() {
-        adjacencyMap.clear();
-        load();
+    public Double getPathWeight(List<String> edgeIds) {
+        return edgeIds.stream()
+                .mapToDouble(edgeId -> mapDBAdaptor.getEdgeByCode(edgeId).getDistance())
+                .sum();
     }
 }

@@ -13,7 +13,7 @@ public class MqttTopics {
 
     // 2. Outbound (서버 -> 로봇)
     // 명령 보낼 때 사용 (String.format으로 carId 치환)
-    public static final String CMD_FORMAT = BASE + "/%s/mission";
+    public static final String CMD_FORMAT = BASE + "/%s/cmd";
 
 }
 /**
