@@ -72,7 +72,7 @@ class MarshallerAI:
         kpts_raw = results[0].keypoints.data[0].cpu().numpy()
         def get_norm(idx): return [kpts_raw[idx][0]/w, kpts_raw[idx][1]/h]
 
-        # 좌표 추출
+        # 필수 키포인트 로드
         nose = get_norm(0) if kpts_raw[0][2] > 0.5 else None
         l_sh, r_sh = get_norm(5), get_norm(6)
         l_el, r_el = get_norm(7), get_norm(8)
@@ -89,38 +89,50 @@ class MarshallerAI:
         info_text = ""
         bg_color = (245, 117, 16)
         
-        # 스테이지 전환 트리거 여부
         is_triggering = False 
 
         # =================================================================
-        # [GLOBAL] RESET (언제든 Stage 0으로 복귀 - 즉시 발동)
+        # [GLOBAL] RESET (열중쉬어 - 각도 조건 강화)
         # =================================================================
-        l_level = abs(l_wr[1] - l_sh[1]) < 0.2
-        r_level = abs(r_wr[1] - r_sh[1]) < 0.2
-        l_el_level = abs(l_el[1] - l_sh[1]) < 0.2
-        r_el_level = abs(r_el[1] - r_sh[1]) < 0.2
-        is_parallel_width = (wrist_dist_x > shoulder_width * 0.5) and (wrist_dist_x < shoulder_width * 1.5)
-
-        if l_level and r_level and l_el_level and r_el_level and is_parallel_width:
-            self.stage = 0 
-            self.trigger_counter = 0 # 리셋하면 카운터도 초기화
-            current_action = "RESET"
-            info_text = "BACK TO STAGE 0"
-            bg_color = (255, 0, 0)
+        has_arms = (kpts_raw[9][2] > 0.6) and (kpts_raw[10][2] > 0.6)
+        has_hips = (kpts_raw[11][2] > 0.6) and (kpts_raw[12][2] > 0.6)
+        
+        if has_arms and has_hips:
+            # 1. 손목 위치: 골반 근처
+            l_on_waist = abs(l_wr[1] - l_hip[1]) < 0.2
+            r_on_waist = abs(r_wr[1] - r_hip[1]) < 0.2
             
-            self.draw_custom_skeleton(frame, kpts_raw)
-            self.draw_status(frame, current_action, info_text, bg_color)
-            return current_action, frame
+            # 2. 팔꿈치 너비: 어깨보다 넓게 (기존 조건 유지)
+            elbow_width = abs(l_el[0] - r_el[0])
+            is_elbows_out = elbow_width > shoulder_width * 1.2 # 1.3 -> 1.2로 살짝 완화 (각도로 잡으니까)
+
+            # 3. [핵심] 팔 굽힘 각도 체크 (NEW)
+            # 차렷 자세는 보통 160~180도입니다.
+            # 열중쉬어는 팔을 굽히므로 각도가 작아야 합니다. (150도 미만)
+            is_bent = (angle_l < 150) and (angle_r < 150)
+
+            if l_on_waist and r_on_waist and is_elbows_out and is_bent:
+                self.stage = 0 
+                self.trigger_counter = 0 
+                current_action = "RESET"
+                info_text = "BACK TO STAGE 0"
+                bg_color = (255, 0, 0)
+                
+                self.draw_custom_skeleton(frame, kpts_raw)
+                self.draw_status(frame, current_action, info_text, bg_color)
+                return current_action, frame
 
         # =================================================================
         # [STAGE 0] FACE ME -> READY
         # =================================================================
         if self.stage == 0:
-            # 트리거: 차렷 자세 (READY)
             is_arms_down = (l_wr[1] > l_sh[1] + 0.3) and (r_wr[1] > r_sh[1] + 0.3)
+            # 차렷 자세도 각도로 확실하게 체크 (펴져 있어야 함)
+            is_straight = (angle_l > 150) and (angle_r > 150)
             is_narrow = wrist_dist_x < shoulder_width * 1.25
             
-            if is_arms_down and is_narrow:
+            # 손 내림 + 좁음 + 팔 펴짐
+            if is_arms_down and is_narrow and is_straight:
                 is_triggering = True
                 current_action = "READY"
                 info_text = "HOLD TO START..."
@@ -133,11 +145,8 @@ class MarshallerAI:
         # [STAGE 1] 이동 -> APPROACH FAST
         # =================================================================
         elif self.stage == 1:
-            
-            # 트리거: Approach FAST (팔을 아래로 넓게 벌림)
             l_diff = l_wr[1] - l_sh[1]
             r_diff = r_wr[1] - r_sh[1]
-            # [수정] Approach 인식 조건 강화 (확실히 벌려야 함)
             is_fast = (l_diff > 0.25 and r_diff > 0.25) and (wrist_dist_x > shoulder_width * 1.4)
             
             if is_fast:
@@ -145,7 +154,6 @@ class MarshallerAI:
                 current_action = "APPROACHING"
                 info_text = "HOLD TO STAGE 2..."
             
-            # [일반 동작] Forward / Left / Right
             elif abs(l_el[1] - l_sh[1]) < 0.2 and l_wr[1] < l_el[1] and angle_l < 120 and angle_r < 120:
                  current_action = "FORWARD"
             elif abs(l_el[1] - l_sh[1]) < 0.2 and l_wr[1] < l_el[1] and r_wr[1] > r_sh[1] + 0.2:
@@ -160,29 +168,21 @@ class MarshallerAI:
         # [STAGE 2] 진입 -> STOP
         # =================================================================
         elif self.stage == 2:
-            
-            # 트리거: STOP (X자 교차)
             is_crossed = r_wr[0] > l_wr[0]
             if is_crossed and (l_wr[1] < l_sh[1] + 0.4):
                 is_triggering = True
                 current_action = "STOP"
                 info_text = "HOLD TO STAGE 3..."
                 bg_color = (0, 0, 255)
-            
-            # [일반 동작] Approaching
             else:
                 l_diff = l_wr[1] - l_sh[1]
                 r_diff = r_wr[1] - r_sh[1]
-                
-                # T자 / 수평 (NORMAL)
                 if (abs(l_diff) < 0.25 and abs(r_diff) < 0.25):
                     current_action = "APPROACHING"
                     info_text = "SPEED: NORMAL"
-                # 팔 올림 (SLOW) - 각도 조건 완화
-                elif l_wr[1] < l_sh[1] and r_wr[1] < r_sh[1]:
+                elif angle_l > 120 and angle_r > 120 and l_wr[1] < l_sh[1]:
                      current_action = "APPROACHING"
                      info_text = "SPEED: SLOW"
-                # 팔 벌림 (FAST)
                 elif (l_diff > 0.25 and r_diff > 0.25) and (wrist_dist_x > shoulder_width * 1.4):
                      current_action = "APPROACHING"
                      info_text = "SPEED: FAST"
@@ -194,8 +194,6 @@ class MarshallerAI:
         # [STAGE 3] 종료 준비 -> GRIPPER HOLD
         # =================================================================
         elif self.stage == 3:
-            
-            # 트리거: GRIPPER HOLD (가슴 앞 모으기)
             in_chest = (l_wr[1] > l_sh[1]) and (l_wr[1] < l_hip[1])
             is_hold = in_chest and (wrist_dist_x < shoulder_width * 0.6)
             
@@ -203,8 +201,6 @@ class MarshallerAI:
                 is_triggering = True
                 current_action = "GRIPPER_HOLD"
                 info_text = "HOLD TO STAGE 4..."
-            
-            # [일반 동작] Cut / Brakes
             else:
                 neck_top = nose[1] if nose else (l_sh[1] - 0.2)
                 margin = shoulder_width * 0.5 
@@ -222,8 +218,6 @@ class MarshallerAI:
         # [STAGE 4] 그리퍼 -> EXIT
         # =================================================================
         elif self.stage == 4:
-            
-            # 트리거: GRIPPER RELEASE (벌리기)
             in_chest = (l_wr[1] > l_sh[1]) and (l_wr[1] < l_hip[1])
             is_release = in_chest and (wrist_dist_x > shoulder_width * 0.8)
             
@@ -232,33 +226,25 @@ class MarshallerAI:
                 current_action = "EXIT" 
                 info_text = "HOLD TO EXIT..."
                 bg_color = (0, 0, 0)
-            
             elif wrist_dist_x < shoulder_width * 0.6:
                  current_action = "GRIPPER_HOLD"
             else:
                  current_action = "STAGE_4"
                  info_text = "RELEASE TO EXIT"
 
-        # -------------------------------------------------------------
-        # [STATE TRANSITION LOGIC] 게이지 채우기 로직
-        # -------------------------------------------------------------
+        # 게이지 로직
         if is_triggering:
             self.trigger_counter += 1
             progress = self.trigger_counter / self.TRIGGER_LIMIT
             self.draw_loading_bar(frame, progress)
-            
             if self.trigger_counter >= self.TRIGGER_LIMIT:
-                # 스테이지 변경 및 종료 처리
-                if current_action == "EXIT":
-                    # main.py에서 종료 신호로 사용
-                    pass 
+                if current_action == "EXIT": pass 
                 else:
-                    self.stage += 1 # 다음 스테이지로
-                    self.trigger_counter = 0 # 카운터 리셋
+                    self.stage += 1
+                    self.trigger_counter = 0 
         else:
-            self.trigger_counter = 0 # 트리거 포즈 풀면 바로 리셋
+            self.trigger_counter = 0 
 
-        # 그리기 및 리턴
         self.draw_custom_skeleton(frame, kpts_raw)
         self.draw_status(frame, current_action, info_text, bg_color)
         
