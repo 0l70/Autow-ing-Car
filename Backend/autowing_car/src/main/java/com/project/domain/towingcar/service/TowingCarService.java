@@ -13,7 +13,7 @@ import com.project.domain.mission.service.MissionDBAdaptor;
 import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.*;
 import com.project.domain.towingcar.entity.DrivingLog;
 import com.project.domain.towingcar.entity.TowingCar;
-import com.project.infra.mqtt.MqttTopics;
+import com.project.infra.mqtt.config.MqttTopics;
 import com.project.infra.mqtt.service.MqttOutboundService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

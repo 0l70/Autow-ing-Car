@@ -1,13 +1,16 @@
 package com.project.infra.websocket.service;
 
+import java.util.List;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
-import com.project.domain.flight.service.FlightDBAdaptor;
-import com.project.domain.towingcar.service.TowingCarDBAdaptor;
-import com.project.domain.user.service.UserDBAdaptor;
+import com.project.domain.webrtc.dto.SignalingMessage;
+import com.project.domain.towingcar.repository.TowingCarRepository;
+import com.project.domain.flight.repository.FlightRepository;
+import com.project.domain.user.repository.UserRepository;
 
 @Slf4j
 @Service
@@ -16,80 +19,110 @@ public class StompWebSocketService implements WebSocketService {
 
     private final SimpMessagingTemplate messagingTemplate;
 
+    private final TowingCarRepository towingCarRepository;
+    private final FlightRepository flightRepository;
+    private final UserRepository userRepository;
+
+    // --- Generic Core Implementations ---
+
+    @Override
+    public void broadcast(String destination, Object payload) {
+        messagingTemplate.convertAndSend(destination, payload);
+    }
+
+    @Override
+    public void sendToUser(String username, String destination, Object payload) {
+        messagingTemplate.convertAndSendToUser(username, destination, payload);
+    }
+
+    @Override
+    public void sendToUsers(List<String> usernames, String destination, Object payload) {
+        for (String username : usernames) {
+            sendToUser(username, destination, payload);
+        }
+    }
+
+    // --- Domain Specific Implementations (Delegating to Core) ---
+
     @Override
     public void notifyAdminRequest(Object payload) {
-        // 관제사는 '/topic/controller/requests'를 보고 있다고 가정
-        String destination = "/topic/controller/requests";
-        messagingTemplate.convertAndSend(destination, payload);
+        broadcast("/topic/controller/requests", payload);
         log.info("관제사 알림 전송: {}", payload);
     }
 
     @Override
     public void notifyPilotResult(String pilotUsername, Object payload) {
-        // 기장은 '/user/queue/reply'를 구독 중 (개별 메시지)
-        messagingTemplate.convertAndSendToUser(
-                pilotUsername,
-                "/queue/reply",
-                payload);
+        sendToUser(pilotUsername, "/queue/reply", payload);
     }
 
     @Override
     public void broadcastMissionUpdate(Object payload) {
-        messagingTemplate.convertAndSend("/topic/mission/updates", payload);
+        broadcast("/topic/mission/updates", payload);
     }
 
     @Override
     public void sendErrorToUser(String username, String message) {
-        messagingTemplate.convertAndSendToUser(username, "/queue/errors", message);
+        sendToUser(username, "/queue/errors", message);
     }
 
-    // 특정 차의 상태를 실시간으로 브로드캐스트하는 메서드
     @Override
     public void broadcastCarStatus(String carCode, Object monitoringPayload) {
-        // 요청 사항: /topic/towingcar/{towingCarId}
-        messagingTemplate.convertAndSend("/topic/towingcar/" + carCode, monitoringPayload);
+        broadcast("/topic/towingcar/" + carCode, monitoringPayload);
     }
 
     @Override
     public void notifyFlightChannel(Long scheduleId, Object payload) {
-        // 요청 사항: /topic/flight/{scheduleId}
-        messagingTemplate.convertAndSend("/topic/flight/" + scheduleId, payload);
+        broadcast("/topic/flight/" + scheduleId, payload);
     }
 
     @Override
     public void broadcastMapInfo(Object payload) {
-        messagingTemplate.convertAndSend("/topic/sys/map/info", payload); // 프론트와 토픽 일치시킴
+        broadcast("/topic/sys/map/info", payload);
     }
 
-    // --- WebRTC Signaling Implementation ---
+    // --- WebRTC Signaling ---
 
     @Override
     public void broadcastOffer(Object payload) {
-        if (payload instanceof com.project.domain.webrtc.dto.SignalingMessage) {
-            com.project.domain.webrtc.dto.SignalingMessage msg = (com.project.domain.webrtc.dto.SignalingMessage) payload;
-            // 타겟: /topic/video/offer/{receiverId}
-            messagingTemplate.convertAndSend("/topic/video/offer/" + msg.getReceiverId(), msg);
+        if (payload instanceof SignalingMessage) {
+            SignalingMessage msg = (SignalingMessage) payload;
+            broadcast("/topic/video/offer/" + msg.getReceiverId(), msg);
             log.debug("WebRTC OFFER relayed to {}", msg.getReceiverId());
         }
     }
 
     @Override
     public void broadcastAnswer(Object payload) {
-        if (payload instanceof com.project.domain.webrtc.dto.SignalingMessage) {
-            com.project.domain.webrtc.dto.SignalingMessage msg = (com.project.domain.webrtc.dto.SignalingMessage) payload;
-            // 타겟: /topic/video/answer/{receiverId} (Sender에게 전달)
-            messagingTemplate.convertAndSend("/topic/video/answer/" + msg.getReceiverId(), msg);
+        if (payload instanceof SignalingMessage) {
+            SignalingMessage msg = (SignalingMessage) payload;
+            broadcast("/topic/video/answer/" + msg.getReceiverId(), msg);
             log.debug("WebRTC ANSWER relayed to {}", msg.getReceiverId());
         }
     }
 
     @Override
     public void broadcastIce(Object payload) {
-        if (payload instanceof com.project.domain.webrtc.dto.SignalingMessage) {
-            com.project.domain.webrtc.dto.SignalingMessage msg = (com.project.domain.webrtc.dto.SignalingMessage) payload;
-            // 타겟: /topic/video/ice/{receiverId}
-            messagingTemplate.convertAndSend("/topic/video/ice/" + msg.getReceiverId(), msg);
+        if (payload instanceof SignalingMessage) {
+            SignalingMessage msg = (SignalingMessage) payload;
+            broadcast("/topic/video/ice/" + msg.getReceiverId(), msg);
             log.debug("WebRTC ICE relayed to {}", msg.getReceiverId());
         }
+    }
+
+    @Override
+    public void sendMonitoringToScope(String carCode, Object payload) {
+        // 1. Find TowingCar & Flight
+        towingCarRepository.findByCode(carCode).ifPresent(car -> {
+            flightRepository.findByTowingCar(car).ifPresent(flight -> {
+                // 2. Send to Pilot (Private Queue)
+                String pilotUsername = flight.getPilot().getUsername();
+                sendToUser(pilotUsername, "/queue/car/monitoring", payload);
+            });
+        });
+
+        // 3. Send to All ATCs (Loop)
+        userRepository.findAllByRole(com.project.domain.common.UserRole.ATC).forEach(atc -> {
+            sendToUser(atc.getUsername(), "/queue/car/monitoring", payload);
+        });
     }
 }

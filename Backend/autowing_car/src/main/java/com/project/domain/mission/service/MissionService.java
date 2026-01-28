@@ -10,7 +10,7 @@ import com.project.domain.map.service.MapService;
 import com.project.domain.mission.dto.MissionWebSocketDtos.*;
 import com.project.domain.mission.entity.Mission;
 import com.project.domain.towingcar.entity.TowingCar;
-import com.project.infra.mqtt.MqttTopics;
+import com.project.infra.mqtt.config.MqttTopics;
 import com.project.infra.mqtt.service.MqttOutboundService;
 import com.project.infra.websocket.service.WebSocketService;
 
@@ -56,7 +56,7 @@ public class MissionService {
         Node startNode = mapDBAdaptor.getNodeByCode(currentGate);
         Node endNode = mapDBAdaptor.getNodeByCode(activeRunway);
         // 관제사에게 전송
-        webSocketService.notifyAdminRequest(AdminAlertDto.builder()
+        webSocketService.broadcast("/topic/controller/requests", AdminAlertDto.builder()
                 .flightId(flight.getId())
                 .flightNumber(flight.getFlightNumber())
                 .pilotId(pilotId)
