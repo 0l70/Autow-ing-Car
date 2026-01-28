@@ -120,7 +120,7 @@ export function useWebRTC({ enabled, carId, pilotId }: UseWebRTCProps) {
         try {
             await pc.setRemoteDescription(new RTCSessionDescription({
                 type: 'offer',
-                sdp: msg.sdp
+                sdp: msg.sdp || ""
             }));
 
             const answer = await pc.createAnswer();
@@ -147,9 +147,9 @@ export function useWebRTC({ enabled, carId, pilotId }: UseWebRTCProps) {
         try {
             if (msg.candidate) {
                 await pc.addIceCandidate(new RTCIceCandidate({
-                    candidate: msg.candidate,
-                    sdpMid: msg.sdpMid,
-                    sdpMLineIndex: msg.sdpMLineIndex
+                    candidate: msg.candidate || "",
+                    sdpMid: msg.sdpMid ?? null,
+                    sdpMLineIndex: msg.sdpMLineIndex ?? null
                 }));
             }
         } catch (err) {
