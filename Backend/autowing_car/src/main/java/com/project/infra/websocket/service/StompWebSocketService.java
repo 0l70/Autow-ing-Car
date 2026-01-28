@@ -5,6 +5,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
+import com.project.domain.flight.service.FlightDBAdaptor;
+import com.project.domain.towingcar.service.TowingCarDBAdaptor;
+import com.project.domain.user.service.UserDBAdaptor;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor

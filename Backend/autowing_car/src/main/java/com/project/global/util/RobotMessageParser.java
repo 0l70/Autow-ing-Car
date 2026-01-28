@@ -13,28 +13,39 @@ public class RobotMessageParser {
 
     private final ObjectMapper objectMapper;
 
-    // 예: autowing_car/v1/TC01/monitoring -> carId=TC01, type=monitoring
-    // 예: autowing_car/v1/TC01/ack -> carId=TC01, type=event
-    public RobotIncomingMessage parse(String topic, String payloadString) {
+    // 예: autowing_car/v1/monitoring -> carCode=TC01, type=monitoring
+    // 예: autowing_car/v1/ack -> carCode=TC01, type=ack
+    public MqttIncomingMessage parse(String topic, String payloadString) {
         try {
-            // 1. 토픽 분해
-            String[] parts = topic.split("/");
-
-            // 유효성 검사 (최소 길이 체크)
-            if (parts.length < 4) {
-                throw new IllegalArgumentException("토픽 구조가 너무 짧습니다: " + topic);
-            }
-
-            // 2. 동적 추출
-            // 구조: [0]autowing_car / [1]v1 / [2]{carId} / [3]{topicName}
-            String carId = parts[2];
-            String messageType = parts[3]; // 여기가 핵심! (monitoring, event 등등)
-
-            // 3. Payload를 유연한 JSON(JsonNode)으로 변환
             JsonNode payload = objectMapper.readTree(payloadString);
 
-            return RobotIncomingMessage.builder()
-                    .carId(carId)
+            String carCode;
+            String messageType;
+
+            // Case 1: Single Topic (autowing_car/v1/monitoring)
+            if (topic.endsWith("/monitoring")) {
+                messageType = "monitoring";
+                // Expect "car_code" in payload
+                if (payload.has("car_code")) {
+                    carCode = payload.get("car_code").asText();
+                } else if (payload.has("carId")) {
+                    carCode = payload.get("carId").asText();
+                } else {
+                    throw new IllegalArgumentException("Payload must contain 'car_code'");
+                }
+            }
+            // Case 2: Legacy/Other Topics (autowing_car/v1/{car_code}/ack)
+            else {
+                String[] parts = topic.split("/");
+                if (parts.length < 3) {
+                    throw new IllegalArgumentException("토픽 구조가 너무 짧습니다: " + topic);
+                }
+                carCode = parts[2];
+                messageType = parts[3];
+            }
+
+            return MqttIncomingMessage.builder()
+                    .carCode(carCode)
                     .messageType(messageType)
                     .payload(payload)
                     .build();

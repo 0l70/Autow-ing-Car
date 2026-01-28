@@ -5,12 +5,17 @@ import com.project.domain.common.LogType;
 import com.project.domain.common.MissionStatus;
 import com.project.domain.flight.entity.Flight;
 import com.project.domain.flight.service.FlightDBAdaptor;
+import com.project.domain.map.service.MapDBAdaptor;
+import com.project.domain.map.service.MapService;
 import com.project.domain.mission.dto.MissionWebSocketDtos.*;
 import com.project.domain.mission.entity.Mission;
 import com.project.domain.towingcar.entity.TowingCar;
 import com.project.infra.mqtt.MqttTopics;
 import com.project.infra.mqtt.service.MqttOutboundService;
 import com.project.infra.websocket.service.WebSocketService;
+
+import com.project.domain.map.entity.Node;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -25,9 +30,13 @@ import java.util.*;
 public class MissionService {
 
     private final MissionDBAdaptor missionDBAdaptor;
+    private final MapDBAdaptor mapDBAdaptor;
     private final FlightDBAdaptor flightDBAdaptor;
+
     private final WebSocketService webSocketService;
+    private final MapService mapService;
     private final MqttOutboundService mqttOutboundService;
+
     private final ObjectMapper objectMapper;
 
     /**
@@ -44,6 +53,8 @@ public class MissionService {
         String currentGate = flight.getNodeCode();
         String activeRunway = "RUNWAY_34L"; // Mock: 실제 로직은 기상/운영 DB 연동 필요
 
+        Node startNode = mapDBAdaptor.getNodeByCode(currentGate);
+        Node endNode = mapDBAdaptor.getNodeByCode(activeRunway);
         // 관제사에게 전송
         webSocketService.notifyAdminRequest(AdminAlertDto.builder()
                 .flightId(flight.getId())
@@ -51,7 +62,7 @@ public class MissionService {
                 .pilotId(pilotId)
                 .currentGate(currentGate)
                 .activeRunway(activeRunway)
-                .pathOptions(calculatePathOptions(currentGate, activeRunway))
+                .pathOptions(calculatePathOptions(startNode, endNode))
                 .build());
 
         log.info("📡 [Request] Pilot={} Flight={} -> ATC", pilotId, flight.getFlightNumber());
@@ -96,10 +107,9 @@ public class MissionService {
     }
 
     // --- Helpers ---
-    private List<PathOptionDto> calculatePathOptions(String start, String end) {
+    private List<PathOptionDto> calculatePathOptions(Node start, Node end) {
         // 실제 경로 탐색 로직 (Mock)
-        return List.of(
-                PathOptionDto.builder().optionId(1L).label("최단 경로").edgeIds(List.of("E1", "E2", "E3")).build());
+        return mapService.findShortestPath(start, end);
     }
 
     private void notifyMissionUpdate(Mission mission) {

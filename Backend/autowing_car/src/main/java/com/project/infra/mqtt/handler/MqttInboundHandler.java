@@ -15,7 +15,7 @@ import java.nio.charset.StandardCharsets;
 @RequiredArgsConstructor
 public class MqttInboundHandler implements MessageHandler {
 
-    private final TowingCarSignalProcessor towinCarSignalProcessor;
+    private final MqttSignalProcessor mqttSignalProcessor;
 
     @Override
     public void handleMessage(Message<?> message) throws MessagingException {
@@ -42,7 +42,7 @@ public class MqttInboundHandler implements MessageHandler {
             log.debug("[MQTT Recv] T={}, P={}", topic, payload);
 
             // 3. 비즈니스 로직으로 위임
-            towinCarSignalProcessor.processAndBroadcast(topic, payload);
+            mqttSignalProcessor.processAndBroadcast(topic, payload);
 
         } catch (Exception e) {
             log.error("MQTT 핸들링 실패: {}", e.getMessage());
