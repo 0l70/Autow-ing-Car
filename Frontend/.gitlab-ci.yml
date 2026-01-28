@@ -27,6 +27,10 @@ frontend-build:
     paths:
       - $[[ inputs.project_dir ]]/dist
     expire_in: 1 hour
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"'
+      changes:
+        - Frontend/**/*
 
 # ---------------------------------------------------------------------------
 # 2. Docker Deploy (Runs ONLY on 'master' branch)
@@ -50,4 +54,6 @@ frontend-deploy:
     - echo "🚀 Deployment Image Pushed Successfully!"
   rules:
     - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - Frontend/**/*
       when: on_success

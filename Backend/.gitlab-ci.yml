@@ -5,11 +5,6 @@ spec:
       default: "Backend/autowing_car"
       description: "Backend 프로젝트의 상대 경로"
 ---
-stages:
-  - test
-  - package
-  - deploy
-
 variables:
   BACKEND_DIR: "Backend/autowing_car"
   BACKEND_IMAGE: $CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHORT_SHA
