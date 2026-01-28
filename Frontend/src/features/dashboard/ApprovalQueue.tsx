@@ -66,37 +66,37 @@ export function ApprovalQueue() {
     const addLog = useTimelineStore(state => state.addLog);
 
     // --- Actions ---
-    const handleDecision = async (alert: AdminAlertDto, approved: boolean) => {
-        if (!alert.flightId) return;
+    const handleDecision = async (alertItem: AdminAlertDto, approved: boolean) => {
+        if (!alertItem.flightId) return;
 
         try {
             // [TEST MODE] Bypass Backend for Mock Data
-            if (alert.flightId === 101) {
+            if (alertItem.flightId === 101) {
                 console.log("[TEST] Skipping Backend Call for Mock Flight 101");
             } else {
                 await request('/app/mission/decide', {
-                    flightId: alert.flightId, 
+                    flightId: alertItem.flightId, 
                     approved: approved,       
                     rejectReason: approved ? null : "Denied by ATC",
                     // Mock selection: first path logic
-                    selectedEdgeIds: alert.pathOptions?.[0]?.edgeIds || ['E1', 'E2'], 
-                    destNode: alert.activeRunway || "RUNWAY"
+                    selectedEdgeIds: alertItem.pathOptions?.[0]?.edgeIds || ['E1', 'E2'], 
+                    destNode: alertItem.activeRunway || "RUNWAY"
                 });
             }
             
             // Log to Timeline
             addLog({
                 type: approved ? 'APPROVE' : 'REJECT',
-                message: approved ? `PUSHBACK APPROVED: ${alert.flightNumber}` : `PUSHBACK REJECTED: ${alert.flightNumber}`,
-                subMessage: approved ? `Dest: ${alert.activeRunway || "N/A"}` : `Reason: Denied by ATC`,
+                message: approved ? `PUSHBACK APPROVED: ${alertItem.flightNumber}` : `PUSHBACK REJECTED: ${alertItem.flightNumber}`,
+                subMessage: approved ? `Dest: ${alertItem.activeRunway || "N/A"}` : `Reason: Denied by ATC`,
                 actor: "ATC-Controller"
             });
 
             // Remove from list on success
-            setAlerts(prev => prev.filter(a => a.id !== alert.id));
+            setAlerts(prev => prev.filter(a => a.id !== alertItem.id));
         } catch (e) {
             console.error("Decision Failed", e);
-            alert("Failed to send decision");
+            window.alert("Failed to send decision");
         }
     };
 
