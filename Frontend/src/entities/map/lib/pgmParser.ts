@@ -121,10 +121,11 @@ export interface PGMData {
     const sampleSize = Math.min(pixelCount, 10000);
     for(let i=0; i<pixelCount; i++) {
         const val = data[i];
-        if (val < min) min = val;
-        if (val > max) max = val;
-        if (val > 0) nonZeros++;
-        if (uniqueValues.size < 50) uniqueValues.add(val);
+        if (val !== undefined) {
+            if (val < min) min = val;
+            if (val > max) max = val;
+            if (val > 0) nonZeros++;
+        }
     }
     
     console.log(`[PGM Parser] Parsed ${width}x${height} (Total: ${pixelCount}px)`);
@@ -143,7 +144,7 @@ export interface PGMData {
     const rgbaData = new Uint8ClampedArray(width * height * 4);
     
     for (let i = 0; i < width * height; i++) {
-      let raw = data[i];
+      let raw = data[i] ?? 0;
       // Normalize to 0-255 based on maxVal
       // If maxVal is 1 (binary map), 1 becomes 255 (White), 0 becomes 0 (Black)
       // If maxVal is 255, it stays as is.

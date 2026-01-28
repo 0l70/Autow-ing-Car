@@ -22,9 +22,9 @@ const INITIAL_AIRCRAFT: Aircraft[] = [
         status: "DOCKING",
         battery: 45,
         speed: 0,
-        currentMission: null,
+        currentMission: undefined,
         isLoaded: true
-    }
+    } as unknown as Aircraft
 ];
 
 const moveTowards = (current: number, target: number, speed: number) => {
