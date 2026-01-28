@@ -23,7 +23,7 @@ export function CameraFeed({ className, enabled, carId, pilotId = "PILOT_001" }:
 
     // Derived Status for UI
     const isConnected = connectionState === 'connected';
-    const isConnecting = connectionState === 'connecting' || connectionState === 'new' || connectionState === 'checking';
+    const isConnecting = connectionState === 'connecting' || connectionState === 'new';
     const isFailed = connectionState === 'failed' || connectionState === 'disconnected' || connectionState === 'closed';
 
     if (!enabled) {
