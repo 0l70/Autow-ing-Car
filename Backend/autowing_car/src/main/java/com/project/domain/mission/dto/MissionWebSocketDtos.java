@@ -15,12 +15,26 @@ public class MissionWebSocketDtos {
         private Long flightId;
     }
 
-    // [서버 -> 관제사] 승인 요청 알림
+    // [신규 추가] 알림 타입 정의
+    public enum NotificationType {
+        MISSION_REQUEST, // 승인/반려 필요
+        MANUAL_CONTROL, // 긴급 (수동 조작)
+        EMERGENCY_STOP // 긴급 (비상 정지)
+    }
+
+    // [서버 -> 관제사] 승인 요청 및 알림
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
     public static class AdminAlertDto {
+        // [신규 필드]
+        @Builder.Default
+        private NotificationType type = NotificationType.MISSION_REQUEST;
+        private String message;
+        private String severity; // INFO, WARNING, CRITICAL
+
+        // [기존 필드]
         private Long flightId;
         private String flightNumber;
         private String pilotId;

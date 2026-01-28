@@ -74,7 +74,7 @@ export function useMapSync(enabled: boolean = true) {
 
         // 2. Update Graph
         console.log(`[MapSync] Updating Graph: ${data.nodes.length} nodes, ${data.edges?.length || 0} edges`);
-        loadGraph(data.nodes, data.edges || []);
+        loadGraph(data.nodes as any, (data.edges || []) as any);
         
     }, [loadGraph, setCorners, setMapDimensions]);
 
