@@ -1,19 +1,24 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import {
-    Navigation, Signal, Battery,
-    AlertTriangle, CheckCircle,
-    Map as MapIcon, ShieldAlert,
-    Radio, Terminal, Compass, ShieldCheck
-} from 'lucide-react';
+import { Radio, Map as MapIcon, CheckCircle } from 'lucide-react';
 import { Button } from "@/shared/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/Card";
 import useLongPress from "@/shared/lib/useLongPress";
-import { INITIAL_LOGS, VEHICLE_STATUS, NAVIGATION_DATA } from './MockData';
+import { INITIAL_LOGS, VEHICLE_STATUS, NAVIGATION_DATA } from '@/features/dashboard/MockData';
+
+// --- Sub-components ---
+import { PilotTimeline } from "@/features/dashboard/pilot-ui/PilotTimeline";
+import { PilotCommandButtons } from "@/features/dashboard/pilot-ui/PilotCommandButtons";
+import { PilotTugStatus } from "@/features/dashboard/pilot-ui/PilotTugStatus";
+import { PilotFlightInfo } from "@/features/dashboard/pilot-ui/PilotFlightInfo";
+import { PilotSafetyControls } from "@/features/dashboard/pilot-ui/PilotSafetyControls";
+
+// --- Types ---
+import { MoveState, ConnectionState } from "@/features/dashboard/model/dashboardTypes";
 
 // --- Map Integration ---
 import { MapCanvas } from "@/widgets/map-panel/MapCanvas";
 import { GraphInteractionLayer } from "@/features/map-editor/ui/GraphInteractionLayer";
-import { CameraFeed } from "./ui/CameraFeed";
+import { CameraFeed } from "@/features/dashboard/ui/CameraFeed";
 import { cn } from "@/shared/lib/utils";
 
 import { AircraftLayer } from "@/features/map-visualizer/ui/AircraftLayer";
@@ -22,12 +27,6 @@ import { MapMeta, Aircraft } from "@/entities/map/model/types";
 import { MOCK_EDGES, MOCK_NODES, MOCK_MAP_SIZE } from "@/entities/map/lib/mockData";
 import { useMockAircraftMqtt } from "@/entities/map/lib/mockAircraft";
 import { useTelemetrySocket } from "@/features/map-visualizer/model/useTelemetrySocket";
-
-// --- Types ---
-// 이동 상태 타입 정의
-type MoveState = 'stopped' | 'moving' | 'pushback';
-// 연결 상태 타입 정의
-type ConnectionState = 'disconnected' | 'waiting' | 'connecting' | 'connected' | 'disconnecting';
 
 export function PilotDashboard() {
     // --- State 관리 ---
@@ -178,15 +177,6 @@ export function PilotDashboard() {
         alert('EMERGENCY STOP! All Systems Halted.');
     };
 
-    const getLogColor = (type: string) => {
-        switch (type) {
-            case 'success': return 'text-accent-lime';
-            case 'error': return 'text-accent-red';
-            case 'warning': return 'text-accent-amber';
-            default: return 'text-primary';
-        }
-    };
-
     return (
         <div className="h-full w-full bg-black px-4 pb-4 text-slate-200 font-mono overflow-hidden flex flex-col gap-4">
 
@@ -272,193 +262,33 @@ export function PilotDashboard() {
                     </div>
                 </Card>
 
-                {/* T3: Activity Timeline (formerly Logs) */}
-                <Card className="col-span-2 glass-panel flex flex-col">
-                    <CardHeader className="py-3 border-b border-white/10">
-                        <CardTitle className="text-sm font-bold tracking-wide text-slate-200 flex items-center gap-2">
-                            <Terminal className="w-4 h-4 text-cyan-400" />
-                            ACTIVITY TIMELINE
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex-1 p-3 overflow-y-auto space-y-4 scrollbar-hide">
-                        {logs.map((log, i) => (
-                            <div key={log.id} className="relative pl-4 border-l border-slate-700">
-                                {/* Timeline Dot */}
-                                <div className={`absolute -left-[5px] top-1 w-2.5 h-2.5 rounded-full border-2 border-slate-800 
-                                    ${log.type === 'error' ? 'bg-red-500' : 'bg-cyan-500'}`} 
-                                />
-                                <div className="text-[10px] text-slate-500 font-mono mb-0.5">
-                                    {log.timestamp}
-                                </div>
-                                <div className={`text-xs font-medium leading-tight
-                                    ${log.type === 'error' ? 'text-red-400' : 
-                                      log.type === 'success' ? 'text-green-400' : 'text-slate-300'}`}>
-                                    {log.type === 'info' && <span className="text-cyan-400 font-bold mr-1">INFO</span>}
-                                    {log.message}
-                                </div>
-                            </div>
-                        ))}
-                    </CardContent>
-                </Card>
+            {/* T3: Activity Timeline */}
+                <PilotTimeline logs={logs} />
             </div>
 
             {/* --- BOTTOM ROW --- */}
             <div className="grid grid-cols-12 gap-4 h-[40%]">
 
                 {/* B1: Control Buttons (span 2) */}
-                <div className="col-span-2 flex flex-col gap-4">
-                    {/* Move Button */}
-                    <div className="relative group flex-1">
-                        <Button
-                            {...moveLongPress}
-                            disabled={connState !== 'connected'}
-                            className={`w-full h-full text-base font-bold tracking-wider transition-all duration-300 border whitespace-normal leading-tight glass-panel
-                                ${moveState === 'moving' || moveState === 'pushback'
-                                    ? 'bg-amber-500/10 border-amber-500 text-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.2)]'
-                                    : 'border-white/10 text-slate-400 hover:bg-white/5 hover:border-cyan-500/50 hover:text-cyan-400'
-                                }
-                                disabled:opacity-30 disabled:cursor-not-allowed
-                            `}
-                        >
-                            {moveState === 'stopped' ? 'REQUEST PUSHBACK' : 'STOP'}
-                            <div className="text-[9px] font-normal opacity-50 absolute bottom-2 font-mono w-full text-center tracking-widest">
-                                HOLD 1S
-                            </div>
-                        </Button>
-                    </div>
-
-                    {/* Connection Button */}
-                    <div className="relative group flex-1">
-                        <Button
-                            {...connLongPress}
-                            className={`w-full h-full text-base font-bold tracking-wider transition-all duration-300 border whitespace-normal leading-tight glass-panel
-                                ${connState === 'connected'
-                                    ? 'bg-cyan-500/10 border-cyan-500 text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.2)]'
-                                    : (connState === 'connecting' || connState === 'waiting')
-                                        ? 'bg-slate-800 border-slate-600 text-slate-500 cursor-wait'
-                                        : 'border-white/10 text-slate-400 hover:bg-white/5 hover:border-cyan-500/50 hover:text-cyan-400'
-                                }
-                            `}
-                        >
-                            {connState === 'connected' ? 'DISCONNECT TUG'
-                                : connState === 'waiting' ? 'WAITING...'
-                                    : connState === 'connecting' ? 'CONNECTING...'
-                                        : 'CONNECT TUG'}
-
-                            {connState === 'connected' && (
-                                <div className="text-[9px] font-normal opacity-50 absolute bottom-2 font-mono w-full text-center tracking-widest">
-                                    HOLD 1S
-                                </div>
-                            )}
-
-                            {(connState === 'waiting' || connState === 'connecting') && (
-                                <div className="absolute top-2 right-2">
-                                    <div className="w-2 h-2 rounded-full border-2 border-slate-500 border-t-transparent animate-spin" />
-                                </div>
-                            )}
-                        </Button>
-                    </div>
-                </div>
+                <PilotCommandButtons 
+                    moveState={moveState} 
+                    connState={connState} 
+                    moveLongPress={moveLongPress} 
+                    connLongPress={connLongPress} 
+                />
 
                 {/* B2: Status Panel (span 3) */}
-                <Card className="col-span-3 glass-panel flex flex-col">
-                    <CardHeader className="py-2 border-b border-white/10">
-                        <CardTitle className="text-sm font-bold tracking-wide text-slate-400">TUG STATUS</CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex-1 p-4 flex flex-col justify-center gap-3">
-                        <div className="flex items-center justify-between p-3 bg-black/40 rounded border border-white/10">
-                            <span className="text-slate-500 text-xs font-bold tracking-wider">TUG ID</span>
-                            <span className="text-lg font-bold text-slate-200 font-mono tracking-wide">{VEHICLE_STATUS.id}</span>
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-black/40 rounded border border-white/10">
-                            <span className="text-slate-500 flex items-center gap-2 text-xs font-bold tracking-wider">
-                                <Battery className="w-3 h-3" /> BATTERY
-                            </span>
-                            <div className="flex items-center gap-2">
-                                <span className={`font-bold font-mono ${VEHICLE_STATUS.battery > 20 ? 'text-green-400' : 'text-red-500'}`}>
-                                    {VEHICLE_STATUS.battery}%
-                                </span>
-                            </div>
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-black/40 rounded border border-white/10">
-                            <span className="text-slate-500 flex items-center gap-2 text-xs font-bold tracking-wider">
-                                <Signal className="w-3 h-3" /> SIGNAL
-                            </span>
-                            <span className="text-cyan-400 text-xs font-bold font-mono tracking-wide">{VEHICLE_STATUS.signal}</span>
-                        </div>
-                    </CardContent>
-                </Card>
+                <PilotTugStatus />
 
                 {/* B3: Navigation Data (span 5) */}
-                <Card className="col-span-5 glass-panel flex flex-col">
-                    <CardHeader className="py-2 border-b border-white/10">
-                        <CardTitle className="text-sm font-bold tracking-wide text-slate-400">NAVIGATION DATA</CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex-1 p-4 grid grid-cols-2 gap-4 items-center">
-                        <div className="bg-black/40 p-4 rounded border border-white/10 h-full flex flex-col justify-center">
-                            <span className="text-slate-500 text-xs font-bold block mb-1 tracking-wider">GROUND SPEED</span>
-                            <span className="text-4xl font-bold text-slate-200 font-mono tracking-tighter">
-                                {moveState !== 'stopped' ? '15' : '0'} <span className="text-sm text-slate-500 font-normal">km/h</span>
-                            </span>
-                        </div>
-                        <div className="flex flex-col gap-2 h-full">
-                            <div className="bg-black/40 p-2 px-3 rounded border border-white/10 flex justify-between items-center flex-1">
-                                <span className="text-slate-500 text-xs font-bold tracking-wider">HEADING</span>
-                                <span className="text-xl font-bold text-slate-200 font-mono">{NAVIGATION_DATA.heading}°</span>
-                            </div>
-                            <div className="bg-black/40 p-2 px-3 rounded border border-white/10 flex justify-between items-center flex-1">
-                                <span className="text-slate-500 text-xs font-bold tracking-wider">DIST REMAIN</span>
-                                <span className="text-xl font-bold text-amber-500 font-mono">120 m</span>
-                            </div>
-                            <div className="bg-black/40 p-2 px-3 rounded border border-white/10 flex justify-between items-center flex-1">
-                                <span className="text-slate-500 text-xs font-bold tracking-wider">DESTINATION</span>
-                                <span className="text-slate-200 font-bold text-xs font-mono">{NAVIGATION_DATA.destination}</span>
-                            </div>
-                        </div>
-                        {/* Progress Bar (Full Width) */}
-                        <div className="col-span-2 relative h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                            <div className="absolute top-0 left-0 h-full bg-amber-500 w-[75%] shadow-[0_0_10px_rgba(245,158,11,0.5)]"></div>
-                        </div>
-                    </CardContent>
-                </Card>
+                <PilotFlightInfo moveState={moveState} />
 
-                {/* B4: Critical Alerts (formerly Safety Controls) */}
-                <Card className="col-span-2 glass-panel border border-red-900/40 shadow-[0_0_20px_rgba(220,38,38,0.05)] flex flex-col">
-                    <CardHeader className="py-2 border-b border-red-900/30 bg-red-950/10">
-                        <CardTitle className="text-sm font-black tracking-wide text-red-500 flex items-center gap-2">
-                            <ShieldAlert className="w-4 h-4 text-red-500" />
-                            CRITICAL
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex-1 p-3 flex flex-col gap-3">
-                        {/* Mode Toggle */}
-                        <div className="flex-1 relative">
-                            <Button
-                                {...modeLongPress}
-                                className={`w-full h-full flex flex-col items-center justify-center border transition-all rounded-md
-                                    ${isAutoMode
-                                        ? 'bg-slate-800 border-cyan-500 text-cyan-400'
-                                        : 'bg-red-950/20 border-red-900/30 text-red-400 hover:bg-red-900/20'
-                                    }
-                                `}
-                            >
-                                <span className="text-[10px] mb-1 opacity-70 font-bold tracking-wider">OP MODE</span>
-                                <span className="text-base font-black tracking-wide">{isAutoMode ? 'AUTO' : 'MANUAL'}</span>
-                            </Button>
-                        </div>
-
-                        {/* Emergency Stop */}
-                        <Button
-                            onClick={handleEmergencyStop}
-                            className="flex-1 bg-red-600 hover:bg-red-500 text-white border-none shadow-[0_0_15px_rgba(220,38,38,0.4)] animate-pulse-slow p-2 rounded-md"
-                        >
-                            <div className="flex flex-col items-center justify-center text-center">
-                                <AlertTriangle className="w-5 h-5 stroke-[3] mb-1" />
-                                <span className="text-xs font-black leading-none tracking-tight">EMERGENCY<br />STOP</span>
-                            </div>
-                        </Button>
-                    </CardContent>
-                </Card>
+                {/* B4: Critical Alerts (span 2) */}
+                <PilotSafetyControls 
+                    isAutoMode={isAutoMode} 
+                    modeLongPress={modeLongPress} 
+                    handleEmergencyStop={handleEmergencyStop} 
+                />
             </div>
             {/* --- Confirmation Modal (Action Check) --- */}
             {confirmModal.open && (
