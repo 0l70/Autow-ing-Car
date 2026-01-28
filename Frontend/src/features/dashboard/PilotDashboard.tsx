@@ -50,7 +50,7 @@ export function PilotDashboard() {
     // 관제사와 동일한 Mock 데이터 소스 사용 (추후 WebSocket으로 대체)
     const mockData = useMockAircraftMqtt();
     // WebSocket Hook
-    const { request, onMessage } = useTelemetrySocket();
+    const { request } = useTelemetrySocket();
 
     useEffect(() => {
         setAircrafts(mockData);
