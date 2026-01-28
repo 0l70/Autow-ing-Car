@@ -1,0 +1,224 @@
+package com.project.domain.map.service;
+
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.PriorityQueue;
+import java.util.Set;
+
+import org.springframework.stereotype.Service;
+
+import com.project.domain.common.MapStatus;
+import com.project.domain.map.component.GraphCache;
+import com.project.domain.map.component.UsageManager;
+import com.project.domain.map.entity.Edge;
+import com.project.domain.map.entity.Node;
+import com.project.domain.mission.dto.MissionWebSocketDtos.PathOptionDto;
+
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+
+@Service
+@RequiredArgsConstructor
+public class MapService {
+
+    private final GraphCache graphCache;
+    private final UsageManager usageManager;
+
+    @AllArgsConstructor
+    @Getter
+    static class PathNode {
+        Node node;
+        double g;
+        double f;
+    }
+
+    /**
+     * A* Algorithm using GraphCache and UsageManager
+     */
+    /**
+     * Yen's Algorithm for K-Shortest Paths (K=3)
+     */
+    public List<PathOptionDto> findShortestPath(Node start, Node end) {
+        int K = 3;
+        List<List<Edge>> resultPaths = new ArrayList<>();
+
+        // 1. First shortest path
+        List<Edge> firstPath = findSinglePath(start, end, Collections.emptySet());
+        if (firstPath.isEmpty()) {
+            return Collections.emptyList();
+        }
+        resultPaths.add(firstPath);
+
+        PriorityQueue<List<Edge>> candidates = new PriorityQueue<>(
+                Comparator.comparingDouble(this::calculatePathCost));
+
+        // 2. Yen's Iteration
+        for (int k = 1; k < K; k++) {
+            List<Edge> prevPath = resultPaths.get(k - 1);
+
+            // Spur Node Loop (iterate over all nodes in the path except the last
+            // implementation detail)
+            // Here simpler: iterate edges
+            List<Edge> rootPath = new ArrayList<>();
+
+            for (int i = 0; i < prevPath.size(); i++) {
+                Edge spurEdge = prevPath.get(i);
+                Node spurNode = spurEdge.getSrcNode();
+
+                // Root path is path from start to spurNode
+                if (i > 0)
+                    rootPath.add(prevPath.get(i - 1));
+
+                Set<Long> excluded = new HashSet<>();
+                // Block edges used in previous k paths that share the same root path
+                for (List<Edge> p : resultPaths) {
+                    if (isSameRoot(p, rootPath, i) && i < p.size()) {
+                        excluded.add(p.get(i).getId());
+                    }
+                }
+
+                // Block the current spur edge for this specific deviation attempt
+                excluded.add(spurEdge.getId());
+
+                // Calculate spur path from spurNode to end
+                List<Edge> spurPath = findSinglePath(spurNode, end, excluded);
+
+                if (!spurPath.isEmpty()) {
+                    List<Edge> totalPath = new ArrayList<>(rootPath);
+                    totalPath.addAll(spurPath);
+                    if (!containsPath(candidates, resultPaths, totalPath)) {
+                        candidates.add(totalPath);
+                    }
+                }
+            }
+
+            if (candidates.isEmpty())
+                break;
+            resultPaths.add(candidates.poll());
+        }
+
+        // Convert to DTOs
+        List<PathOptionDto> dtos = new ArrayList<>();
+        for (int i = 0; i < resultPaths.size(); i++) {
+            List<Edge> p = resultPaths.get(i);
+            LinkedList<String> edgeIds = new LinkedList<>();
+            for (Edge e : p)
+                edgeIds.add(e.getEdgeCode());
+
+            dtos.add(PathOptionDto.builder()
+                    .optionId((long) (i + 1))
+                    .label(i == 0 ? "최적 경로" : "대안 경로 " + i)
+                    .edgeIds(edgeIds)
+                    .build());
+        }
+        return dtos;
+    }
+
+    private boolean isSameRoot(List<Edge> path, List<Edge> root, int index) {
+        if (path.size() < index)
+            return false;
+        for (int j = 0; j < index; j++) {
+            if (!path.get(j).getId().equals(root.get(j).getId()))
+                return false;
+        }
+        return true;
+    }
+
+    private boolean containsPath(PriorityQueue<List<Edge>> candidates, List<List<Edge>> results, List<Edge> target) {
+        for (List<Edge> p : candidates)
+            if (isSamePath(p, target))
+                return true;
+        for (List<Edge> p : results)
+            if (isSamePath(p, target))
+                return true;
+        return false;
+    }
+
+    private boolean isSamePath(List<Edge> p1, List<Edge> p2) {
+        if (p1.size() != p2.size())
+            return false;
+        for (int i = 0; i < p1.size(); i++) {
+            if (!p1.get(i).getId().equals(p2.get(i).getId()))
+                return false;
+        }
+        return true;
+    }
+
+    private double calculatePathCost(List<Edge> path) {
+        return path.stream().mapToDouble(Edge::getDistance).sum();
+    }
+
+    /**
+     * Modified A* Algorithm (Supports excluded edges)
+     */
+    private List<Edge> findSinglePath(Node start, Node end, Set<Long> excludedEdges) {
+        PriorityQueue<PathNode> openSet = new PriorityQueue<>(
+                Comparator.comparingDouble(PathNode::getF));
+        Map<Long, Double> gScore = new HashMap<>();
+        Map<Long, Edge> cameFrom = new HashMap<>();
+        Set<Long> closedSet = new HashSet<>();
+
+        gScore.put(start.getId(), 0.0);
+        openSet.add(new PathNode(start, 0.0, heuristic(start, end)));
+
+        while (!openSet.isEmpty()) {
+            PathNode current = openSet.poll();
+            Node currentNode = current.node;
+
+            if (currentNode.getId().equals(end.getId())) {
+                return reconstructEdgeList(cameFrom, currentNode);
+            }
+
+            if (closedSet.contains(currentNode.getId()))
+                continue;
+            closedSet.add(currentNode.getId());
+
+            for (Edge edge : graphCache.getEdges(currentNode)) {
+                if (excludedEdges.contains(edge.getId()))
+                    continue;
+
+                Node neighbor = edge.getDstNode();
+                if (closedSet.contains(neighbor.getId()))
+                    continue;
+                if (edge.getStatus() == MapStatus.BLOCKED || neighbor.getStatus() == MapStatus.BLOCKED)
+                    continue;
+
+                // Usage Check (Global lock)
+                if (usageManager.isEdgeLocked(edge.getId()) || usageManager.isNodeLocked(neighbor.getId()))
+                    continue;
+
+                double newG = gScore.getOrDefault(currentNode.getId(), Double.MAX_VALUE) + edge.getDistance();
+                if (newG < gScore.getOrDefault(neighbor.getId(), Double.MAX_VALUE)) {
+                    cameFrom.put(neighbor.getId(), edge);
+                    gScore.put(neighbor.getId(), newG);
+                    openSet.add(new PathNode(neighbor, newG, newG + heuristic(neighbor, end)));
+                }
+            }
+        }
+        return Collections.emptyList();
+    }
+
+    private List<Edge> reconstructEdgeList(Map<Long, Edge> cameFrom, Node current) {
+        LinkedList<Edge> path = new LinkedList<>();
+        while (cameFrom.containsKey(current.getId())) {
+            Edge edge = cameFrom.get(current.getId());
+            path.addFirst(edge);
+            current = edge.getSrcNode();
+        }
+        return path;
+    }
+
+    // Heuristic: Euclidean Distance
+    private double heuristic(Node a, Node b) {
+        double dx = a.getPosX() - b.getPosX();
+        double dy = a.getPosY() - b.getPosY();
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+}

@@ -1,5 +1,7 @@
 package com.project.domain.map.service;
 
+import java.util.List;
+
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,4 +29,21 @@ public class MapDBAdaptor {
                 .orElseThrow(() -> new IllegalArgumentException("No Node: " + nodeCode));
     }
 
+    // [Pathfinding] 인접 간선 조회
+    public List<Edge> getEdgesBySrcNode(Node srcNode) {
+        return edgeRepository.findBySrcNode(srcNode);
+    }
+
+    public Edge registerEdge(Edge edge) {
+        return edgeRepository.save(edge);
+    }
+
+    public Node registerNode(Node node) {
+        return nodeRepository.save(node);
+    }
+
+    // [GraphCache] 전체 간선 조회
+    public List<Edge> findAllEdges() {
+        return edgeRepository.findAll();
+    }
 }
