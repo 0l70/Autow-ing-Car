@@ -13,6 +13,9 @@ import { INITIAL_LOGS, VEHICLE_STATUS, NAVIGATION_DATA } from './MockData';
 // --- Map Integration ---
 import { MapCanvas } from "@/widgets/map-panel/MapCanvas";
 import { GraphInteractionLayer } from "@/features/map-editor/ui/GraphInteractionLayer";
+import { CameraFeed } from "./ui/CameraFeed";
+import { cn } from "@/shared/lib/utils";
+
 import { AircraftLayer } from "@/features/map-visualizer/ui/AircraftLayer";
 import { useGraphStore } from "@/entities/map/model/store";
 import { MapMeta, Aircraft } from "@/entities/map/model/types";
@@ -32,6 +35,7 @@ export function PilotDashboard() {
     const [moveState, setMoveState] = useState<MoveState>('stopped');
     const [connState, setConnState] = useState<ConnectionState>('disconnected');
     const [isAutoMode, setIsAutoMode] = useState(false);
+    const [isCamEnabled, setIsCamEnabled] = useState(false);
 
     // --- 지도 상태 관리 ---
     const { loadGraph, setAircrafts, mapWidth: storeMapWidth, mapHeight: storeMapHeight } = useGraphStore();
@@ -205,30 +209,39 @@ export function PilotDashboard() {
             {/* --- TOP ROW --- */}
             <div className="grid grid-cols-12 gap-4 h-[60%]">
 
-                {/* T1: Camera View (Covers Buttons + Status) */}
-                <Card className="col-span-5 glass-panel flex flex-col">
-                    <CardHeader className="py-3 border-b border-white/10">
-                        <CardTitle className="text-sm font-bold tracking-wide text-slate-400 flex items-center gap-2">
-                            <Radio className="w-4 h-4 text-cyan-500" />
-                            POV CAMERA FEED
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex-1 p-0 relative bg-black/60 overflow-hidden group">
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <span className="text-slate-600 text-xs font-mono">NO SIGNAL_SOURCE</span>
-                        </div>
-                        <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/80 border border-green-900/50 px-2 py-1 rounded text-[10px] text-green-500 shadow-[0_0_10px_rgba(0,255,0,0.2)]">
-                            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                            LIVE FEED
-                        </div>
-                        <div className="absolute inset-0 pointer-events-none opacity-20">
-                            {/* Camera Reticle Overlay */}
-                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 border-2 border-white/10"></div>
-                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-3 bg-cyan-500/50"></div>
-                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-1 bg-cyan-500/50"></div>
-                        </div>
-                    </CardContent>
-                </Card>
+
+            {/* T1: Camera View (Covers Buttons + Status) */}
+            <Card className="col-span-5 glass-panel flex flex-col">
+                <CardHeader className="py-3 border-b border-white/10 flex flex-row items-center justify-between">
+                    <CardTitle className="text-sm font-bold tracking-wide text-slate-400 flex items-center gap-2">
+                        <Radio className={cn("w-4 h-4 transition-colors", isCamEnabled ? "text-green-500 animate-pulse" : "text-slate-600")} />
+                        POV CAMERA FEED
+                    </CardTitle>
+                    {/* Camera Toggle Switch */}
+                    <div className="flex items-center gap-2">
+                        <span className="text-[10px] uppercase font-bold text-slate-500">{isCamEnabled ? 'ON' : 'OFF'}</span>
+                        <button 
+                            onClick={() => setIsCamEnabled(!isCamEnabled)}
+                            className={cn(
+                                "w-8 h-4 rounded-full relative transition-colors duration-300 focus:outline-none focus:ring-1 focus:ring-cyan-500",
+                                isCamEnabled ? "bg-green-500/20 border border-green-500/50" : "bg-slate-700 border border-slate-600"
+                            )}
+                        >
+                            <div className={cn(
+                                "absolute top-0.5 w-2.5 h-2.5 rounded-full transition-all duration-300 shadow-sm",
+                                isCamEnabled ? "left-[18px] bg-green-400 shadow-[0_0_5px_#4ade80]" : "left-0.5 bg-slate-400"
+                            )} />
+                        </button>
+                    </div>
+                </CardHeader>
+                <CardContent className="flex-1 p-0 relative bg-black/60 overflow-hidden group">
+                    <CameraFeed 
+                        enabled={isCamEnabled} 
+                        carId="CAR_102" // Hardcoded for demo, or derive from selected/assigned Tug
+                        className="w-full h-full"
+                    />
+                </CardContent>
+            </Card>
 
                 {/* T2: Digital Twin Map (Covers Navigation Data) */}
                 <Card className="col-span-5 glass-panel relative overflow-hidden flex flex-col">
