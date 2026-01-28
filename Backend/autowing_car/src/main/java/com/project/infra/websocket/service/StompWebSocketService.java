@@ -56,4 +56,36 @@ public class StompWebSocketService implements WebSocketService {
     public void broadcastMapInfo(Object payload) {
         messagingTemplate.convertAndSend("/topic/sys/map/info", payload); // 프론트와 토픽 일치시킴
     }
+
+    // --- WebRTC Signaling Implementation ---
+
+    @Override
+    public void broadcastOffer(Object payload) {
+        if (payload instanceof com.project.domain.webrtc.dto.SignalingMessage) {
+            com.project.domain.webrtc.dto.SignalingMessage msg = (com.project.domain.webrtc.dto.SignalingMessage) payload;
+            // 타겟: /topic/video/offer/{receiverId}
+            messagingTemplate.convertAndSend("/topic/video/offer/" + msg.getReceiverId(), msg);
+            log.debug("WebRTC OFFER relayed to {}", msg.getReceiverId());
+        }
+    }
+
+    @Override
+    public void broadcastAnswer(Object payload) {
+        if (payload instanceof com.project.domain.webrtc.dto.SignalingMessage) {
+            com.project.domain.webrtc.dto.SignalingMessage msg = (com.project.domain.webrtc.dto.SignalingMessage) payload;
+            // 타겟: /topic/video/answer/{receiverId} (Sender에게 전달)
+            messagingTemplate.convertAndSend("/topic/video/answer/" + msg.getReceiverId(), msg);
+            log.debug("WebRTC ANSWER relayed to {}", msg.getReceiverId());
+        }
+    }
+
+    @Override
+    public void broadcastIce(Object payload) {
+        if (payload instanceof com.project.domain.webrtc.dto.SignalingMessage) {
+            com.project.domain.webrtc.dto.SignalingMessage msg = (com.project.domain.webrtc.dto.SignalingMessage) payload;
+            // 타겟: /topic/video/ice/{receiverId}
+            messagingTemplate.convertAndSend("/topic/video/ice/" + msg.getReceiverId(), msg);
+            log.debug("WebRTC ICE relayed to {}", msg.getReceiverId());
+        }
+    }
 }

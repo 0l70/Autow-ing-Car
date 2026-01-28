@@ -21,4 +21,11 @@ public interface WebSocketService {
 
     // 7. 맵 정보 전체 브로드캐스트 (Added via Merge)
     void broadcastMapInfo(Object payload);
+
+    // 8. WebRTC Signaling (Added)
+    void broadcastOffer(Object payload);
+
+    void broadcastAnswer(Object payload);
+
+    void broadcastIce(Object payload);
 }
