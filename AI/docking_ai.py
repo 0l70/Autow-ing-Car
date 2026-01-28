@@ -6,7 +6,7 @@ class DockingAI:
     def __init__(self):
         # ---------------------------------------------------------
         # [1] 사용자 설정
-        self.MARKER_SIZE = 3.4  # 마커 크기 (cm)
+        self.MARKER_SIZE = 5.0  # 단위: cm
         self.target_dict = cv2.aruco.DICT_6X6_250 
         # ---------------------------------------------------------
 
@@ -40,8 +40,9 @@ class DockingAI:
             [-ms, -ms, 0]
         ], dtype=np.float32)
 
-        self.smooth_data = {}
-        self.ALPHA = 0.3 
+        # [핵심] 트래킹 데이터 저장소 (이전 프레임의 rvec, tvec 저장)
+        self.tracking_data = {} 
+        self.ALPHA = 0.2  # 부드러움 정도 (낮을수록 부드러움)
 
     def euler_from_quaternion(self, rvec):
         rmat, _ = cv2.Rodrigues(rvec)
@@ -77,30 +78,60 @@ class DockingAI:
         best_marker_idx = -1
         best_rvec, best_tvec = None, None
 
+        # 현재 프레임에서 감지된 ID 목록
+        current_visible_ids = []
+
         if ids is not None:
             for i in range(len(ids)):
                 marker_id = ids[i][0]
+                current_visible_ids.append(marker_id)
 
-                # [수정됨] 오직 ID 11번만 찾도록 고정
+                # 오직 ID 11번만 추적
                 if marker_id == 11: 
                     target_corners = corners[i][0]
                     
-                    success, rvec, tvec = cv2.solvePnP(
-                        self.obj_points, target_corners, 
-                        self.camera_matrix, self.dist_coeffs,
-                        flags=cv2.SOLVEPNP_IPPE_SQUARE 
-                    )
+                    # ---------------------------------------------------------
+                    # [핵심 로직] 트래킹 모드 (Tracking Mode)
+                    # ---------------------------------------------------------
+                    use_guess = False
+                    if marker_id in self.tracking_data:
+                        # 이전에 본 적 있다면, 그 값을 '초기값'으로 사용 (떨림 방지)
+                        rvec_guess = self.tracking_data[marker_id]['rvec']
+                        tvec_guess = self.tracking_data[marker_id]['tvec']
+                        use_guess = True
+                    else:
+                        rvec_guess = np.zeros((3, 1), dtype=np.float32)
+                        tvec_guess = np.zeros((3, 1), dtype=np.float32)
+
+                    if use_guess:
+                        # [모드 1] 트래킹: 이전 값을 힌트로 미세 조정 (SOLVEPNP_ITERATIVE)
+                        # 정면 떨림을 잡는 데 가장 효과적임
+                        success, rvec, tvec = cv2.solvePnP(
+                            self.obj_points, target_corners, 
+                            self.camera_matrix, self.dist_coeffs,
+                            rvec=rvec_guess, tvec=tvec_guess,
+                            useExtrinsicGuess=True,
+                            flags=cv2.SOLVEPNP_ITERATIVE
+                        )
+                    else:
+                        # [모드 2] 처음 발견: IPPE로 정확한 초기값 잡기
+                        success, rvec, tvec = cv2.solvePnP(
+                            self.obj_points, target_corners, 
+                            self.camera_matrix, self.dist_coeffs,
+                            flags=cv2.SOLVEPNP_IPPE_SQUARE 
+                        )
                     
                     if success:
-                        if marker_id in self.smooth_data:
-                            prev = self.smooth_data[marker_id]
-                            rvec = self.ALPHA * rvec + (1 - self.ALPHA) * prev['rvec']
-                            tvec = self.ALPHA * tvec + (1 - self.ALPHA) * prev['tvec']
-                        self.smooth_data[marker_id] = {'rvec': rvec, 'tvec': tvec}
+                        # [스무딩 필터] 값 튀는 것 2차 방지
+                        if use_guess:
+                            rvec = self.ALPHA * rvec + (1 - self.ALPHA) * rvec_guess
+                            tvec = self.ALPHA * tvec + (1 - self.ALPHA) * tvec_guess
+                        
+                        # 다음 프레임을 위해 저장
+                        self.tracking_data[marker_id] = {'rvec': rvec, 'tvec': tvec}
 
                         dist = math.sqrt(tvec[0]**2 + tvec[1]**2 + tvec[2]**2)
 
-                        # 혹시 11번이 여러 개일 경우 가장 가까운 것
                         if dist < min_distance:
                             min_distance = dist
                             best_marker_idx = i
@@ -108,50 +139,55 @@ class DockingAI:
                             best_tvec = tvec
                             data["id"] = int(marker_id)
 
-            if best_marker_idx != -1:
-                data["found"] = True
-                data["dist_cm"] = min_distance
-                
-                roll, pitch, yaw = self.euler_from_quaternion(best_rvec)
-                data["roll"] = roll
-                data["pitch"] = pitch
-                data["yaw"] = yaw 
+        # 화면에서 사라진 마커는 트래킹 데이터에서 삭제 (초기화)
+        keys_to_remove = [k for k in self.tracking_data if k not in current_visible_ids]
+        for k in keys_to_remove:
+            del self.tracking_data[k]
 
-                target_corners = corners[best_marker_idx][0]
-                cx = int(target_corners[:, 0].mean())
-                cy = int(target_corners[:, 1].mean())
-                data["center"] = (cx, cy)
+        if best_marker_idx != -1:
+            data["found"] = True
+            data["dist_cm"] = min_distance
+            
+            roll, pitch, yaw = self.euler_from_quaternion(best_rvec)
+            data["roll"] = roll
+            data["pitch"] = pitch
+            data["yaw"] = yaw 
 
-                # --- 시각화 ---
-                cv2.aruco.drawDetectedMarkers(frame, corners, ids)
-                cv2.drawFrameAxes(frame, self.camera_matrix, self.dist_coeffs, best_rvec, best_tvec, self.MARKER_SIZE)
+            target_corners = corners[best_marker_idx][0]
+            cx = int(target_corners[:, 0].mean())
+            cy = int(target_corners[:, 1].mean())
+            data["center"] = (cx, cy)
 
-                # --- UI 정보 박스 ---
-                target_dist = 12.0
-                remain_dist = min_distance - target_dist 
+            # --- 시각화 ---
+            cv2.aruco.drawDetectedMarkers(frame, corners, ids)
+            cv2.drawFrameAxes(frame, self.camera_matrix, self.dist_coeffs, best_rvec, best_tvec, self.MARKER_SIZE)
 
-                box_width, box_height = 280, 160
-                box_x = w - box_width - 20
-                box_y = h - box_height - 20
+            # --- UI 정보 박스 ---
+            target_dist = 12.0
+            remain_dist = min_distance - target_dist 
 
-                overlay = frame.copy()
-                cv2.rectangle(overlay, (box_x, box_y), (box_x + box_width, box_y + box_height), (0, 0, 0), -1)
-                cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
+            box_width, box_height = 280, 160
+            box_x = w - box_width - 20
+            box_y = h - box_height - 20
 
-                dist_color = (0, 255, 0) if abs(remain_dist) < 2.0 else (0, 255, 255)
-                yaw_color = (0, 255, 0) if abs(yaw) < 5.0 else (0, 255, 255)
+            overlay = frame.copy()
+            cv2.rectangle(overlay, (box_x, box_y), (box_x + box_width, box_y + box_height), (0, 0, 0), -1)
+            cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
 
-                cv2.putText(frame, f"TARGET ID : {data['id']}", 
-                           (box_x + 10, box_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-                
-                cv2.putText(frame, f"Dist   : {min_distance:.1f} cm (To: {remain_dist:.1f})", 
-                           (box_x + 10, box_y + 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, dist_color, 1)
-                
-                cv2.putText(frame, f"Yaw(Y) : {yaw:.1f} deg", 
-                           (box_x + 10, box_y + 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, yaw_color, 2)
-                cv2.putText(frame, f"Pit(X) : {pitch:.1f} deg", 
+            dist_color = (0, 255, 0) if abs(remain_dist) < 2.0 else (0, 255, 255)
+            yaw_color = (0, 255, 0) if abs(yaw) < 5.0 else (0, 255, 255)
+
+            cv2.putText(frame, f"TARGET ID : {data['id']}", 
+                       (box_x + 10, box_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            
+            cv2.putText(frame, f"Dist   : {min_distance:.1f} cm (To: {remain_dist:.1f})", 
+                       (box_x + 10, box_y + 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, dist_color, 1)
+            
+            cv2.putText(frame, f"Yaw(Y) : {yaw:.1f} deg", 
+                       (box_x + 10, box_y + 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, yaw_color, 2)
+            cv2.putText(frame, f"Pit(X) : {pitch:.1f} deg", 
                            (box_x + 10, box_y + 115), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-                cv2.putText(frame, f"Rol(Z) : {roll:.1f} deg", 
+            cv2.putText(frame, f"Rol(Z) : {roll:.1f} deg", 
                            (box_x + 10, box_y + 135), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
 
         return data, frame
