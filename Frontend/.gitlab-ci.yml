@@ -1,19 +1,53 @@
-# 📂 Frontend/.gitlab-ci.yml
 spec:
   inputs:
     project_dir:
       type: string
       default: "Frontend"
-      description: "Frontend 프로젝트 경로"
-    # 만약 메인에서 image_tag 같은 걸 넘긴다면 여기도 정의해야 함
-
+      description: "Frontend Project Directory"
 ---
-# (여기서부터 기존 로직 시작)
+stages:
+  - build
+  - deploy
 
+# ---------------------------------------------------------------------------
+# 1. Frontend Build & Test (Runs on ALL branches)
+#    - Purpose: Verify code compilation and check for errors
+# ---------------------------------------------------------------------------
 frontend-build:
   stage: build
+  image: node:20-alpine
   script:
-    # inputs 값을 사용할 때는 $[[ inputs.변수명 ]] 형식을 씁니다
+    - echo "🚀 Starting Frontend Build Test..."
     - cd $[[ inputs.project_dir ]]
-    # - npm install
-    # - npm run build
+    - npm install -g pnpm
+    - pnpm install --frozen-lockfile
+    - pnpm run build
+    - echo "✅ Build Successful!"
+  artifacts:
+    paths:
+      - $[[ inputs.project_dir ]]/dist
+    expire_in: 1 hour
+
+# ---------------------------------------------------------------------------
+# 2. Docker Deploy (Runs ONLY on 'master' branch)
+#    - Purpose: Build Docker image and push to registry for deployment
+# ---------------------------------------------------------------------------
+frontend-deploy:
+  stage: deploy
+  image: docker:latest
+  services:
+    - docker:dind
+  needs: ["frontend-build"]
+  script:
+    - echo "🐳 Starting Docker Build & Push..."
+    - cd $[[ inputs.project_dir ]]
+    # Login to GitLab Container Registry
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    # Build Image
+    - docker build -t $CI_REGISTRY_IMAGE/frontend:latest .
+    # Push Image
+    - docker push $CI_REGISTRY_IMAGE/frontend:latest
+    - echo "🚀 Deployment Image Pushed Successfully!"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      when: on_success
