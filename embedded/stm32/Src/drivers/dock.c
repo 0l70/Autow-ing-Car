@@ -5,22 +5,17 @@
  *      Author: SSAFY
  */
 
-#include "dock.h"
+#include "drivers/dock.h"
 #include "cmsis_os2.h"
 
 extern TIM_HandleTypeDef htim3;
 
 static dock_abort_fn_t s_abort_fn = 0;
 
-#define LIFT_UP_US       1500 // 2000 // to defalut pose(up)
-#define LIFT_DOWN_US     1500 // 1300 // down
-#define CLAMP_OPEN_US    1200 // default pose(open)
-#define CLAMP_CLOSE_US   1800 // close
-
-static inline void servo_set_us(uint32_t channel, uint16_t us)
-{
-  __HAL_TIM_SET_COMPARE(&htim3, channel, us);
-}
+#define LIFT_UP_US       1800 // up
+#define LIFT_DOWN_US     1400 // down
+#define CLAMP_OPEN_US    1100 // open
+#define CLAMP_CLOSE_US   1600 // close
 
 static inline uint8_t should_abort(void)
 {
@@ -41,70 +36,59 @@ void Dock_InitPwm(void)
 static uint16_t g_lift_us  = 1500;
 static uint16_t g_clamp_us = 1500;
 
-static void servo_ramp_us(uint32_t channel, uint16_t from_us, uint16_t to_us,
-                          uint16_t step_us, uint16_t step_delay_ms)
+static inline void lift_set(uint16_t us)
 {
-  if (step_us == 0) step_us = 1;
-
-  int32_t cur = from_us;
-  int32_t target = to_us;
-  int32_t step = (target >= cur) ? (int32_t)step_us : -(int32_t)step_us;
-
-  while (cur != target) {
-    cur += step;
-
-    if ((step > 0 && cur > target) || (step < 0 && cur < target)) cur = target;
-
-    __HAL_TIM_SET_COMPARE(&htim3, channel, (uint16_t)cur);
-
-    if (step_delay_ms) osDelay(step_delay_ms);
-  }
+  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, us);
+  g_lift_us = us;
 }
 
-static void lift_move_slow(uint16_t target_us)
+static inline void clamp_set(uint16_t us)
 {
-  servo_ramp_us(TIM_CHANNEL_1, g_lift_us, target_us, 5, 10);
-  g_lift_us = target_us;
-}
-
-static void clamp_move_slow(uint16_t target_us)
-{
-  servo_ramp_us(TIM_CHANNEL_2, g_clamp_us, target_us, 5, 10);
-  g_clamp_us = target_us;
+  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, us);
+  g_clamp_us = us;
 }
 
 void Dock_SafePose(void)
 {
-	lift_move_slow(LIFT_UP_US);
-	clamp_move_slow(CLAMP_OPEN_US);
+  lift_set(LIFT_UP_US);
+  clamp_set(CLAMP_OPEN_US);
+}
+
+static void abort_to_safe(void)
+{
+  Dock_SafePose();
 }
 
 void Dock_RunDockSequence(void)
 {
-  if (should_abort()) return;
-  lift_move_slow(LIFT_DOWN_US);
+  if (should_abort()) { abort_to_safe(); return; }
+
+  // 내려가기
+  lift_set(LIFT_DOWN_US);
   osDelay(1000);
 
-  if (should_abort()) return;
-  clamp_move_slow(CLAMP_CLOSE_US);
-  osDelay(1000);
+  // clamp 닫기
+  clamp_set(CLAMP_CLOSE_US);
+  osDelay(2000);
 
-  if (should_abort()) return;
-  lift_move_slow(LIFT_UP_US);
+  // 올라오기
+  lift_set(LIFT_UP_US);
   osDelay(1000);
 }
 
 void Dock_RunReleaseSequence(void)
 {
-  if (should_abort()) return;
-  lift_move_slow(LIFT_DOWN_US);
+  if (should_abort()) { abort_to_safe(); return; }
+
+  // 내려가기
+  lift_set(LIFT_DOWN_US);
   osDelay(1000);
 
-  if (should_abort()) return;
-  clamp_move_slow(CLAMP_OPEN_US);
-  osDelay(1000);
+  // clamp 열기
+  clamp_set(CLAMP_OPEN_US);
+  osDelay(2000);
 
-  if (should_abort()) return;
-  lift_move_slow(LIFT_UP_US);
+  // 올라오기
+  lift_set(LIFT_UP_US);
   osDelay(1000);
 }

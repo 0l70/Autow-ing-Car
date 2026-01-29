@@ -6,7 +6,7 @@
  */
 
 
-#include "uartRxTask.h"
+#include "tasks/uartRxTask.h"
 
 #include <stdint.h>
 #include <string.h>

@@ -6,16 +6,16 @@
  */
 
 
-#include "safetyTask.h"
+#include "tasks/safetyTask.h"
 
 #include "cmsis_os.h"
 #include <stdio.h>
 
 #include "app_shared.h"
 
-#include "motor.h"
-#include "steer_servo.h"
-#include "dock.h"
+#include "drivers/motor.h"
+#include "drivers/steer_servo.h"
+#include "drivers/dock.h"
 
 #ifndef SAFETY_PERIOD_MS
 #define SAFETY_PERIOD_MS 10u

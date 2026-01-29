@@ -6,7 +6,7 @@
  */
 
 
-#include "motor.h"
+#include "drivers/motor.h"
 
 static void DC_Motor_SetDuty(uint8_t duty)
 {

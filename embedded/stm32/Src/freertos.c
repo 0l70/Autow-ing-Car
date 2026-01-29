@@ -29,14 +29,14 @@
 
 #include "cmd.h"
 #include "app_shared.h"
-#include "dock.h"
-#include "steer_servo.h"
+#include "drivers/dock.h"
+#include "drivers/steer_servo.h"
 
 // Task headers
-#include "controlTask.h"
-#include "safetyTask.h"
-#include "uartRxTask.h"
-#include "dockTask.h"
+#include "tasks/controlTask.h"
+#include "tasks/safetyTask.h"
+#include "tasks/uartRxTask.h"
+#include "tasks/dockTask.h"
 
 /* USER CODE END Includes */
 
