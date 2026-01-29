@@ -7,7 +7,7 @@ import org.springframework.stereotype.Controller;
 
 import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.CarConnectRequestDto;
 import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.CarDisconnectRequestDto;
-import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.CarMoveRequestDto;
+import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.CarDispatchRequestDto;
 import com.project.domain.towingcar.service.TowingCarService;
 
 import lombok.RequiredArgsConstructor;
@@ -20,7 +20,12 @@ public class TowingCarWSController {
 
     private final TowingCarService towingCarService;
 
-    // 기장 -> 서버: "차량 보내주세요"
+    @MessageMapping("/car/dispatch")
+    public void dispatchCar(@Payload CarDispatchRequestDto requestDto, Principal principal) {
+        log.info("[WS] Dispatch Request: Pilot={}, Flight={}", principal.getName(), requestDto.getFlightNumber());
+        towingCarService.dispatchCarToFlight(requestDto.getFlightNumber());
+    }
+
     // 시나리오 A: [기장] 차량 연결 요청
     @MessageMapping("/car/connect")
     public void connectCar(@Payload CarConnectRequestDto requestDto, Principal principal) {
@@ -35,11 +40,6 @@ public class TowingCarWSController {
         towingCarService.disconnectCar(principal.getName(), requestDto);
     }
 
-    // 시나리오 D: [기장] 차량 이동 및 제어 요청 (Pushback 등)
-    @MessageMapping("/car/move")
-    public void moveCar(@Payload CarMoveRequestDto requestDto, Principal principal) {
-        log.info("[WS] Move Request: Pilot={}, Action={}, Car={}", principal.getName(), requestDto.getType(),
-                requestDto.getCarId());
-        towingCarService.moveCar(principal.getName(), requestDto);
-    }
+    // 시나리오 D: [기장] 차량 배정 요청
+
 }

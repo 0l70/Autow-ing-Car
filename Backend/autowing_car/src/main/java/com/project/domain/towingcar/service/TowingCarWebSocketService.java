@@ -31,4 +31,10 @@ public class TowingCarWebSocketService {
         log.info("[WS] Sending Flight Info to Pilot: {}", pilotId);
         webSocketService.sendToUser(pilotId, WebSocketTopics.QUEUE_FLIGHT_INFO, flightInfo);
     }
+
+    // 4. 기장에게 응답 전송 (Queue: /user/{id}/queue/reply)
+    public void notifyPilotResult(String pilotId, Object result) {
+        log.info("[WS] Sending Result to Pilot: {}", pilotId);
+        webSocketService.sendToUser(pilotId, WebSocketTopics.QUEUE_REPLY, result);
+    }
 }

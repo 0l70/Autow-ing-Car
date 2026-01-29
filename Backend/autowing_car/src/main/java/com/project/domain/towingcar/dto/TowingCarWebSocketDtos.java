@@ -11,7 +11,7 @@ public class TowingCarWebSocketDtos {
     @AllArgsConstructor
     public static class CarConnectRequestDto {
         private Long flightId;
-        private String reqId; // 프론트엔드 Request ID
+        // private String reqId; // 프론트엔드 Request ID
     }
 
     @Data
@@ -19,17 +19,15 @@ public class TowingCarWebSocketDtos {
     @AllArgsConstructor
     public static class CarDisconnectRequestDto {
         private Long flightId;
-        private String reqId; // 프론트엔드 Request ID
+        // private String reqId; // 프론트엔드 Request ID
     }
 
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class CarMoveRequestDto {
-        private String type; // MOVE, STOP, PUSHBACK
-        private Long flightId;
-        private String carId;
-        private String reqId;
+    public static class CarDispatchRequestDto {
+        private String flightNumber;
+        // private String reqId;
     }
 
     @Data
@@ -37,8 +35,7 @@ public class TowingCarWebSocketDtos {
     @AllArgsConstructor
     public static class CarModeRequestDto {
         private String mode; // AUTO, MANUAL
-        private String carId;
-        private String reqId;
+        private String car_code;
     }
 
     @Data
@@ -46,7 +43,7 @@ public class TowingCarWebSocketDtos {
     @AllArgsConstructor
     public static class CarEmergencyRequestDto {
         private String carId;
-        private String reqId;
+        // private String reqId;
     }
 
     @Getter

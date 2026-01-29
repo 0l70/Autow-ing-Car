@@ -7,7 +7,6 @@ import com.project.domain.flight.entity.Flight;
 import com.project.domain.flight.service.FlightDBAdaptor;
 import com.project.domain.map.entity.Node;
 import com.project.domain.map.service.MapDBAdaptor;
-import com.project.domain.map.service.MapService;
 import com.project.domain.mission.dto.MissionWebSocketDtos.MissionResponseDto;
 import com.project.domain.mission.entity.Mission;
 import com.project.domain.mission.service.MissionDBAdaptor;
@@ -16,15 +15,10 @@ import com.project.domain.towingcar.entity.DrivingLog;
 import com.project.domain.towingcar.entity.TowingCar;
 import com.project.global.error.domain.car.CarAlreadyInUseException;
 import com.project.global.error.domain.car.TowingCarNotAssignedException;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.Map;
 
 @Slf4j
 @Service
@@ -37,7 +31,7 @@ public class TowingCarService {
     private final MapDBAdaptor mapDBAdaptor;
     private final TowingCarMqttService towingCarMqttService;
     private final TowingCarWebSocketService towingCarWebSocketService;
-    private final MapService mapService;
+
     private boolean isAutoConnectEnabled = true;
     private boolean isAutoDisconnectEnabled = true;
     private static final double ARRIVAL_THRESHOLD = 2.0;
@@ -69,6 +63,9 @@ public class TowingCarService {
 
         // MQTT: MOVE_TO_GATE
         towingCarMqttService.moveCarToGate(assignedCar.getCode(), flight.getNodeCode());
+
+        // WebSocket: MOVE_TO_GATE
+        towingCarWebSocketService.broadcastCarStatus(assignedCar.getCode(), assignedCar);
     }
 
     /**
@@ -92,6 +89,9 @@ public class TowingCarService {
         // 상태 즉시 반영 (또는 로봇 응답 대기)
         assignedCar.updateStatus(assignedCar.getLastPosX(), assignedCar.getLastPosY(), assignedCar.getLastHeading(),
                 assignedCar.getLastVelocity(), assignedCar.getBattery(), CarStatus.LOADING);
+
+        // WebSocket: CONNECT
+        towingCarWebSocketService.broadcastCarStatus(assignedCar.getCode(), assignedCar);
     }
 
     /**
@@ -115,6 +115,9 @@ public class TowingCarService {
             mission.updateStatus(MissionStatus.COMPLETED);
             assignedCar.clearMission();
         }
+
+        // WebSocket: DISCONNECT
+        towingCarWebSocketService.broadcastCarStatus(assignedCar.getCode(), assignedCar);
     }
 
     // =========================================================================
@@ -166,35 +169,6 @@ public class TowingCarService {
         }
     }
 
-    @Transactional
-    public void moveCar(String pilotId, CarMoveRequestDto request) {
-        log.info("[WS] Move Request: Pilot={}, Action={}, Car={}", pilotId, request.getType(), request.getCarId());
-
-        if ("PUSHBACK".equals(request.getType())) {
-            log.info("🚀 [Pushback] Approved for Flight={}, Car={}", request.getFlightId(), request.getCarId());
-
-            // 승인 결과 알림 (Mock 데이터 포함)
-            towingCarWebSocketService.notifyPilotResult(pilotId,
-                    MissionResponseDto.builder()
-                            .status("APPROVED")
-                            .message("Pushback Approved to [Gate 1]")
-                            // .correlationId(request.getReqId())
-                            .data(mapService.getPushbackPath(request.getFlightId(), "Gate 1")) // Mock Gate
-                                                                                               // Gate
-                            .build());
-        } else {
-            // MQTT로 차량에 직접 명령 전송
-            sendMqttAfterCommit(request.getCarId(), Map.of("action", "MOVE_CONTROL", "type", request.getType()));
-
-            // 결과 알림
-            towingCarWebSocketService.notifyPilotResult(pilotId,
-                    MissionResponseDto.builder()
-                            .status("SUCCESS")
-                            .message("Move Command Processed: " + request.getType())
-                            .build());
-        }
-    }
-
     /**
      * [모드 전환] AUTO / MANUAL
      */
@@ -203,7 +177,7 @@ public class TowingCarService {
         log.info("[WS] Mode Switch: Pilot={}, Mode={}, Car={}", pilotId, request.getMode(), request.getCar_code());
 
         // MQTT로 차량에 직접 명령 전송
-        sendMqttAfterCommit(request.getCar_code(), Map.of("action", "SET_MODE", "mode", request.getMode()));
+        towingCarMqttService.setMode(request.getCar_code(), request.getMode());
 
         // 결과 알림
         towingCarWebSocketService.notifyPilotResult(pilotId,
@@ -221,7 +195,7 @@ public class TowingCarService {
         log.info("[WS] EMERGENCY STOP: Pilot={}, Car={}", pilotId, request.getCarId());
 
         // MQTT로 차량에 직접 명령 전송
-        sendMqttAfterCommit(request.getCarId(), Map.of("action", "EMERGENCY_STOP"));
+        towingCarMqttService.emergencyStop(request.getCarId());
 
         // 결과 알림
         towingCarWebSocketService.notifyPilotResult(pilotId,
@@ -255,18 +229,19 @@ public class TowingCarService {
         towingCarDBAdaptor.saveDrivingLog(log);
     }
 
-    private void sendMqttAfterCommit(String carCode, Map<String, Object> data) {
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    towingCarMqttService.startTransport(carCode, data);
-                }
-            });
-        } else {
-            towingCarMqttService.startTransport(carCode, data);
-        }
-    }
+    // private void sendMqttAfterCommit(String carCode, Map<String, Object> data) {
+    // if (TransactionSynchronizationManager.isSynchronizationActive()) {
+    // TransactionSynchronizationManager.registerSynchronization(new
+    // TransactionSynchronization() {
+    // @Override
+    // public void afterCommit() {
+    // towingCarMqttService.startTransport(carCode, data);
+    // }
+    // });
+    // } else {
+    // towingCarMqttService.startTransport(carCode, data);
+    // }
+    // }
 
     private CarStatus parseCarStatus(String s) {
         try {
