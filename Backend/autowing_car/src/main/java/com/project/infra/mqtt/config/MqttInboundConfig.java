@@ -2,7 +2,6 @@ package com.project.infra.mqtt.config;
 
 import java.util.UUID;
 
-import com.project.infra.mqtt.MqttTopics;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.context.annotation.Bean;

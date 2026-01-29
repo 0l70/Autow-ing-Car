@@ -10,9 +10,8 @@ import com.project.domain.map.service.MapService;
 import com.project.domain.mission.dto.MissionWebSocketDtos.*;
 import com.project.domain.mission.entity.Mission;
 import com.project.domain.towingcar.entity.TowingCar;
-import com.project.infra.mqtt.MqttTopics;
+import com.project.infra.mqtt.config.MqttTopics;
 import com.project.infra.mqtt.service.MqttOutboundService;
-import com.project.infra.websocket.service.WebSocketService;
 
 import com.project.domain.map.entity.Node;
 
@@ -33,7 +32,7 @@ public class MissionService {
     private final MapDBAdaptor mapDBAdaptor;
     private final FlightDBAdaptor flightDBAdaptor;
 
-    private final WebSocketService webSocketService;
+    private final MissionWebSocketService missionWebSocketService;
     private final MapService mapService;
     private final MqttOutboundService mqttOutboundService;
 
@@ -56,7 +55,7 @@ public class MissionService {
         Node startNode = mapDBAdaptor.getNodeByCode(currentGate);
         Node endNode = mapDBAdaptor.getNodeByCode(activeRunway);
         // 관제사에게 전송
-        webSocketService.notifyAdminRequest(AdminAlertDto.builder()
+        missionWebSocketService.notifyAdminRequest(AdminAlertDto.builder()
                 .flightId(flight.getId())
                 .flightNumber(flight.getFlightNumber())
                 .pilotId(pilotId)
@@ -76,7 +75,7 @@ public class MissionService {
         Flight flight = flightDBAdaptor.getFlightById(decision.getFlightId());
 
         if (!decision.isApproved()) {
-            webSocketService.notifyPilotResult(flight.getPilot().getUsername(),
+            missionWebSocketService.notifyPilotResult(flight.getPilot().getUsername(),
                     MissionResponseDto.builder().status("REJECTED").message(decision.getRejectReason()).build());
             return;
         }
@@ -114,8 +113,8 @@ public class MissionService {
 
     private void notifyMissionUpdate(Mission mission) {
         MissionResponseDto response = MissionResponseDto.from(mission);
-        webSocketService.notifyPilotResult(mission.getPilot().getUsername(), response);
-        webSocketService.broadcastMissionUpdate(response);
+        missionWebSocketService.notifyPilotResult(mission.getPilot().getUsername(), response);
+        missionWebSocketService.broadcastMissionUpdate(response);
     }
 
     private void sendMqttAfterCommit(String carCode, String cmd, Map<String, Object> data) {

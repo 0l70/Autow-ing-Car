@@ -42,7 +42,7 @@ public class MqttInboundHandler implements MessageHandler {
             log.debug("[MQTT Recv] T={}, P={}", topic, payload);
 
             // 3. 비즈니스 로직으로 위임
-            mqttSignalProcessor.processAndBroadcast(topic, payload);
+            mqttSignalProcessor.process(topic, payload);
 
         } catch (Exception e) {
             log.error("MQTT 핸들링 실패: {}", e.getMessage());
