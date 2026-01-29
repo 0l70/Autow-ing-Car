@@ -9,17 +9,20 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class CarWebSocketService {
+public class TowingCarWebSocketService {
 
     private final WebSocketService webSocketService;
 
     // 차량 상태 전송
     public void broadcastCarStatus(String carCode, Object monitoringPayload) {
         webSocketService.broadcast(WebSocketTopics.carChannel(carCode), monitoringPayload);
+        log.info("차량 상태 전송: {}", monitoringPayload);
     }
 
     // 항공편 채널 전송
     public void notifyFlightChannel(Long scheduleId, Object payload) {
         webSocketService.broadcast(WebSocketTopics.flightChannel(scheduleId), payload);
+        log.info("항공편 채널 전송: {}", payload);
+
     }
 }

@@ -29,18 +29,18 @@ public class MissionLog {
     private LogType type;
 
     // ★ FK 없이 ID값만 저장 (데이터 보존 및 성능)
-    @Column(name = "actor_id")
-    private Long actorId;
+    @Column(name = "car_id")
+    private Long carId;
 
     @Column(name = "mission_id")
     private Long missionId;
 
     @Builder
-    public MissionLog(String message, LogType type, Long actorId, Long missionId) {
+    public MissionLog(String message, LogType type, Long carId, Long missionId) {
         this.createdAt = LocalDateTime.now();
         this.message = message;
         this.type = type;
-        this.actorId = actorId;
+        this.carId = carId;
         this.missionId = missionId;
     }
 }

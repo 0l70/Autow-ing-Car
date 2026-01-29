@@ -15,6 +15,7 @@ import org.springframework.integration.mqtt.support.DefaultPahoMessageConverter;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.MessageHandler;
 
+import com.project.infra.mqtt.constant.MqttTopics;
 import com.project.infra.mqtt.handler.MqttInboundHandler;
 
 @Configuration
