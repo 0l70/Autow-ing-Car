@@ -10,8 +10,8 @@ import com.project.domain.map.service.MapService;
 import com.project.domain.mission.dto.MissionWebSocketDtos.*;
 import com.project.domain.mission.entity.Mission;
 import com.project.domain.towingcar.entity.TowingCar;
-import com.project.infra.mqtt.config.MqttTopics;
-import com.project.infra.mqtt.service.MqttOutboundService;
+import com.project.domain.towingcar.entity.TowingCar;
+import com.project.infra.mqtt.service.MqttCommandService;
 
 import com.project.domain.map.entity.Node;
 
@@ -19,8 +19,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.util.*;
 
 @Slf4j
@@ -34,7 +32,7 @@ public class MissionService {
 
     private final MissionWebSocketService missionWebSocketService;
     private final MapService mapService;
-    private final MqttOutboundService mqttOutboundService;
+    private final MqttCommandService mqttCommandService;
 
     private final ObjectMapper objectMapper;
 
@@ -99,7 +97,7 @@ public class MissionService {
         notifyMissionUpdate(savedMission);
 
         // 로봇 출발
-        sendMqttAfterCommit(car.getCode(), "START_TRANSPORT", Map.of(
+        mqttCommandService.sendCommandAfterCommit(car.getCode(), "START_TRANSPORT", Map.of(
                 "path", decision.getSelectedEdgeIds(),
                 "missionId", savedMission.getId(),
                 "destNode", savedMission.getDestNode()));
@@ -117,26 +115,4 @@ public class MissionService {
         missionWebSocketService.broadcastMissionUpdate(response);
     }
 
-    private void sendMqttAfterCommit(String carCode, String cmd, Map<String, Object> data) {
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    sendMqttImmediate(carCode, cmd, data);
-                }
-            });
-        } else {
-            sendMqttImmediate(carCode, cmd, data);
-        }
-    }
-
-    private void sendMqttImmediate(String carCode, String cmd, Map<String, Object> data) {
-        try {
-            String topic = String.format(MqttTopics.CMD_FORMAT, carCode);
-            String payload = objectMapper.writeValueAsString(Map.of("cmd", cmd, "data", data));
-            mqttOutboundService.publish(topic, payload);
-        } catch (Exception e) {
-            log.error("MQTT Error", e);
-        }
-    }
 }

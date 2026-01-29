@@ -18,7 +18,7 @@ import java.security.Principal;
 public class FlightWSController {
 
     private final FlightService flightService;
-    private final WebSocketService webSocketService;
+    private final com.project.domain.towingcar.service.CarWebSocketService carWebSocketService;
 
     /**
      * 기장이 명시적으로 Flight 정보를 요청할 때 호출됨
@@ -31,7 +31,7 @@ public class FlightWSController {
 
         try {
             FlightInfoDto flightInfo = flightService.getFlightInfoByPilot(pilotId);
-            webSocketService.notifyPilotFlightInfo(pilotId, flightInfo);
+            carWebSocketService.notifyPilotFlightInfo(pilotId, flightInfo);
             log.info("[WS] Flight info sent to: {}", pilotId);
         } catch (Exception e) {
             log.error("[WS] Failed to send flight info to {}: {}", pilotId, e.getMessage());
