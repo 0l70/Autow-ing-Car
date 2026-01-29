@@ -85,7 +85,7 @@ class MissionServiceTest {
                 // given
                 User controller = userDBAdaptor.getUserByEmail("atc@atc.com");
                 Flight flight = flightDBAdaptor.getFlightByFlightNumber("KE001");
-                
+
                 ATCDecisionDto decision = new ATCDecisionDto();
                 decision.setFlightId(flight.getId());
                 decision.setApproved(true);
