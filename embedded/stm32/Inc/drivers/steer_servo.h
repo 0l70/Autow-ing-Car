@@ -15,7 +15,7 @@
 extern TIM_HandleTypeDef htim3;
 
 void Steer_Init(void);
-void Steer_SetPercent(int8_t steer_percent); // -100 ~ +100
+void Steer_SetPercent(int8_t steer_percent);
 
 
 #endif /* INC_STEER_SERVO_H_ */

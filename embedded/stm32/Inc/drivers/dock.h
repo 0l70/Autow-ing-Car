@@ -12,20 +12,18 @@
 #include "main.h"
 #include "cmsis_os2.h"
 
-// TIM3_CH1: Lift(위아래), TIM3_CH2: Clamp(집게) 가정
-// (PA6=CH1, PA7=CH2 추천)
+// TIM3_CH1(PA6): Lift, TIM3_CH2(PA7): Clamp
 void Dock_InitPwm(void);
 void Dock_SafePose(void);
 
-// 도킹 시퀀스: 아래 -> 닫기 -> 위
+// 도킹 시작: 아래로 -> 닫고 -> 위로
 void Dock_RunDockSequence(void);
 
-// 해제 시퀀스: 아래 -> 열기 -> 위
+// 도킹 해제: 아래로 -> 열고 -> 위로
 void Dock_RunReleaseSequence(void);
 
-// 외부에서 abort 조건을 체크할 수 있게 콜백 형태로 분리
-// freertos 쪽에서 g_safe_stop / flags 기반으로 넣어줌
 typedef uint8_t (*dock_abort_fn_t)(void);
+
 void Dock_SetAbortChecker(dock_abort_fn_t fn);
 
 

@@ -12,10 +12,8 @@ extern TIM_HandleTypeDef htim3;
 
 static dock_abort_fn_t s_abort_fn = 0;
 
-// ===== 여기 값은 네가 디버깅하면서 맞추면 됨 =====
-// 서보 PWM 50Hz(20ms). TIM tick이 1us일 때 CCR = us로 가정
-#define LIFT_UP_US       2000 // to defalut pose(up)
-#define LIFT_DOWN_US     1300 // down
+#define LIFT_UP_US       1500 // 2000 // to defalut pose(up)
+#define LIFT_DOWN_US     1500 // 1300 // down
 #define CLAMP_OPEN_US    1200 // default pose(open)
 #define CLAMP_CLOSE_US   1800 // close
 
@@ -55,7 +53,6 @@ static void servo_ramp_us(uint32_t channel, uint16_t from_us, uint16_t to_us,
   while (cur != target) {
     cur += step;
 
-    // overshoot 방지
     if ((step > 0 && cur > target) || (step < 0 && cur < target)) cur = target;
 
     __HAL_TIM_SET_COMPARE(&htim3, channel, (uint16_t)cur);
@@ -78,14 +75,12 @@ static void clamp_move_slow(uint16_t target_us)
 
 void Dock_SafePose(void)
 {
-  // 기본: 위 + 집게 열기
 	lift_move_slow(LIFT_UP_US);
 	clamp_move_slow(CLAMP_OPEN_US);
 }
 
 void Dock_RunDockSequence(void)
 {
-  // 아래 -> 닫기 -> 위
   if (should_abort()) return;
   lift_move_slow(LIFT_DOWN_US);
   osDelay(1000);
@@ -101,7 +96,6 @@ void Dock_RunDockSequence(void)
 
 void Dock_RunReleaseSequence(void)
 {
-  // 아래 -> 열기 -> 위
   if (should_abort()) return;
   lift_move_slow(LIFT_DOWN_US);
   osDelay(1000);

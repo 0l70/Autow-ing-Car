@@ -26,27 +26,16 @@ uint16_t crc16_ibm(const uint8_t* data, uint16_t len)
   return crc;
 }
 
-//int pkt_validate(const uint8_t pkt[PKT_LEN])
-//{
-//  if (pkt[0] != PKT_MAGIC0 || pkt[1] != PKT_MAGIC1) return 0;
-//
-//  uint16_t crc_calc = crc16_ibm(pkt, 6); // byte0~5
-//  uint16_t crc_rx   = (uint16_t)pkt[6] | ((uint16_t)pkt[7] << 8);
-//  return (crc_calc == crc_rx);
-//}
-
 int pkt_validate(const uint8_t pkt[PKT_LEN])
 {
-  if (pkt[0] != PKT_MAGIC0 || pkt[1] != PKT_MAGIC1) return 0;
+    if (pkt[0] != PKT_MAGIC0 || pkt[1] != PKT_MAGIC1) return 0;
 
-  uint16_t crc_calc = crc16_ibm(pkt, 6); // byte0~5
+    uint16_t crc_calc = crc16_ibm(pkt, 6); // byte0~5
+    uint16_t crc_rx_le = (uint16_t)pkt[6] | ((uint16_t)pkt[7] << 8);
+    uint16_t crc_rx_be = ((uint16_t)pkt[6] << 8) | (uint16_t)pkt[7];
 
-  uint16_t crc_rx_le = (uint16_t)pkt[6] | ((uint16_t)pkt[7] << 8);      // CA 9B
-  uint16_t crc_rx_be = ((uint16_t)pkt[6] << 8) | (uint16_t)pkt[7];      // 9B CA
-
-  return (crc_calc == crc_rx_le) || (crc_calc == crc_rx_be);
+    return (crc_calc == crc_rx_le) || (crc_calc == crc_rx_be);
 }
-
 
 void pkt_to_cmd(const uint8_t pkt[PKT_LEN], Cmd* out, uint32_t now_tick)
 {
@@ -54,5 +43,5 @@ void pkt_to_cmd(const uint8_t pkt[PKT_LEN], Cmd* out, uint32_t now_tick)
   out->flags = pkt[3];
   out->speed = (int8_t)pkt[4];
   out->steer = (int8_t)pkt[5];
-  out->t_ms  = now_tick; // cmd.h에 t_ms 없으면 이 줄 삭제 or 필드 추가
+  out->t_ms  = now_tick;
 }
