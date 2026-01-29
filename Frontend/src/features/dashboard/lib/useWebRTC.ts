@@ -172,19 +172,23 @@ export function useWebRTC({ enabled, carId, pilotId }: UseWebRTCProps) {
         // Initialize PC immediately
         createPeerConnection();
 
-        // Register Global Message Listener and Filter by Type
-        const unsubscribe = onMessage((payload) => {
-            const result = SignalingSchema.safeParse(payload);
-            if (!result.success) return; // Not a signaling message
+        // Register Global Message Listener and Filter by Destination
+        const unsubscribe = onMessage((msg: any) => {
+            const { destination, body: payload } = msg;
 
-            const msg = result.data;
-            // Filter logic: Check if message is intended for me?
-            // (Backend already filters by topic, but double check doesn't hurt)
+            // Only process video signaling topics for this pilot
+            if (!destination?.startsWith('/topic/video/')) return;
+            if (!destination?.endsWith(`/${pilotId}`)) return;
+
+            const result = SignalingSchema.safeParse(payload);
+            if (!result.success) return; 
+
+            const data = result.data;
             
-            if (msg.type === 'OFFER') {
-                handleOffer(msg);
-            } else if (msg.type === 'ICE') {
-                handleIce(msg);
+            if (data.type === 'OFFER') {
+                handleOffer(data);
+            } else if (data.type === 'ICE') {
+                handleIce(data);
             }
         });
 

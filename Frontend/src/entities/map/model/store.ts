@@ -45,6 +45,16 @@ interface GraphState {
   aircrafts: import('./types').Aircraft[];
   updateAircraft: (data: import('./types').Aircraft) => void;
   setAircrafts: (list: import('./types').Aircraft[]) => void;
+  
+  // Mission State (ATC Context)
+  activeMissions: Record<string, {
+      flightNumber: string;
+      destNode: string;
+      status: string;
+      departNode?: string; 
+  }>;
+  updateMission: (data: any) => void;
+
   setMapMeta: (meta: import('./types').MapMeta) => void;
   setCorners: (corners: import('@/shared/realtime/api/map.schema').MapCorners) => void;
   setMapDimensions: (width: number, height: number) => void;
@@ -134,8 +144,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 
   // --- Aircraft State Actions ---
   aircrafts: [],
+  activeMissions: {}, // Map: towingCarCode -> MissionInfo
+  
   updateAircraft: (data) => set((state) => {
-      // console.log("[Store] Updating Aircraft:", data.id); // DEBUG LOG (Optional, maybe too noisy)
       const exists = state.aircrafts.find(a => a.id === data.id);
       if (exists) {
           return {
@@ -147,6 +158,22 @@ export const useGraphStore = create<GraphState>((set, get) => ({
           };
       }
   }),
+  
+  updateMission: (data: any) => set((state) => {
+      if (!data.towingCarCode) return {};
+      return {
+          activeMissions: {
+              ...state.activeMissions,
+              [data.towingCarCode]: {
+                  flightNumber: data.flightNumber,
+                  destNode: data.destNode,
+                  status: data.status,
+                  departNode: data.departNode
+              }
+          }
+      };
+  }),
+
   setAircrafts: (list) => set({ aircrafts: list }),
   setMapMeta: (meta) => set({ mapMeta: meta }),
   setCorners: (corners) => set({ corners: corners }),

@@ -5,6 +5,7 @@ import { cn } from "@/shared/lib/utils";
 import { useTimelineStore } from "./model/useTimelineStore";
 import { useSocket } from "@/shared/realtime/context/SocketProvider";
 import { useAuthStore } from "@/features/auth/model/useAuthStore";
+import { WS_TOPICS } from "@/shared/realtime/config/topics";
 
 // --- Types (Match Backend DTO) ---
 type NotificationType = 'MISSION_REQUEST' | 'MANUAL_CONTROL' | 'EMERGENCY_STOP';
@@ -56,11 +57,15 @@ export function ApprovalQueue() {
 
     useEffect(() => {
         const unsubscribe = onMessage((msg: any) => {
+            // Filter by destination to avoid data leakage
+            if (msg.destination !== WS_TOPICS.MISSION_UPDATES) return;
+
+            const data = msg.body;
              // Basic structure check
-            if (msg.flightId || msg.type) {
+            if (data.flightId || data.type) {
                 const newAlert: AdminAlertDto = {
-                    ...msg,
-                    type: msg.type || 'MISSION_REQUEST',
+                    ...data,
+                    type: data.type || 'MISSION_REQUEST',
                     id: Date.now().toString() + Math.random(),
                     timestamp: Date.now()
                 };

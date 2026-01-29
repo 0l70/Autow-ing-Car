@@ -69,37 +69,54 @@ export function useTelemetrySocket(url: string = WS_URL_DEV, enabled: boolean = 
                 id: "sub-app-responses",
                 destination: WS_TOPICS.APP_RESPONSES
             });
+
+            // [ATC] Subscribe to Mission Updates (New)
+            send("SUBSCRIBE", {
+                id: "sub-mission-updates",
+                destination: WS_TOPICS.MISSION_UPDATES
+            });
         }
     }, [isConnected, enabled, send]);
 
     // 5. Data Processing Logic
-    const handleTelemetryMessage = useCallback((parseData: unknown) => {
-        const result = TelemetrySchema.safeParse(parseData);
-        if (!result.success) {
-            console.warn("[TelemetrySocket] Invalid Data:", result.error);
+    const handleTelemetryMessage = useCallback((msg: any) => {
+        const { destination, body: parseData } = msg;
+
+        // A. Check for Mission Update
+        if (destination === WS_TOPICS.MISSION_UPDATES) {
+             if (parseData.missionId && parseData.towingCarCode) {
+                console.log("[Socket] Mission Update:", parseData);
+                useGraphStore.getState().updateMission(parseData);
+            }
             return;
         }
-        
-        const data = result.data;
-        const rawId = data.car_id || data.carId;
 
-        if (rawId) {
-            const aircraft: Aircraft = {
-                id: rawId,
-                callsign: rawId, // using ID as callsign for now
-                type: 'TUG',
-                position: {
-                    x: data.x,
-                    y: data.y,
-                    r: data.yaw * (Math.PI / 180)
-                },
-                status: data.mode, // Now strictly typed as AircraftStatus
-                battery: data.battery,
-                speed: data.v,
-                currentMission: data.currentMission,
-                isLoaded: data.is_loaded
-            };
-            updateAircraft(aircraft);
+        // B. Check for Telemetry (Movement) - Match /topic/towingcar/*
+        if (destination?.startsWith('/topic/towingcar/')) {
+            const result = TelemetrySchema.safeParse(parseData);
+            if (!result.success) return;
+            
+            const data = result.data;
+            const rawId = data.car_id || data.carId;
+
+            if (rawId) {
+                const aircraft: Aircraft = {
+                    id: rawId,
+                    callsign: rawId,
+                    type: 'TUG',
+                    position: {
+                        x: data.x,
+                        y: data.y,
+                        r: data.yaw * (Math.PI / 180)
+                    },
+                    status: data.mode, 
+                    battery: data.battery,
+                    speed: data.v,
+                    currentMission: data.currentMission,
+                    isLoaded: data.is_loaded
+                };
+                updateAircraft(aircraft);
+            }
         }
     }, [updateAircraft]);
 
@@ -108,6 +125,9 @@ export function useTelemetrySocket(url: string = WS_URL_DEV, enabled: boolean = 
         const unsubscribe = onMessage(handleTelemetryMessage);
         return () => unsubscribe();
     }, [onMessage, handleTelemetryMessage]);
+
+    // 7. Mock Traffic Simulation (Legacy Frontend Mock - Removed in favor of Backend MQTT)
+    // No-op
 
     return {
         isConnected,
