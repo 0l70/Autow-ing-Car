@@ -40,6 +40,11 @@ public class FlightDBAdaptor {
     }
 
     public void delete(Flight flight) {
-        flightRepository.delete(flight);    
+        flightRepository.delete(flight);
+    }
+
+    public java.util.Optional<Flight> findByPilotAndDepartureDate(com.project.domain.user.entity.User pilot,
+            java.time.LocalDate departureDate) {
+        return flightRepository.findFirstByPilotAndDepartureDateOrderByScheduledTimeAsc(pilot, departureDate);
     }
 }

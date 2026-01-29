@@ -67,6 +67,8 @@ public class MissionWebSocketDtos {
         private Long missionId;
         private String status;
         private String message;
+        private String correlationId; // 프론트엔드 Request ID와 매핑
+        private Object data; // 추가 페이로드 (경로 등)
 
         public static MissionResponseDto from(Mission mission) {
             return MissionResponseDto.builder()
@@ -87,4 +89,4 @@ public class MissionWebSocketDtos {
         String label;
         List<String> edgeIds;
     }
-} 
+}

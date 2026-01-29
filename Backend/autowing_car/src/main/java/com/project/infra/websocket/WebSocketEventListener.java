@@ -23,7 +23,7 @@ public class WebSocketEventListener {
         StompHeaderAccessor headerAccessor = StompHeaderAccessor.wrap(event.getMessage());
         String destination = headerAccessor.getDestination();
         String sessionId = headerAccessor.getSessionId();
-        
+
         // 클라이언트가 무슨 주소를 듣고 있는지 로그로 범인 색출
         log.info("👂 [WS] 구독 감지: Session={} / Destination={}", sessionId, destination);
     }

@@ -31,6 +31,18 @@ public class UserDBAdaptor {
         return userRepository.findByUsername(username).orElse(null);
     }
 
+    public java.util.Optional<User> findByUsername(String username) {
+        return userRepository.findByUsername(username);
+    }
+
+    public java.util.Optional<User> findByUserId(Long userId) {
+        return userRepository.findById(userId);
+    }
+
+    public java.util.Optional<User> findByEmail(String email) {
+        return userRepository.findByEmail(email);
+    }
+
     public boolean existsByEmail(String email) {
         return userRepository.existsByEmail(email);
     }

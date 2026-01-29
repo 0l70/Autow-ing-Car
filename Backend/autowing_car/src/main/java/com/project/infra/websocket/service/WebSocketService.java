@@ -28,4 +28,7 @@ public interface WebSocketService {
     void broadcastAnswer(Object payload);
 
     void broadcastIce(Object payload);
+
+    // 9. 기장 비행 스케줄 정보 전송 (Added)
+    void notifyPilotFlightInfo(String pilotId, Object flightInfo);
 }

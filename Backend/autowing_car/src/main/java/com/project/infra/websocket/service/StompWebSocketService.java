@@ -26,10 +26,10 @@ public class StompWebSocketService implements WebSocketService {
 
     @Override
     public void notifyPilotResult(String pilotUsername, Object payload) {
-        // 기장은 '/user/queue/reply'를 구독 중 (개별 메시지)
+        // 기장은 '/user/queue/responses'를 구독 중 (개별 메시지)
         messagingTemplate.convertAndSendToUser(
                 pilotUsername,
-                "/queue/reply",
+                "/queue/responses",
                 payload);
     }
 
@@ -59,6 +59,12 @@ public class StompWebSocketService implements WebSocketService {
     @Override
     public void broadcastMapInfo(Object payload) {
         messagingTemplate.convertAndSend("/topic/sys/map/info", payload); // 프론트와 토픽 일치시킴
+    }
+
+    @Override
+    public void notifyPilotFlightInfo(String pilotId, Object flightInfo) {
+        log.info("[WS] Sending Flight Info to Pilot: {}", pilotId);
+        messagingTemplate.convertAndSendToUser(pilotId, "/queue/flight-info", flightInfo);
     }
 
     // --- WebRTC Signaling Implementation ---

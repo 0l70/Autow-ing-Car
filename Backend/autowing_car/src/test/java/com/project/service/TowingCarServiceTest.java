@@ -107,7 +107,7 @@ class TowingCarServiceTest {
                 given(objectMapper.writeValueAsString(any())).willReturn("{\"cmd\":\"CONNECT\"}");
 
                 // when
-                towingCarService.connectCar(pilotId, new CarConnectRequestDto(flightId));
+                towingCarService.connectCar(pilotId, new CarConnectRequestDto(flightId, null));
 
                 // then
                 // 1. MQTT 전송 확인
@@ -143,7 +143,7 @@ class TowingCarServiceTest {
                 given(objectMapper.writeValueAsString(any())).willReturn("{\"cmd\":\"DISCONNECT\"}");
 
                 // when
-                towingCarService.disconnectCar("PILOT", new CarDisconnectRequestDto(flightId));
+                towingCarService.disconnectCar("PILOT", new CarDisconnectRequestDto(flightId, null));
 
                 // then
                 verify(mqttOutboundService).publish(contains("TC01"), contains("DISCONNECT"));

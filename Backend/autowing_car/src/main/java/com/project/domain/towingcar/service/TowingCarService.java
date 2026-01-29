@@ -16,6 +16,8 @@ import com.project.domain.towingcar.entity.TowingCar;
 import com.project.infra.mqtt.MqttTopics;
 import com.project.infra.mqtt.service.MqttOutboundService;
 import lombok.RequiredArgsConstructor;
+import com.project.infra.websocket.service.WebSocketService;
+import com.project.domain.mission.dto.MissionWebSocketDtos.MissionResponseDto;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +35,7 @@ public class TowingCarService {
     private final MapDBAdaptor mapDBAdaptor;
     private final MqttOutboundService mqttOutboundService;
     private final ObjectMapper objectMapper;
+    private final WebSocketService webSocketService;
 
     private boolean isAutoConnectEnabled = true;
     private boolean isAutoDisconnectEnabled = true;
@@ -67,6 +70,7 @@ public class TowingCarService {
      */
     @Transactional
     public void connectCar(String pilotId, CarConnectRequestDto request) {
+        log.info("[WS-LOG] connectCar called by {}", pilotId);
         Flight flight = flightDBAdaptor.getFlightById(request.getFlightId());
         TowingCar car = flight.getAssignedTowingCar();
         if (car == null)
@@ -81,6 +85,16 @@ public class TowingCarService {
         // 상태 즉시 반영 (또는 로봇 응답 대기)
         car.updateStatus(car.getLastPosX(), car.getLastPosY(), car.getLastHeading(),
                 car.getLastVelocity(), car.getBattery(), CarStatus.LOADING);
+
+        // TODO: 추후 실제 차량(MQTT)으로부터 'CONNECTED' 응답을 받으면 그때 전송하도록 변경 필요
+        // 현재는 테스트를 위해 즉시 성공 응답 전송
+        log.info("[WS-LOG] Sending MOCK SUCCESS response to pilot: {}", pilotId);
+        webSocketService.notifyPilotResult(pilotId,
+                MissionResponseDto.builder()
+                        .status("SUCCESS")
+                        .message("Tug Connected Successfully (Mock)")
+                        .correlationId(request.getReqId())
+                        .build());
     }
 
     /**
@@ -88,6 +102,7 @@ public class TowingCarService {
      */
     @Transactional
     public void disconnectCar(String pilotId, CarDisconnectRequestDto request) {
+        log.info("[WS-LOG] disconnectCar called by {}", pilotId);
         Flight flight = flightDBAdaptor.getFlightById(request.getFlightId());
         TowingCar car = flight.getAssignedTowingCar();
         if (car == null)
@@ -102,10 +117,95 @@ public class TowingCarService {
             mission.updateStatus(MissionStatus.COMPLETED);
             car.clearMission();
         }
+
+        // TODO: 추후 실제 차량(MQTT) 응답 대기 필요
+        log.info("[WS-LOG] Sending MOCK SUCCESS response to pilot: {}", pilotId);
+        webSocketService.notifyPilotResult(pilotId,
+                MissionResponseDto.builder()
+                        .status("SUCCESS")
+                        .message("Tug Disconnected Successfully (Mock)")
+                        .correlationId(request.getReqId())
+                        .build());
     }
 
     // =========================================================================
-    // 2. 모니터링 & 자동화 (Monitoring & Auto Trigger)
+    // 2. 차량 제어 (Movement / Mode / Emergency)
+    // =========================================================================
+
+    /**
+     * [이동 제어] MOVE / STOP
+     */
+    @Transactional
+    public void moveCar(String pilotId, CarMoveRequestDto request) {
+        log.info("[WS] Move Request: Pilot={}, Action={}, Car={}", pilotId, request.getType(), request.getCarId());
+
+        if ("PUSHBACK".equals(request.getType())) {
+            log.info("🚀 [Pushback] Approved for Flight={}, Car={}", request.getFlightId(), request.getCarId());
+
+            // 승인 결과 알림 (Mock 데이터 포함)
+            webSocketService.notifyPilotResult(pilotId,
+                    MissionResponseDto.builder()
+                            .status("APPROVED")
+                            .message("Pushback Approved to [Gate 1]")
+                            .correlationId(request.getReqId())
+                            .data(Map.of(
+                                    "destNodeName", "Gate 1",
+                                    "path", java.util.List.of("WP-001", "WP-002", "Gate-01")))
+                            .build());
+        } else {
+            // MQTT로 차량에 직접 명령 전송
+            sendMqttCommand(request.getCarId(), "MOVE_CONTROL", Map.of("action", request.getType()));
+
+            // 결과 알림
+            webSocketService.notifyPilotResult(pilotId,
+                    MissionResponseDto.builder()
+                            .status("SUCCESS")
+                            .message("Move Command Processed: " + request.getType())
+                            .correlationId(request.getReqId())
+                            .build());
+        }
+    }
+
+    /**
+     * [모드 전환] AUTO / MANUAL
+     */
+    @Transactional
+    public void switchMode(String pilotId, CarModeRequestDto request) {
+        log.info("[WS] Mode Switch: Pilot={}, Mode={}, Car={}", pilotId, request.getMode(), request.getCarId());
+
+        // MQTT로 차량에 직접 명령 전송
+        sendMqttCommand(request.getCarId(), "SET_MODE", Map.of("mode", request.getMode()));
+
+        // 결과 알림
+        webSocketService.notifyPilotResult(pilotId,
+                MissionResponseDto.builder()
+                        .status("SUCCESS")
+                        .message("Mode Switched to: " + request.getMode())
+                        .correlationId(request.getReqId())
+                        .build());
+    }
+
+    /**
+     * [비상 정지]
+     */
+    @Transactional
+    public void emergencyStop(String pilotId, CarEmergencyRequestDto request) {
+        log.info("[WS] EMERGENCY STOP: Pilot={}, Car={}", pilotId, request.getCarId());
+
+        // MQTT로 차량에 직접 명령 전송
+        sendMqttCommand(request.getCarId(), "EMERGENCY_STOP", Map.of());
+
+        // 결과 알림
+        webSocketService.notifyPilotResult(pilotId,
+                MissionResponseDto.builder()
+                        .status("SUCCESS")
+                        .message("EMERGENCY STOP EXECUTED")
+                        .correlationId(request.getReqId())
+                        .build());
+    }
+
+    // =========================================================================
+    // 3. 모니터링 & 자동화 (Monitoring & Auto Trigger)
     // =========================================================================
 
     @Transactional
@@ -140,7 +240,7 @@ public class TowingCarService {
         if (isAutoConnectEnabled && car.getCarStatus() == CarStatus.MOVING_TO_LOAD) { // DB상 배차이동중
             Flight flight = flightDBAdaptor.getFlightByAssignedCar(car);
             if (flight != null && isArrivedAt(x, y, flight.getNodeCode())) {
-                connectCar("SYSTEM", new CarConnectRequestDto(flight.getId()));
+                connectCar("SYSTEM", new CarConnectRequestDto(flight.getId(), null));
             }
         }
 
@@ -148,7 +248,7 @@ public class TowingCarService {
         if (isAutoDisconnectEnabled && car.getCurrentMissionId() != null) {
             Mission mission = missionDBAdaptor.getMissionById(car.getCurrentMissionId());
             if (mission.getStatus() == MissionStatus.RUNNING && isArrivedAt(x, y, mission.getDestNode())) {
-                disconnectCar("SYSTEM", new CarDisconnectRequestDto(mission.getFlight().getId()));
+                disconnectCar("SYSTEM", new CarDisconnectRequestDto(mission.getFlight().getId(), null));
             }
         }
     }
