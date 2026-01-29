@@ -5,6 +5,8 @@ import lombok.Getter;
 
 import java.time.LocalDateTime;
 
+import com.project.global.error.exception.BusinessException;
+
 /**
  * WebSocket 에러 응답 DTO
  * STOMP 메시지로 클라이언트에게 에러 정보 전달
@@ -38,10 +40,39 @@ public class WebSocketErrorDto {
      */
     private String severity;
 
-    public static WebSocketErrorDto from(Exception ex, String destination) {
+    /**
+     * BusinessException으로부터 WebSocketErrorDto 생성
+     */
+    public static WebSocketErrorDto of(BusinessException ex, String destination) {
+        return WebSocketErrorDto.builder()
+                .errorCode(ex.getErrorCode())
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .destination(destination)
+                .severity("ERROR")
+                .build();
+    }
+
+    /**
+     * 일반 예외를 위한 WebSocketErrorDto 생성
+     */
+    public static WebSocketErrorDto internalError(String destination) {
         return WebSocketErrorDto.builder()
                 .errorCode("INTERNAL_ERROR")
-                .message(ex.getMessage())
+                .message("서버 내부 오류가 발생했습니다.")
+                .timestamp(LocalDateTime.now())
+                .destination(destination)
+                .severity("ERROR")
+                .build();
+    }
+
+    /**
+     * 커스텀 에러 메시지를 위한 WebSocketErrorDto 생성
+     */
+    public static WebSocketErrorDto custom(String errorCode, String message, String destination) {
+        return WebSocketErrorDto.builder()
+                .errorCode(errorCode)
+                .message(message)
                 .timestamp(LocalDateTime.now())
                 .destination(destination)
                 .severity("ERROR")

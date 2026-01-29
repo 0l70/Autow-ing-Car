@@ -31,13 +31,10 @@ public class FlightService {
         @Transactional(readOnly = true)
         public FlightInfoDto getFlightInfoByPilot(String pilotId) {
                 // 1. pilotId(email)로 User 조회
-                User pilot = userDBAdaptor.findByEmail(pilotId)
-                                .orElseThrow(() -> new IllegalArgumentException("Pilot not found: " + pilotId));
+                User pilot = userDBAdaptor.findUserByEmail(pilotId);
 
                 // 2. 해당 기장의 Flight 조회 (오늘 출발 예정)
-                Flight flight = flightDBAdaptor.findByPilotAndDepartureDate(pilot, LocalDate.now())
-                                .orElseThrow(() -> new IllegalArgumentException(
-                                                "No flight scheduled for pilot: " + pilotId));
+                Flight flight = flightDBAdaptor.findByPilotAndDepartureDate(pilot, LocalDate.now());
 
                 // 3. DTO 변환
                 return FlightInfoDto.builder()
