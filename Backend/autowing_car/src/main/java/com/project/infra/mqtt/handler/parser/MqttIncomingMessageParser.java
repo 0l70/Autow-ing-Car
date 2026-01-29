@@ -3,6 +3,8 @@ package com.project.infra.mqtt.handler.parser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.project.infra.mqtt.config.MqttIncomingMessage;
+import com.project.global.error.domain.mqtt.MqttMessageParseException;
+import com.project.global.error.domain.mqtt.UnsupportedMqttTopicException;
 
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -46,10 +48,12 @@ public class MqttIncomingMessageParser {
                 return handler.parse(topic, payload);
             }
 
-            throw new IllegalArgumentException("지원하지 않는 토픽입니다: " + topic);
+            throw new UnsupportedMqttTopicException(topic);
 
+        } catch (UnsupportedMqttTopicException ex) {
+            throw ex; // Re-throw custom exception
         } catch (Exception e) {
-            throw new RuntimeException("메시지 파싱 실패: " + topic, e);
+            throw new MqttMessageParseException(topic, e);
         }
     }
 }
