@@ -6,7 +6,7 @@ import com.project.domain.towingcar.service.TowingCarService;
 import com.project.infra.mqtt.config.MqttIncomingMessage;
 import com.project.infra.mqtt.handler.parser.MqttIncomingMessageParser;
 import com.project.domain.map.service.MapWebSocketService;
-import com.project.domain.towingcar.service.CarWebSocketService;
+import com.project.domain.towingcar.service.TowingCarWebSocketService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,7 +19,7 @@ public class MqttSignalProcessorImpl implements MqttSignalProcessor {
     private final MqttIncomingMessageParser parser; // 메시지 해석기
     private final TowingCarService towingCarService; // DB 저장용
 
-    private final CarWebSocketService carWebSocketService; // 차량 전용 웹소켓
+    private final TowingCarWebSocketService carWebSocketService; // 차량 전용 웹소켓
     private final MapWebSocketService mapWebSocketService; // 맵 전용 웹소켓
 
     @Override

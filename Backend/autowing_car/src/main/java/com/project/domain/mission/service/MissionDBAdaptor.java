@@ -1,5 +1,7 @@
 package com.project.domain.mission.service;
 
+import java.util.List;
+
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +26,15 @@ public class MissionDBAdaptor {
 
     public Mission save(Mission mission) {
         return missionRepository.save(mission);
+    }
+
+    public MissionLog findLogById(Long id) {
+        return missionLogRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("No MissionLog: " + id));
+    }
+
+    public List<MissionLog> findLogByCarId(Long carId) {
+        return missionLogRepository.findAllByCarIdOrderByCreatedAtDesc(carId);
     }
 
     public MissionLog saveLog(Mission mission, LogType logType, String message) {

@@ -1,6 +1,5 @@
 package com.project.domain.mission.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.project.domain.common.LogType;
 import com.project.domain.common.MissionStatus;
 import com.project.domain.flight.entity.Flight;
@@ -10,8 +9,7 @@ import com.project.domain.map.service.MapService;
 import com.project.domain.mission.dto.MissionWebSocketDtos.*;
 import com.project.domain.mission.entity.Mission;
 import com.project.domain.towingcar.entity.TowingCar;
-import com.project.infra.mqtt.config.MqttTopics;
-import com.project.infra.mqtt.service.MqttOutboundService;
+import com.project.domain.towingcar.service.TowingCarMqttService;
 
 import com.project.domain.map.entity.Node;
 
@@ -34,9 +32,7 @@ public class MissionService {
 
     private final MissionWebSocketService missionWebSocketService;
     private final MapService mapService;
-    private final MqttOutboundService mqttOutboundService;
-
-    private final ObjectMapper objectMapper;
+    private final TowingCarMqttService towingCarMqttService;
 
     /**
      * [기장 요청] 경로 계산 후 관제사에게 알림 (DB 저장 X)
@@ -50,7 +46,7 @@ public class MissionService {
             throw new IllegalStateException("배정된 차량이 없습니다.");
 
         String currentGate = flight.getNodeCode();
-        String activeRunway = "RUNWAY_34L"; // Mock: 실제 로직은 기상/운영 DB 연동 필요
+        String activeRunway = "RUNWAY"; // Mock: 실제 로직은 기상/운영 DB 연동 필요
 
         Node startNode = mapDBAdaptor.getNodeByCode(currentGate);
         Node endNode = mapDBAdaptor.getNodeByCode(activeRunway);
@@ -99,7 +95,7 @@ public class MissionService {
         notifyMissionUpdate(savedMission);
 
         // 로봇 출발
-        sendMqttAfterCommit(car.getCode(), "START_TRANSPORT", Map.of(
+        sendMqttAfterCommit(car.getCode(), Map.of(
                 "path", decision.getSelectedEdgeIds(),
                 "missionId", savedMission.getId(),
                 "destNode", savedMission.getDestNode()));
@@ -117,26 +113,16 @@ public class MissionService {
         missionWebSocketService.broadcastMissionUpdate(response);
     }
 
-    private void sendMqttAfterCommit(String carCode, String cmd, Map<String, Object> data) {
+    private void sendMqttAfterCommit(String carCode, Map<String, Object> data) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    sendMqttImmediate(carCode, cmd, data);
+                    towingCarMqttService.startTransport(carCode, data);
                 }
             });
         } else {
-            sendMqttImmediate(carCode, cmd, data);
-        }
-    }
-
-    private void sendMqttImmediate(String carCode, String cmd, Map<String, Object> data) {
-        try {
-            String topic = String.format(MqttTopics.CMD_FORMAT, carCode);
-            String payload = objectMapper.writeValueAsString(Map.of("cmd", cmd, "data", data));
-            mqttOutboundService.publish(topic, payload);
-        } catch (Exception e) {
-            log.error("MQTT Error", e);
+            towingCarMqttService.startTransport(carCode, data);
         }
     }
 }

@@ -1,9 +1,7 @@
 package com.project.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.project.domain.map.component.GraphCache;
 import com.project.domain.map.entity.Node;
-import com.project.domain.map.repository.NodeRepository;
 import com.project.domain.map.service.MapDBAdaptor;
 import com.project.domain.map.service.MapService;
 import com.project.domain.mission.dto.MissionWebSocketDtos.PathOptionDto;
@@ -13,7 +11,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -21,19 +18,11 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
-// @ActiveProfiles("local") // Use if you have specific profile, otherwise
-// default
 @Transactional
 class MapServiceTest {
 
     @Autowired
-    private LocalDataInit localDataInit;
-
-    @Autowired
     private MapService mapService;
-
-    @Autowired
-    private NodeRepository nodeRepository;
 
     @Autowired
     private MapDBAdaptor mapDBAdaptor;
@@ -50,10 +39,8 @@ class MapServiceTest {
     void testFindShortestPaths() {
         // Given
         // LocalDataInit creates 3x3 grid: N_0_0 to N_2_2
-        Node start = nodeRepository.findByNodeCode("N_0_0")
-                .orElseThrow(() -> new IllegalArgumentException("Start node N_0_0 not found"));
-        Node end = nodeRepository.findByNodeCode("N_2_2")
-                .orElseThrow(() -> new IllegalArgumentException("End node N_2_2 not found"));
+        Node start = mapDBAdaptor.getNodeByCode("N_0_0");
+        Node end = mapDBAdaptor.getNodeByCode("N_2_2");
 
         System.out.println(
                 ">>> Start Node: " + start.getNodeCode() + " (" + start.getPosX() + "," + start.getPosY() + ")");
