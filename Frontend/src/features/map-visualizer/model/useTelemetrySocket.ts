@@ -73,10 +73,10 @@ export function useTelemetrySocket(url: string = WS_URL_DEV, enabled: boolean = 
     }, [isConnected, enabled, send]);
 
     // 5. Data Processing Logic
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleTelemetryMessage = useCallback((parseData: any) => {
+    const handleTelemetryMessage = useCallback((parseData: unknown) => {
         const result = TelemetrySchema.safeParse(parseData);
         if (!result.success) {
+            console.warn("[TelemetrySocket] Invalid Data:", result.error);
             return;
         }
         

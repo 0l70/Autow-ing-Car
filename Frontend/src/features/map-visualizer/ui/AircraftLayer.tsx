@@ -20,11 +20,16 @@ interface AircraftLayerProps {
     onAircraftClick?: (aircraft: Aircraft) => void;
 }
 
+// Constants for Interaction and Animation
+const CLICK_RADIUS_SQ = 400; // 20px * 20px
+const ANIMATION_DURATION_MS = 300;
+const LABEL_OFFSET_Y = 35;
+
 export function AircraftLayer({ meta, mapWidth, mapHeight, onAircraftClick }: AircraftLayerProps) {
     const aircraftList = useGraphStore((state) => state.aircrafts);
     
     // Apply Smooth Animation (Interpolation)
-    const animatedList = useSmoothAnimation(aircraftList, 300); // 300ms smooth transition
+    const animatedList = useSmoothAnimation(aircraftList, ANIMATION_DURATION_MS);
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -39,7 +44,7 @@ export function AircraftLayer({ meta, mapWidth, mapHeight, onAircraftClick }: Ai
              const pixel = worldToPixel(ac.position, meta, mapHeight);
              // Distance squared (radius check)
              const distSq = (mouseX - pixel.x) ** 2 + (mouseY - pixel.y) ** 2;
-             if (distSq < 400) { // 20px radius
+             if (distSq < CLICK_RADIUS_SQ) { 
                  onAircraftClick(ac);
                  return;
              }
