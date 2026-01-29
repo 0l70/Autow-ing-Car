@@ -40,4 +40,16 @@ public class TowingCarMqttService {
     public void startTransport(String carCode, Object data) {
         send(carCode, CarCommand.START_TRANSPORT, data);
     }
+
+    public void emergencyStop(String carCode) {
+        send(carCode, CarCommand.EMERGENCY_STOP, null);
+    }
+
+    public void setMode(String carCode, String mode) {
+        send(carCode, CarCommand.SET_MODE, Map.of("mode", mode));
+    }
+
+    public void moveCar(String carCode, String type) {
+        send(carCode, CarCommand.MOVE, Map.of("type", type));
+    }
 }

@@ -6,6 +6,7 @@ type UserRole = 'PILOT' | 'ATC'; // ADMIN 제외
 interface User {
     email: string;
     role: UserRole;
+    carId?: string; // PILOT 전용
 }
 
 interface AuthState {
@@ -13,7 +14,7 @@ interface AuthState {
     user: User | null;
     socketToken: string | null;
     isAuthenticated: boolean;
-    login: (accessToken: string, socketToken: string, role: UserRole, email: string) => void;
+    login: (accessToken: string, socketToken: string, role: UserRole, email: string, carId?: string) => void;
     logout: () => void;
 }
 
@@ -24,10 +25,10 @@ export const useAuthStore = create<AuthState>()(
             socketToken: null,
             user: null,
             isAuthenticated: false,
-            login: (accessToken, socketToken, role, email) => set({ 
+            login: (accessToken, socketToken, role, email, carId) => set({ 
                 accessToken,
                 socketToken,
-                user: { email, role }, 
+                user: { email, role, carId }, 
                 isAuthenticated: true 
             }),
             logout: () => set({ 

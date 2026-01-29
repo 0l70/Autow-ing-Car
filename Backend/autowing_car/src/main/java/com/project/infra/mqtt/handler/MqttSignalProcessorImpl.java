@@ -3,6 +3,7 @@ package com.project.infra.mqtt.handler;
 import org.springframework.stereotype.Component;
 
 import com.project.domain.towingcar.service.TowingCarService;
+import com.project.domain.towingcar.service.TowingCarWebSocketService;
 import com.project.infra.mqtt.config.MqttIncomingMessage;
 import com.project.infra.mqtt.handler.parser.MqttIncomingMessageParser;
 import com.project.domain.map.service.MapWebSocketService;

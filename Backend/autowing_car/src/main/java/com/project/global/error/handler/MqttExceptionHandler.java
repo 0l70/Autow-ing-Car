@@ -1,6 +1,7 @@
 package com.project.global.error.handler;
 
 import com.project.global.error.exception.BusinessException;
+import com.project.infra.mqtt.handler.MqttSignalProcessor;
 import com.project.infra.mqtt.service.MqttService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -98,16 +99,11 @@ public class MqttExceptionHandler {
     public void processWithExceptionHandling(
             String topic,
             String payload,
-            MqttMessageProcessor processor) {
+            MqttSignalProcessor processor) {
         try {
             processor.process(topic, payload);
         } catch (Exception ex) {
             handleException(topic, payload, ex);
         }
-    }
-
-    @FunctionalInterface
-    public interface MqttMessageProcessor {
-        void process(String topic, String payload) throws Exception;
     }
 }
