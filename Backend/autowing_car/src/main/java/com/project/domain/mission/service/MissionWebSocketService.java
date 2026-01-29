@@ -30,10 +30,4 @@ public class MissionWebSocketService {
         webSocketService.broadcast(WebSocketTopics.TOPIC_MISSION_UPDATES, payload);
         log.info("전체 화면 갱신: {}", payload);
     }
-
-    // 4. 에러 알림
-    public void sendErrorToUser(String username, String message) {
-        webSocketService.sendToUser(username, WebSocketTopics.QUEUE_ERRORS, message);
-        log.info("에러 알림 전송: {}", message);
-    }
 }

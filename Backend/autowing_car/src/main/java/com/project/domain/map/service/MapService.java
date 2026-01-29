@@ -55,9 +55,6 @@ public class MapService {
     /**
      * Yen's Algorithm for K-Shortest Paths (K=3)
      */
-    /**
-     * Yen's Algorithm for K-Shortest Paths (K=3)
-     */
     public List<PathOptionDto> findShortestPath(Node start, Node end) {
         int K = 3;
         List<List<Edge>> resultPaths = new ArrayList<>();

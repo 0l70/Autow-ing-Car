@@ -31,12 +31,7 @@ public class GlobalExceptionHandler {
             HttpServletRequest request) {
         log.warn("⚠️ Business Exception [{}]: {}", ex.getErrorCode(), ex.getMessage());
 
-        ErrorResponse response = ErrorResponse.builder()
-                .errorCode(ex.getErrorCode())
-                .message(ex.getMessage())
-                .timestamp(LocalDateTime.now())
-                .path(request.getRequestURI())
-                .build();
+        ErrorResponse response = ErrorResponse.of(ex, request.getRequestURI());
 
         return ResponseEntity
                 .status(ex.getHttpStatus())
@@ -56,13 +51,7 @@ public class GlobalExceptionHandler {
         ex.getBindingResult().getFieldErrors()
                 .forEach(error -> errors.put(error.getField(), error.getDefaultMessage()));
 
-        ErrorResponse response = ErrorResponse.builder()
-                .errorCode("VALIDATION_ERROR")
-                .message("입력 값이 올바르지 않습니다.")
-                .details(errors)
-                .timestamp(LocalDateTime.now())
-                .path(request.getRequestURI())
-                .build();
+        ErrorResponse response = ErrorResponse.validationError(errors, request.getRequestURI());
 
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
@@ -78,12 +67,7 @@ public class GlobalExceptionHandler {
             HttpServletRequest request) {
         log.error("❌ Unexpected Exception", ex);
 
-        ErrorResponse response = ErrorResponse.builder()
-                .errorCode("INTERNAL_ERROR")
-                .message("서버 내부 오류가 발생했습니다. 관리자에게 문의하세요.")
-                .timestamp(LocalDateTime.now())
-                .path(request.getRequestURI())
-                .build();
+        ErrorResponse response = ErrorResponse.internalError(request.getRequestURI());
 
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)

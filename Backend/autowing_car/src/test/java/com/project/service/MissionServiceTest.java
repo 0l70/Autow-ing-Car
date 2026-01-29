@@ -59,7 +59,7 @@ class MissionServiceTest {
         @DisplayName("기장이 운송을 요청하면 -> DB 저장 없이 -> 관제사에게 승인 요청 알림만 가야 한다")
         void requestTransportTest() {
                 // given
-                User pilot = userDBAdaptor.getUserByEmail("pilot@atc.com");
+                User pilot = userDBAdaptor.findUserByEmail("pilot@atc.com");
                 // KE001 Flight (from LocalDataInit)
                 Flight flight = flightDBAdaptor.getFlightByFlightNumber("KE001");
 
@@ -83,9 +83,9 @@ class MissionServiceTest {
         @DisplayName("관제사가 승인하면 -> 미션이 생성되고 -> 로봇에게 출발 명령이 가야 한다")
         void approveMissionTest() {
                 // given
-                User controller = userDBAdaptor.getUserByEmail("atc@atc.com");
+                User controller = userDBAdaptor.findUserByEmail("atc@atc.com");
                 Flight flight = flightDBAdaptor.getFlightByFlightNumber("KE001");
-                
+
                 ATCDecisionDto decision = new ATCDecisionDto();
                 decision.setFlightId(flight.getId());
                 decision.setApproved(true);

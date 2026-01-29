@@ -40,13 +40,7 @@ public class WebSocketExceptionHandler {
         log.warn("⚠️ [WebSocket] Business Exception for user {}: [{}] {}",
                 username, ex.getErrorCode(), ex.getMessage());
 
-        return WebSocketErrorDto.builder()
-                .errorCode(ex.getErrorCode())
-                .message(ex.getMessage())
-                .timestamp(LocalDateTime.now())
-                .destination(WebSocketTopics.QUEUE_ERRORS)
-                .severity("ERROR")
-                .build();
+        return WebSocketErrorDto.of(ex, WebSocketTopics.QUEUE_ERRORS);
     }
 
     /**
@@ -61,26 +55,14 @@ public class WebSocketExceptionHandler {
         String username = principal != null ? principal.getName() : "anonymous";
         log.error("❌ [WebSocket] Unexpected exception for user " + username, ex);
 
-        return WebSocketErrorDto.builder()
-                .errorCode("INTERNAL_ERROR")
-                .message("서버 내부 오류가 발생했습니다.")
-                .timestamp(LocalDateTime.now())
-                .destination(WebSocketTopics.QUEUE_ERRORS)
-                .severity("ERROR")
-                .build();
+        return WebSocketErrorDto.internalError(WebSocketTopics.QUEUE_ERRORS);
     }
 
     /**
      * 특정 사용자에게 에러 메시지 전송 (유틸리티 메서드)
      */
     public void sendErrorToUser(String username, String errorCode, String message) {
-        WebSocketErrorDto error = WebSocketErrorDto.builder()
-                .errorCode(errorCode)
-                .message(message)
-                .timestamp(LocalDateTime.now())
-                .destination(WebSocketTopics.QUEUE_ERRORS)
-                .severity("ERROR")
-                .build();
+        WebSocketErrorDto error = WebSocketErrorDto.custom(errorCode, message, WebSocketTopics.QUEUE_ERRORS);
 
         messagingTemplate.convertAndSendToUser(username, WebSocketTopics.QUEUE_ERRORS, error);
         log.warn("⚠️ [WebSocket] Sent error to user {}: [{}] {}", username, errorCode, message);
