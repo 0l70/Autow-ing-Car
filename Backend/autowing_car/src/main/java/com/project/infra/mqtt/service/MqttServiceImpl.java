@@ -3,6 +3,7 @@ package com.project.infra.mqtt.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.project.infra.mqtt.gateway.MqttGateway;
+import com.project.global.error.domain.mqtt.MqttPublishException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -23,7 +24,7 @@ public class MqttServiceImpl implements MqttService {
             log.info("📤 MQTT 발송 [Topic: {}] Data: {}", topic, json);
         } catch (JsonProcessingException e) {
             log.error("MQTT Serialization Error: {}", e.getMessage());
-            throw new RuntimeException("MQTT Send Failed", e);
+            throw new MqttPublishException(topic, e);
         }
     }
 }

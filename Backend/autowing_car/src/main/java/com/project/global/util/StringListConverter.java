@@ -4,6 +4,7 @@ import java.util.List;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.project.global.error.domain.common.DataConversionException;
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
 
@@ -16,7 +17,7 @@ public class StringListConverter implements AttributeConverter<List<String>, Str
         try {
             return attribute == null ? null : mapper.writeValueAsString(attribute);
         } catch (Exception e) {
-            throw new RuntimeException("JSON writing error", e);
+            throw new DataConversionException("JSON writing", e);
         }
     }
 
@@ -26,7 +27,7 @@ public class StringListConverter implements AttributeConverter<List<String>, Str
             return dbData == null ? null : mapper.readValue(dbData, new TypeReference<>() {
             });
         } catch (Exception e) {
-            throw new RuntimeException("JSON reading error", e);
+            throw new DataConversionException("JSON reading", e);
         }
     }
 }
