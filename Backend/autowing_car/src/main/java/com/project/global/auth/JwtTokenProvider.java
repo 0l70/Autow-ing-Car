@@ -1,5 +1,6 @@
 package com.project.global.auth;
 
+import com.project.global.error.domain.auth.InvalidJwtTokenException;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
@@ -96,7 +97,7 @@ public class JwtTokenProvider {
         Claims claims = parseClaims(token);
 
         if (claims.get("auth") == null) {
-            throw new RuntimeException("권한 정보가 없는 토큰입니다.");
+            throw new InvalidJwtTokenException();
         }
 
         Collection<? extends GrantedAuthority> authorities = Arrays.stream(claims.get("auth").toString().split(","))

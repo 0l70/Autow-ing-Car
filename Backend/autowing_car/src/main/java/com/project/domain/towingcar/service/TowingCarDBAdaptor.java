@@ -1,5 +1,7 @@
 package com.project.domain.towingcar.service;
 
+import java.util.List;
+
 import org.springframework.stereotype.Component;
 import com.project.domain.common.CarStatus;
 import com.project.domain.towingcar.entity.DrivingLog;
@@ -45,6 +47,10 @@ public class TowingCarDBAdaptor {
                 .orElseThrow(() -> new IllegalStateException("현재 가용한 토잉카가 없습니다."));
     }
 
+    public List<DrivingLog> findAll() {
+        return drivingLogRepository.findAll();
+    }
+
     public void save(TowingCar car) {
         towingCarRepository.save(car);
     }
@@ -59,5 +65,9 @@ public class TowingCarDBAdaptor {
 
     public DrivingLog updateDrivingLog(DrivingLog log) {
         return drivingLogRepository.save(log);
+    }
+
+    public List<DrivingLog> findAllDrivingLogsByCarId(Long carId) {
+        return drivingLogRepository.findAllByTowingCarIdOrderByCreatedAtDesc(carId);
     }
 }

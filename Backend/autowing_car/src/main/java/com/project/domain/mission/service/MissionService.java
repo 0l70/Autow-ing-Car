@@ -1,6 +1,5 @@
 package com.project.domain.mission.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.project.domain.common.LogType;
 import com.project.domain.common.MissionStatus;
 import com.project.domain.flight.entity.Flight;
@@ -10,7 +9,18 @@ import com.project.domain.map.service.MapService;
 import com.project.domain.mission.dto.MissionWebSocketDtos.*;
 import com.project.domain.mission.entity.Mission;
 import com.project.domain.towingcar.entity.TowingCar;
-import com.project.domain.towingcar.entity.TowingCar;
+import com.project.domain.towingcar.service.TowingCarMqttService;
+import com.project.global.error.domain.car.TowingCarNotAssignedException;
+import com.project.domain.map.entity.Node;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import java.util.*;
+
 import com.project.infra.mqtt.service.MqttCommandService;
 
 import com.project.domain.map.entity.Node;
@@ -19,6 +29,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.util.*;
 
 @Slf4j
@@ -32,9 +44,7 @@ public class MissionService {
 
     private final MissionWebSocketService missionWebSocketService;
     private final MapService mapService;
-    private final MqttCommandService mqttCommandService;
-
-    private final ObjectMapper objectMapper;
+    private final TowingCarMqttService towingCarMqttService;
 
     /**
      * [기장 요청] 경로 계산 후 관제사에게 알림 (DB 저장 X)
@@ -45,10 +55,10 @@ public class MissionService {
 
         TowingCar car = flight.getAssignedTowingCar();
         if (car == null)
-            throw new IllegalStateException("배정된 차량이 없습니다.");
+            throw new TowingCarNotAssignedException(flight.getFlightNumber());
 
         String currentGate = flight.getNodeCode();
-        String activeRunway = "RUNWAY_34L"; // Mock: 실제 로직은 기상/운영 DB 연동 필요
+        String activeRunway = "RUNWAY"; // Mock: 실제 로직은 기상/운영 DB 연동 필요
 
         Node startNode = mapDBAdaptor.getNodeByCode(currentGate);
         Node endNode = mapDBAdaptor.getNodeByCode(activeRunway);
@@ -97,7 +107,7 @@ public class MissionService {
         notifyMissionUpdate(savedMission);
 
         // 로봇 출발
-        mqttCommandService.sendCommandAfterCommit(car.getCode(), "START_TRANSPORT", Map.of(
+        sendMqttAfterCommit(car.getCode(), Map.of(
                 "path", decision.getSelectedEdgeIds(),
                 "missionId", savedMission.getId(),
                 "destNode", savedMission.getDestNode()));
@@ -115,4 +125,16 @@ public class MissionService {
         missionWebSocketService.broadcastMissionUpdate(response);
     }
 
+    private void sendMqttAfterCommit(String carCode, Map<String, Object> data) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    towingCarMqttService.startTransport(carCode, data);
+                }
+            });
+        } else {
+            towingCarMqttService.startTransport(carCode, data);
+        }
+    }
 }

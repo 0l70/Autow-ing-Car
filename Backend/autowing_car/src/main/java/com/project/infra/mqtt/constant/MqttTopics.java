@@ -1,4 +1,4 @@
-package com.project.infra.mqtt.config;
+package com.project.infra.mqtt.constant;
 
 public class MqttTopics {
     // 토픽 루트 (v1 버전 포함)
@@ -11,16 +11,8 @@ public class MqttTopics {
     public static final String SUB_MAP_INFO = BASE + "/map"; // [NEW] Map Data Topic
     public static final String SUB_ACK = BASE + "/ack";
 
-    // 2. Outbound (서버 -> 로봇)
-    // 명령 보낼 때 사용 (String.format으로 carId 치환)
-    public static final String CMD_FORMAT = BASE + "/cmd";
-
+    // 2. Outbound Topic Generator
+    public static String cmd(String carCode) {
+        return String.format("%s/%s/cmd", BASE, carCode);
+    }
 }
-/**
- * webSocket -> (Cmd) -> Server -> Mqtt -> Robot / Robot -> MQTT(Ack) ->
- * Server(OK, FAIL) -> webSocket -> 관제사 전달
- * 
- * OK - Robot이 명령 수신 완료
- * FAIL - Robot이 명령 수신 실패
- * STATE -> 이건 계속?
- */
