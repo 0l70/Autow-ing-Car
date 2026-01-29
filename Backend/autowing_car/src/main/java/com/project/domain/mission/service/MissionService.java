@@ -10,7 +10,7 @@ import com.project.domain.mission.dto.MissionWebSocketDtos.*;
 import com.project.domain.mission.entity.Mission;
 import com.project.domain.towingcar.entity.TowingCar;
 import com.project.domain.towingcar.service.TowingCarMqttService;
-
+import com.project.global.error.domain.car.TowingCarNotAssignedException;
 import com.project.domain.map.entity.Node;
 
 import lombok.RequiredArgsConstructor;
@@ -43,7 +43,7 @@ public class MissionService {
 
         TowingCar car = flight.getAssignedTowingCar();
         if (car == null)
-            throw new IllegalStateException("배정된 차량이 없습니다.");
+            throw new TowingCarNotAssignedException(flight.getFlightNumber());
 
         String currentGate = flight.getNodeCode();
         String activeRunway = "RUNWAY"; // Mock: 실제 로직은 기상/운영 DB 연동 필요

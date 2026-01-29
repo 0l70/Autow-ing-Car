@@ -12,6 +12,8 @@ import com.project.domain.mission.service.MissionDBAdaptor;
 import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.*;
 import com.project.domain.towingcar.entity.DrivingLog;
 import com.project.domain.towingcar.entity.TowingCar;
+import com.project.global.error.domain.car.CarAlreadyInUseException;
+import com.project.global.error.domain.car.TowingCarNotAssignedException;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -50,7 +52,7 @@ public class TowingCarService {
         if (assignedCar == null)
             assignedCar = towingCarDBAdaptor.findFirstByCarStatusOrderByBatteryDesc(CarStatus.IDLE);
         else if (assignedCar.getCarStatus() != CarStatus.IDLE) {
-            throw new IllegalStateException("차량이 이미 이동 중에 있음");
+            throw new CarAlreadyInUseException(assignedCar.getCode(), assignedCar.getCarStatus().toString());
         }
         flight.assignCar(assignedCar);
 
@@ -72,7 +74,7 @@ public class TowingCarService {
         Flight flight = flightDBAdaptor.getFlightById(request.getFlightId());
         TowingCar assignedCar = flight.getAssignedTowingCar();
         if (assignedCar == null)
-            throw new IllegalStateException("차량 없음");
+            throw new TowingCarNotAssignedException(flight.getFlightNumber());
 
         if (assignedCar.getCarStatus() == CarStatus.TOWING)
             return; // 이미 연결됨
@@ -95,7 +97,7 @@ public class TowingCarService {
         Flight flight = flightDBAdaptor.getFlightById(request.getFlightId());
         TowingCar assignedCar = flight.getAssignedTowingCar();
         if (assignedCar == null)
-            throw new IllegalStateException("차량 없음");
+            throw new TowingCarNotAssignedException(flight.getFlightNumber());
 
         log.info("🔌 [Disconnect] Flight={} (By {})", flight.getFlightNumber(), pilotId);
 
