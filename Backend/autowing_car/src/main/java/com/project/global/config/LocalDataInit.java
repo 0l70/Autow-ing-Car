@@ -41,7 +41,7 @@ public class LocalDataInit implements CommandLineRunner {
     private final AircraftRepository aircraftRepository;
 
     @Override
-    public void run(String... args) throws Exception {
+    public void run(String... args) {
         log.info("############ Local Data Initialization Start ############");
 
         // 1. Users
