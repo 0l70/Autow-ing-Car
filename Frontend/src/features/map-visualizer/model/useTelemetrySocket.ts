@@ -3,6 +3,7 @@ import { useGraphStore } from '@/entities/map/model/store';
 import { Aircraft } from '@/entities/map/model/types';
 import { useAuthStore } from '@/features/auth/model/useAuthStore';
 import { useStompClient } from '@/shared/realtime/clients/useStompClient';
+import { useSocket } from '@/shared/realtime/context/SocketProvider';
 import { WS_TOPICS } from '@/shared/realtime/config/topics';
 import { z } from 'zod';
 
@@ -22,58 +23,60 @@ const TelemetrySchema = z.object({
     is_loaded: z.boolean().default(false)
 });
 
-// TODO: .env 파일로 이동 필요
-// 원격 개발 서버
-// const WS_URL_DEV = import.meta.env.VITE_WS_BASE_URL || 'ws://i14a402.p.ssafy.io:8080/ws-server/websocket';
+// Use Env Var with Fallback
 const WS_URL_DEV = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8080/ws-server/websocket';
-
-// 로컬 개발 서버
-// const WS_URL_DEV = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8080/ws/telemetry'; // TEST: Connect to local Mock Server
-
-
-interface ResponseMessage {
-    correlationId?: string;
-    status?: 'SUCCESS' | 'FAIL' | 'ACCEPTED' | 'REJECTED';
-    message?: string;
-    data?: any;
-    [key: string]: any;
-}
 
 export function useTelemetrySocket(url: string = WS_URL_DEV, enabled: boolean = true) {
     const { updateAircraft } = useGraphStore();
     const { socketToken } = useAuthStore();
+    
+    // 1. Try to consume Context
+    const context = useSocket();
 
-    // 1. OnConnect Callback
-    const handleConnect = useCallback((sendFn: (cmd: string, headers: Record<string, string>, body?: string) => void) => {
-        console.log("[TelemetrySocket] Session Ready. Subscribing...");
-        
-        // 1. Subscribe to Monitoring
-        sendFn("SUBSCRIBE", {
-            id: "sub-0",
-            destination: WS_TOPICS.MONITORING('*')
-        });
-
-        // 2. Subscribe to Responses
-        sendFn("SUBSCRIBE", {
-            id: "sub-1",
-            destination: WS_TOPICS.APP_RESPONSES
-        });
+    // 2. Fallback Client (Only enabled if Context is missing AND hook is enabled)
+    // This ensures backward compatibility if Provider is missing.
+    const shouldFallback = !context;
+    
+    const handleConnect = useCallback(() => {
+        // Only run this if using Fallback Client (Context subscribers handle their own logic)
+        // With Context, the global connection might already be open.
     }, []);
 
-    // 2. Use Shared Stomp Client
-    const { isConnected, request, send, onMessage } = useStompClient({
+    const fallbackClient = useStompClient({
         url,
         token: socketToken,
-        enabled,
+        enabled: shouldFallback && enabled,
         onConnect: handleConnect
     });
 
-    // 2. Data Processing Logic (Specific to Map Feature)
+    // 3. Select Active Client
+    const client = context || fallbackClient;
+    const { isConnected, request, send, onMessage } = client;
+
+    // 4. Subscription Logic (Runs for BOTH Context and Fallback)
+    useEffect(() => {
+        if (isConnected && enabled) {
+            console.log("[TelemetrySocket] Subscribing to Monitoring...");
+            
+            // Subscribe to Monitoring
+            send("SUBSCRIBE", {
+                id: "sub-monitoring-all",
+                destination: WS_TOPICS.MONITORING('*')
+            });
+
+            // Subscribe to Responses
+            send("SUBSCRIBE", {
+                id: "sub-app-responses",
+                destination: WS_TOPICS.APP_RESPONSES
+            });
+        }
+    }, [isConnected, enabled, send]);
+
+    // 5. Data Processing Logic
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleTelemetryMessage = useCallback((parseData: any) => {
         const result = TelemetrySchema.safeParse(parseData);
         if (!result.success) {
-            // console.warn("Invalid Telemetry Data:", result.error);
             return;
         }
         
@@ -100,7 +103,7 @@ export function useTelemetrySocket(url: string = WS_URL_DEV, enabled: boolean = 
         }
     }, [updateAircraft]);
 
-    // 3. Register Listener
+    // 6. Register Listener
     useEffect(() => {
         const unsubscribe = onMessage(handleTelemetryMessage);
         return () => unsubscribe();

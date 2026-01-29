@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
-import { AlertCircle, XOctagon, CheckCircle, Radio, TriangleAlert, Bell } from "lucide-react";
+import { AlertCircle, CheckCircle, Radio, TriangleAlert, Bell } from "lucide-react";
 import { useStompClient } from "@/shared/realtime/clients/useStompClient";
 import { cn } from "@/shared/lib/utils";
 import { useTimelineStore } from "./model/useTimelineStore";
+import { useSocket } from "@/shared/realtime/context/SocketProvider";
+import { useAuthStore } from "@/features/auth/model/useAuthStore";
 
 // --- Types (Match Backend DTO) ---
 type NotificationType = 'MISSION_REQUEST' | 'MANUAL_CONTROL' | 'EMERGENCY_STOP';
@@ -34,11 +36,23 @@ interface AdminAlertDto {
 export function ApprovalQueue() {
     const [alerts, setAlerts] = useState<AdminAlertDto[]>([]);
     
-    // --- WebSocket ---
-    const { onMessage, request } = useStompClient({
+
+    const { socketToken } = useAuthStore();
+    
+    // 1. Try to consume Context
+    const context = useSocket();
+    const shouldFallback = !context;
+    
+    // 2. Fallback Client
+    const fallbackClient = useStompClient({
         url: import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8080/ws-server/websocket',
-        enabled: true 
+        token: socketToken,
+        enabled: shouldFallback && !!socketToken
     });
+
+    // 3. Active Client
+    const client = context || fallbackClient;
+    const { onMessage, request } = client;
 
     useEffect(() => {
         const unsubscribe = onMessage((msg: any) => {
