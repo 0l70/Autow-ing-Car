@@ -15,7 +15,7 @@ public class CarWebSocketService {
 
     // 차량 상태 전송
     public void broadcastCarStatus(String carCode, Object monitoringPayload) {
-        webSocketService.broadcast(WebSocketTopics.carStatus(carCode), monitoringPayload);
+        webSocketService.broadcast(WebSocketTopics.carChannel(carCode), monitoringPayload);
     }
 
     // 항공편 채널 전송

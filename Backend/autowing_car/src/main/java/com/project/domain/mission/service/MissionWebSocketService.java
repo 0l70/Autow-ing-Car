@@ -22,15 +22,18 @@ public class MissionWebSocketService {
     // 2. 기장에게 결과 전송
     public void notifyPilotResult(String pilotUsername, Object payload) {
         webSocketService.sendToUser(pilotUsername, WebSocketTopics.QUEUE_REPLY, payload);
+        log.info("기장 알림 전송: {}", payload);
     }
 
     // 3. 전체 화면 갱신
     public void broadcastMissionUpdate(Object payload) {
         webSocketService.broadcast(WebSocketTopics.TOPIC_MISSION_UPDATES, payload);
+        log.info("전체 화면 갱신: {}", payload);
     }
 
     // 4. 에러 알림
     public void sendErrorToUser(String username, String message) {
         webSocketService.sendToUser(username, WebSocketTopics.QUEUE_ERRORS, message);
+        log.info("에러 알림 전송: {}", message);
     }
 }
