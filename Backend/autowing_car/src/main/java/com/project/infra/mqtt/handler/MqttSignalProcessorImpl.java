@@ -5,7 +5,8 @@ import org.springframework.stereotype.Component;
 import com.project.domain.towingcar.service.TowingCarService;
 import com.project.infra.mqtt.config.MqttIncomingMessage;
 import com.project.infra.mqtt.handler.parser.MqttIncomingMessageParser;
-import com.project.infra.websocket.service.WebSocketService;
+import com.project.domain.map.service.MapWebSocketService;
+import com.project.domain.towingcar.service.CarWebSocketService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +18,9 @@ public class MqttSignalProcessorImpl implements MqttSignalProcessor {
 
     private final MqttIncomingMessageParser parser; // 메시지 해석기
     private final TowingCarService towingCarService; // DB 저장용
-    private final WebSocketService webSocketService; // 실시간 전송용
+
+    private final CarWebSocketService carWebSocketService; // 차량 전용 웹소켓
+    private final MapWebSocketService mapWebSocketService; // 맵 전용 웹소켓
 
     @Override
     public void process(String topic, String payload) {
@@ -36,11 +39,11 @@ public class MqttSignalProcessorImpl implements MqttSignalProcessor {
                     towingCarService.processCarMonitoring(carCode, carData.getPayload());
 
                     // B. 웹소켓 전송 (Targeted: Pilot + ATCs)
-                    webSocketService.broadcastCarStatus(carCode, payload);
+                    carWebSocketService.broadcastCarStatus(carCode, payload);
                 }
             } else if (baseMsg instanceof MqttIncomingMessage.MapData mapData) {
                 log.info("Map Info Received: Broadcasting...");
-                webSocketService.broadcastMapInfo(mapData.getPayload());
+                mapWebSocketService.broadcastMapInfo(mapData.getPayload());
             } else if (baseMsg instanceof MqttIncomingMessage.Ack ack) {
                 log.info("ACK Received: Broadcasting...", ack.getPayload());
             }
