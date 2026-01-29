@@ -2,6 +2,8 @@ package com.project.global.error.handler;
 
 import com.project.global.error.dto.WebSocketErrorDto;
 import com.project.global.error.exception.BusinessException;
+import com.project.infra.websocket.constant.WebSocketTopics;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.handler.annotation.MessageExceptionHandler;
@@ -30,7 +32,7 @@ public class WebSocketExceptionHandler {
      * 사용자의 /queue/errors로 에러 메시지 전송
      */
     @MessageExceptionHandler(BusinessException.class)
-    @SendToUser("/queue/errors")
+    @SendToUser(WebSocketTopics.QUEUE_ERRORS)
     public WebSocketErrorDto handleBusinessException(
             BusinessException ex,
             Principal principal) {
@@ -42,7 +44,7 @@ public class WebSocketExceptionHandler {
                 .errorCode(ex.getErrorCode())
                 .message(ex.getMessage())
                 .timestamp(LocalDateTime.now())
-                .destination("/queue/errors")
+                .destination(WebSocketTopics.QUEUE_ERRORS)
                 .severity("ERROR")
                 .build();
     }
@@ -52,7 +54,7 @@ public class WebSocketExceptionHandler {
      * 예상치 못한 에러를 사용자에게 전송
      */
     @MessageExceptionHandler(Exception.class)
-    @SendToUser("/queue/errors")
+    @SendToUser(WebSocketTopics.QUEUE_ERRORS)
     public WebSocketErrorDto handleGeneralException(
             Exception ex,
             Principal principal) {
@@ -63,7 +65,7 @@ public class WebSocketExceptionHandler {
                 .errorCode("INTERNAL_ERROR")
                 .message("서버 내부 오류가 발생했습니다.")
                 .timestamp(LocalDateTime.now())
-                .destination("/queue/errors")
+                .destination(WebSocketTopics.QUEUE_ERRORS)
                 .severity("ERROR")
                 .build();
     }
@@ -76,11 +78,11 @@ public class WebSocketExceptionHandler {
                 .errorCode(errorCode)
                 .message(message)
                 .timestamp(LocalDateTime.now())
-                .destination("/queue/errors")
+                .destination(WebSocketTopics.QUEUE_ERRORS)
                 .severity("ERROR")
                 .build();
 
-        messagingTemplate.convertAndSendToUser(username, "/queue/errors", error);
+        messagingTemplate.convertAndSendToUser(username, WebSocketTopics.QUEUE_ERRORS, error);
         log.warn("⚠️ [WebSocket] Sent error to user {}: [{}] {}", username, errorCode, message);
     }
 }
