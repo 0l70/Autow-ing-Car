@@ -22,8 +22,8 @@ export function PilotTimeline({ logs }: PilotTimelineProps) {
                 </CardTitle>
             </CardHeader>
             <CardContent className="flex-1 p-3 overflow-y-auto space-y-4 scrollbar-hide">
-                {logs.map((log) => (
-                    <div key={log.id} className="relative pl-4 border-l border-slate-700">
+                {logs.map((log, index) => (
+                    <div key={`${log.timestamp}-${index}`} className="relative pl-4 border-l border-slate-700">
                         {/* Timeline Dot */}
                         <div className={`absolute -left-[5px] top-1 w-2.5 h-2.5 rounded-full border-2 border-slate-800 
                             ${log.type === 'error' ? 'bg-red-500' : 'bg-cyan-500'}`} 

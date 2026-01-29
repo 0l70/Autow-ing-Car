@@ -26,7 +26,8 @@ import { useGraphStore } from "@/entities/map/model/store";
 import { MapMeta, Aircraft } from "@/entities/map/model/types";
 import { MOCK_EDGES, MOCK_NODES, MOCK_MAP_SIZE } from "@/entities/map/lib/mockData";
 import { useMockAircraftMqtt } from "@/entities/map/lib/mockAircraft";
-import { useTelemetrySocket } from "@/features/map-visualizer/model/useTelemetrySocket";
+import { usePilotSocket } from "@/features/dashboard/model/usePilotSocket";
+import { FlightInfo, FlightInfoSchema } from "@/features/dashboard/model/dashboardTypes";
 
 export function PilotDashboard() {
     // --- State 관리 ---
@@ -35,6 +36,8 @@ export function PilotDashboard() {
     const [connState, setConnState] = useState<ConnectionState>('disconnected');
     const [isAutoMode, setIsAutoMode] = useState(false);
     const [isCamEnabled, setIsCamEnabled] = useState(false);
+    const [flightInfo, setFlightInfo] = useState<FlightInfo | null>(null);
+    const lastLoadedFlightId = useRef<number | null>(null);
 
     // --- 지도 상태 관리 ---
     const { loadGraph, setAircrafts, mapWidth: storeMapWidth, mapHeight: storeMapHeight } = useGraphStore();
@@ -49,23 +52,58 @@ export function PilotDashboard() {
     const logEndRef = useRef<HTMLDivElement>(null);
 
     // --- 데이터 소스 ---
-    // 관제사와 동일한 Mock 데이터 소스 사용 (추후 WebSocket으로 대체)
-    // 관제사와 동일한 Mock 데이터 소스 사용 (추후 WebSocket으로 대체)
-    const mockData = useMockAircraftMqtt();
     // WebSocket Hook
-    const { request } = useTelemetrySocket();
+    const { request, onMessage, isConnected } = usePilotSocket('CAR_102');
 
     useEffect(() => {
-        setAircrafts(mockData);
-    }, [mockData, setAircrafts]);
+        const unsubscribe = onMessage((msg) => {
+            // 1. Flight Info 메시지 처리
+            const flightParsed = FlightInfoSchema.safeParse(msg);
+            if (flightParsed.success) {
+                const data = flightParsed.data;
+                console.log("[PilotDashboard] Flight Info Received:", data);
+                
+                if (lastLoadedFlightId.current !== data.flightId) {
+                    addLog('info', `Flight ${data.flightNumber} loaded`);
+                    lastLoadedFlightId.current = data.flightId;
+                }
+                
+                setFlightInfo(data);
+                return;
+            }
+
+            // 2. 서버 응답 메시지 처리 (커넥션 상태 등)
+            if (msg.status && msg.message) {
+                const type = msg.status === 'SUCCESS' || msg.status === 'APPROVED' ? 'success' : 'error';
+                addLog(type, `[${msg.status}] ${msg.message}`);
+
+                if (msg.status === 'SUCCESS') {
+                    if (msg.message.includes("Connected Successfully")) {
+                        setConnState('connected');
+                    } else if (msg.message.includes("Disconnected Successfully")) {
+                        setConnState('disconnected');
+                    }
+                } else if (msg.status === 'APPROVED') {
+                    // --- PUSHBACK APPROVED ---
+                    if (moveState === 'waiting') {
+                        setMoveState('pushback');
+                        if (msg.data && msg.data.destNodeName) {
+                            addLog('info', `PATH: To [${msg.data.destNodeName}] assigned`);
+                        }
+                    }
+                } else if (msg.status === 'FAIL') {
+                    if (msg.message.includes("Connect")) setConnState('disconnected');
+                    if (msg.message.includes("Disconnect")) setConnState('connected');
+                    if (moveState === 'waiting') setMoveState('stopped');
+                }
+            }
+        });
+        return () => unsubscribe();
+    }, [onMessage, moveState, connState]);
 
     useEffect(() => {
-        // Only load graph if not already populated (or you might want to force sync)
-        // For now, Pilot view acts as a passive consumer mainly.
-        // loadGraph(MOCK_NODES, MOCK_EDGES); 
-    }, [loadGraph]);
-
-    // ... (Protocols) ...
+        // ... (Protocols) ...
+    }, []);
 
     const handleMapLoad = useCallback((info: { meta: MapMeta; width: number; height: number }) => {
         setMapMeta(info.meta);
@@ -102,13 +140,35 @@ export function PilotDashboard() {
         setConfirmModal({
             open: true,
             action: moveState === 'stopped' ? 'REQUEST PUSHBACK' : 'STOP VEHICLE',
-            onConfirm: () => {
+            onConfirm: async () => {
                 if (moveState === 'stopped') {
-                    setMoveState('pushback');
-                    addLog('info', 'REQ: Pushback Requested');
+                    // --- PUSHBACK REQUEST FLOW ---
+                    setMoveState('waiting');
+                    addLog('info', 'REQ: Requesting Pushback Agreement...');
+                    
+                    try {
+                        if (!flightInfo) {
+                            addLog('error', 'SYS: Flight Info not found');
+                            setMoveState('stopped');
+                            return;
+                        }
+
+                        await request('/app/car/move', {
+                            type: 'PUSHBACK',
+                            flightId: flightInfo.flightId,
+                            carId: 'CAR_102',
+                            reqId: `req-${Date.now()}`
+                        }, 5000);
+                        
+                    } catch (e) {
+                        setMoveState('stopped');
+                        addLog('error', 'SYS: Pushback Request Timeout');
+                    }
                 } else {
+                    // --- STOP COMMAND ---
                     setMoveState('stopped');
                     addLog('info', 'CMD: Vehicle Stopped');
+                    // 정지 명령도 서버에 전송 필요하면 여기에 추가
                 }
             }
         });
@@ -123,33 +183,35 @@ export function PilotDashboard() {
             open: true,
             action: connState === 'disconnected' ? 'CONNECT TUG' : 'DISCONNECT TUG',
             onConfirm: async () => {
+                if (!flightInfo) {
+                    addLog('error', 'SYS: Flight Info not loaded yet');
+                    return;
+                }
+
                 if (connState === 'disconnected') {
                     // --- CONNECT FLOW ---
                     setConnState('waiting');
                     addLog('info', 'REQ: Requesting Tug Connection...');
                     try {
                         await request('/app/car/connect', {
-                            type: 'CONNECT_REQUEST',
-                            pilotId: 'PILOT_001',
-                            timestamp: Date.now()
+                            flightId: flightInfo.flightId,
+                            reqId: `req-${Date.now()}`
                         }, 5000);
-                        // 응답은 성공했지만, 상태 변경은 나중에 이벤트(APPROVED)로 처리됨
                     } catch (e) {
                         setConnState('disconnected');
                         addLog('error', 'SYS: Connection Request Timeout');
                     }
                 } else {
                     // --- DISCONNECT FLOW ---
-                    setConnState('waiting'); // Disconnect도 요청 후 대기
+                    setConnState('waiting');
                     addLog('info', 'REQ: Requesting Disconnection...');
                     try {
                         await request('/app/car/disconnect', {
-                            type: 'DISCONNECT_REQUEST',
-                            pilotId: 'PILOT_001',
-                            timestamp: Date.now()
+                            flightId: flightInfo.flightId,
+                            reqId: `req-${Date.now()}`
                         }, 5000);
                     } catch (e) {
-                        setConnState('connected'); // 실패 시 다시 연결 상태로 유지
+                        setConnState('connected');
                         addLog('error', 'SYS: Disconnect Request Timeout');
                     }
                 }
@@ -278,10 +340,10 @@ export function PilotDashboard() {
                 />
 
                 {/* B2: Status Panel (span 3) */}
-                <PilotTugStatus />
+                <PilotTugStatus aircraft={null} />
 
                 {/* B3: Navigation Data (span 5) */}
-                <PilotFlightInfo moveState={moveState} />
+                <PilotFlightInfo moveState={moveState} aircraft={null} />
 
                 {/* B4: Critical Alerts (span 2) */}
                 <PilotSafetyControls 

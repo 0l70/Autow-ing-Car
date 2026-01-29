@@ -16,81 +16,79 @@ const TelemetrySchema = z.object({
     y: z.number().default(0),
     yaw: z.number().default(0),
     v: z.number().default(0),
-    mode: AircraftStatusSchema.catch('IDLE'), // Fallback to IDLE if invalid
+    mode: AircraftStatusSchema.catch('IDLE'),
     battery: z.number().default(0),
     currentMission: z.any().optional(),
     is_loaded: z.boolean().default(false)
 });
 
 // TODO: .env 파일로 이동 필요
-// 원격 개발 서버
 // const WS_URL_DEV = import.meta.env.VITE_WS_BASE_URL || 'ws://i14a402.p.ssafy.io:8080/ws-server/websocket';
 const WS_URL_DEV = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8080/ws-server/websocket';
 
-// 로컬 개발 서버
-// const WS_URL_DEV = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8080/ws/telemetry'; // TEST: Connect to local Mock Server
-
-
-interface ResponseMessage {
-    correlationId?: string;
-    status?: 'SUCCESS' | 'FAIL' | 'ACCEPTED' | 'REJECTED';
-    message?: string;
-    data?: any;
-    [key: string]: any;
-}
-
-export function useTelemetrySocket(url: string = WS_URL_DEV, enabled: boolean = true) {
+export function usePilotSocket(targetCarId: string, enabled: boolean = true) {
     const { updateAircraft } = useGraphStore();
     const { socketToken } = useAuthStore();
+    const serverUrl = WS_URL_DEV;
 
     // 1. OnConnect Callback
     const handleConnect = useCallback((sendFn: (cmd: string, headers: Record<string, string>, body?: string) => void) => {
-        console.log("[TelemetrySocket] Session Ready. Subscribing...");
+        console.log(`[PilotSocket] Session Ready. Subscribing for Car: ${targetCarId}`);
         
-        // 1. Subscribe to Monitoring
+        // 1. Subscribe to My Car Monitoring
         sendFn("SUBSCRIBE", {
-            id: "sub-0",
-            destination: WS_TOPICS.MONITORING('*')
+            id: `sub-pilot-monitor-${targetCarId}`,
+            destination: WS_TOPICS.MONITORING(targetCarId)
         });
 
-        // 2. Subscribe to Responses
+        // 2. Subscribe to Private Responses
         sendFn("SUBSCRIBE", {
-            id: "sub-1",
-            destination: WS_TOPICS.APP_RESPONSES
+            id: "sub-pilot-private",
+            destination: WS_TOPICS.PRIVATE_RESPONSES
         });
-    }, []);
+
+        // 3. Subscribe to Flight Info
+        sendFn("SUBSCRIBE", {
+            id: "sub-pilot-flight-info",
+            destination: WS_TOPICS.PILOT_FLIGHT_INFO
+        });
+
+        // 4. Request Flight Info (명시적 요청)
+        console.log("[PilotSocket] Requesting flight info...");
+        sendFn("SEND", {
+            destination: "/app/flight/info/request"
+        }, "");
+    }, [targetCarId]);
 
     // 2. Use Shared Stomp Client
     const { isConnected, request, send, onMessage } = useStompClient({
-        url,
+        url: serverUrl,
         token: socketToken,
         enabled,
         onConnect: handleConnect
     });
 
-    // 2. Data Processing Logic (Specific to Map Feature)
+    // 3. Data Processing Logic (Specific to Pilot - Update only my car)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleTelemetryMessage = useCallback((parseData: any) => {
         const result = TelemetrySchema.safeParse(parseData);
-        if (!result.success) {
-            // console.warn("Invalid Telemetry Data:", result.error);
-            return;
-        }
+        if (!result.success) return;
         
         const data = result.data;
         const rawId = data.car_id || data.carId;
 
-        if (rawId) {
+        // 내 차 정보만 업데이트
+        if (rawId && rawId === targetCarId) {
             const aircraft: Aircraft = {
                 id: rawId,
-                callsign: rawId, // using ID as callsign for now
+                callsign: rawId,
                 type: 'TUG',
                 position: {
                     x: data.x,
                     y: data.y,
                     r: data.yaw * (Math.PI / 180)
                 },
-                status: data.mode, // Now strictly typed as AircraftStatus
+                status: data.mode,
                 battery: data.battery,
                 speed: data.v,
                 currentMission: data.currentMission,
@@ -98,9 +96,9 @@ export function useTelemetrySocket(url: string = WS_URL_DEV, enabled: boolean = 
             };
             updateAircraft(aircraft);
         }
-    }, [updateAircraft]);
+    }, [updateAircraft, targetCarId]);
 
-    // 3. Register Listener
+    // 4. Register Listener
     useEffect(() => {
         const unsubscribe = onMessage(handleTelemetryMessage);
         return () => unsubscribe();
