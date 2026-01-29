@@ -10,10 +10,11 @@ import com.project.domain.map.entity.Node;
 import com.project.domain.map.service.MapDBAdaptor;
 import com.project.domain.mission.entity.Mission;
 import com.project.domain.mission.service.MissionDBAdaptor;
+import com.project.domain.mission.service.MissionWebSocketService;
 import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.*;
 import com.project.domain.towingcar.entity.DrivingLog;
 import com.project.domain.towingcar.entity.TowingCar;
-import com.project.infra.mqtt.MqttTopics;
+import com.project.infra.mqtt.config.MqttTopics;
 import com.project.infra.mqtt.service.MqttOutboundService;
 import lombok.RequiredArgsConstructor;
 import com.project.infra.websocket.service.WebSocketService;
@@ -35,7 +36,8 @@ public class TowingCarService {
     private final MapDBAdaptor mapDBAdaptor;
     private final MqttOutboundService mqttOutboundService;
     private final ObjectMapper objectMapper;
-    private final WebSocketService webSocketService;
+    private final CarWebSocketService carWebSocketService;
+    private final MissionWebSocketService missionWebSocketService;
 
     private boolean isAutoConnectEnabled = true;
     private boolean isAutoDisconnectEnabled = true;
@@ -89,7 +91,7 @@ public class TowingCarService {
         // TODO: 추후 실제 차량(MQTT)으로부터 'CONNECTED' 응답을 받으면 그때 전송하도록 변경 필요
         // 현재는 테스트를 위해 즉시 성공 응답 전송
         log.info("[WS-LOG] Sending MOCK SUCCESS response to pilot: {}", pilotId);
-        webSocketService.notifyPilotResult(pilotId,
+        missionWebSocketService.notifyPilotResult(pilotId,
                 MissionResponseDto.builder()
                         .status("SUCCESS")
                         .message("Tug Connected Successfully (Mock)")
@@ -120,7 +122,7 @@ public class TowingCarService {
 
         // TODO: 추후 실제 차량(MQTT) 응답 대기 필요
         log.info("[WS-LOG] Sending MOCK SUCCESS response to pilot: {}", pilotId);
-        webSocketService.notifyPilotResult(pilotId,
+        missionWebSocketService.notifyPilotResult(pilotId,
                 MissionResponseDto.builder()
                         .status("SUCCESS")
                         .message("Tug Disconnected Successfully (Mock)")
@@ -143,7 +145,7 @@ public class TowingCarService {
             log.info("🚀 [Pushback] Approved for Flight={}, Car={}", request.getFlightId(), request.getCarId());
 
             // 승인 결과 알림 (Mock 데이터 포함)
-            webSocketService.notifyPilotResult(pilotId,
+            missionWebSocketService.notifyPilotResult(pilotId,
                     MissionResponseDto.builder()
                             .status("APPROVED")
                             .message("Pushback Approved to [Gate 1]")
@@ -157,7 +159,7 @@ public class TowingCarService {
             sendMqttCommand(request.getCarId(), "MOVE_CONTROL", Map.of("action", request.getType()));
 
             // 결과 알림
-            webSocketService.notifyPilotResult(pilotId,
+            missionWebSocketService.notifyPilotResult(pilotId,
                     MissionResponseDto.builder()
                             .status("SUCCESS")
                             .message("Move Command Processed: " + request.getType())
@@ -177,7 +179,7 @@ public class TowingCarService {
         sendMqttCommand(request.getCarId(), "SET_MODE", Map.of("mode", request.getMode()));
 
         // 결과 알림
-        webSocketService.notifyPilotResult(pilotId,
+        missionWebSocketService.notifyPilotResult(pilotId,
                 MissionResponseDto.builder()
                         .status("SUCCESS")
                         .message("Mode Switched to: " + request.getMode())
@@ -196,7 +198,7 @@ public class TowingCarService {
         sendMqttCommand(request.getCarId(), "EMERGENCY_STOP", Map.of());
 
         // 결과 알림
-        webSocketService.notifyPilotResult(pilotId,
+        missionWebSocketService.notifyPilotResult(pilotId,
                 MissionResponseDto.builder()
                         .status("SUCCESS")
                         .message("EMERGENCY STOP EXECUTED")

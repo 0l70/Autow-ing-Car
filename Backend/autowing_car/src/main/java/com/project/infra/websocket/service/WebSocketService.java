@@ -1,34 +1,17 @@
 package com.project.infra.websocket.service;
 
+import java.util.List;
+
 public interface WebSocketService {
-    // 1. 관제사에게 "이거 승인 좀 해주세요" (요청 + 분석데이터) -> /topic/controller/requests
-    void notifyAdminRequest(Object payload);
+    // --- Generic Core Methods (To be implemented) ---
 
-    // 2. 특정 기장에게 "결과 나왔습니다" (개별 알림)
-    void notifyPilotResult(String pilotUsername, Object payload);
+    // 1. Broadcast to a specific topic
+    void broadcast(String destination, Object payload);
 
-    // 3. 전체 화면 갱신 (현황판용)
-    void broadcastMissionUpdate(Object payload);
+    // 2. Unicast to a specific user (User-specific queue)
+    void sendToUser(String username, String destination, Object payload);
 
-    // 4. 에러 알림
-    void sendErrorToUser(String username, String message);
+    // 3. Multicast to multiple users (Convenience method)
+    void sendToUsers(List<String> usernames, String destination, Object payload);
 
-    // 5. 특정 차량 상태/명령 전송 -> /topic/towingcar/{towingCarId}
-    void broadcastCarStatus(String carCode, Object monitoringPayload);
-
-    // 6. 특정 항공편 채널 전송 (기장 & 관제사 공유) -> /topic/flight/{scheduleId}
-    void notifyFlightChannel(Long scheduleId, Object payload);
-
-    // 7. 맵 정보 전체 브로드캐스트 (Added via Merge)
-    void broadcastMapInfo(Object payload);
-
-    // 8. WebRTC Signaling (Added)
-    void broadcastOffer(Object payload);
-
-    void broadcastAnswer(Object payload);
-
-    void broadcastIce(Object payload);
-
-    // 9. 기장 비행 스케줄 정보 전송 (Added)
-    void notifyPilotFlightInfo(String pilotId, Object flightInfo);
 }
