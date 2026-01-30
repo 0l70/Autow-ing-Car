@@ -14,10 +14,7 @@ try:
     from aiortc.sdp import candidate_from_sdp
 except ImportError:
     from aiortc.rtcicetransport import candidate_from_sdp
-# ==========================================
-# [설정] 환경변수 혹은 기본값
-# ==========================================
-# 사용자 요청 IP 반영
+
 DEFAULT_HOST_IP = "70.12.246.52"
 DEFAULT_PORT = "8080"
 # 로그인 정보
@@ -40,9 +37,10 @@ ICE_SERVERS = [
     RTCIceServer(urls=["stun:stun.l.google.com:19302"]),
 ]
 RTC_CONFIG = RTCConfiguration(iceServers=ICE_SERVERS)
+
 # ==========================================
 def login_and_get_token():
-    print("[Login] Trying to login to {} as {}...".format(LOGIN_URL, LOGIN_EMAIL))
+    print("[Login] Trying to login to {}...".format(LOGIN_URL))
     try:
         resp = requests.post(LOGIN_URL, json={
             "email": LOGIN_EMAIL,
@@ -57,12 +55,14 @@ def login_and_get_token():
     except Exception as e:
         print("[Login] Error: {}".format(e))
         return None
+    
 def stomp_frame(cmd, headers, body=""):
-    # 헤더 조립
-    header_str = ""
+    frame = "{}\n".format(cmd)
     for k, v in headers.items():
-        header_str += "{}:{}\n".format(k, v)
-    return "{}\n{}\n{}\0".format(cmd, header_str, body)
+        frame += "{}:{}\n".format(k, v)
+    frame += "\n{}\0".format(body)
+    return frame
+
 def parse_stomp_message(frame):
     if not frame or "MESSAGE" not in frame:
         return None
@@ -74,20 +74,26 @@ def parse_stomp_message(frame):
         return json.loads(body)
     except:
         return None
+    
 class CameraStreamTrack(VideoStreamTrack):
     def __init__(self, device_index=0, width=640, height=480, fps=30):
         super().__init__()
         self.cap = cv2.VideoCapture(device_index)
+        self.running = True 
         if not self.cap.isOpened():
             raise RuntimeError("Failed to open camera device index={}".format(device_index))
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
         self.cap.set(cv2.CAP_PROP_FPS, fps)
     async def recv(self):
+        # [PAUSE 로직 수정] 재귀 대신 루프로 대기
+        while not self.running:
+            await asyncio.sleep(0.1)
         pts, time_base = await self.next_timestamp()
         ret, frame = self.cap.read()
         if not ret or frame is None:
             await asyncio.sleep(0.01)
+            # 여기서는 어쩔 수 없이 재귀 (프레임 읽기 실패시만)
             return await self.recv()
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         vf = VideoFrame.from_ndarray(frame, format="rgb24")
@@ -98,35 +104,34 @@ class CameraStreamTrack(VideoStreamTrack):
         if self.cap:
             self.cap.release()
         super().stop()
+    
+    def pause(self):
+        print("[Camera] PAUSED (Streaming Suspended)")
+        self.running = False
+    
+    def resume(self):
+        print("[Camera] RESUMED (Streaming Active)")
+        self.running = True
+
 async def main():
-    # 1. 로그인
     token = login_and_get_token()
-    if not token:
-        print("[System] Login failed. Exiting.")
-        return
-    # 2. WebSocket URL 생성
+    if not token: return
     full_ws_url = "{}?socket_token={}".format(SERVER_WS_BASE, token)
-    print("==== Jetson WebRTC Cam Sender (On-Demand v3) ====")
+    print("==== Jetson WebRTC Cam Sender (v5: Video Fix) ====")
     print("Server: {}".format(full_ws_url))
-    print("Target: {}".format(PILOT_ID))
-    # RTCPeerConnection & Camera (전역 유지)
     pc = RTCPeerConnection(RTC_CONFIG)
     cam_track = CameraStreamTrack(VIDEO_DEVICE_INDEX, WIDTH, HEIGHT, FPS)
-    # Track은 미리 추가
     pc.addTrack(cam_track)
     send_q = asyncio.Queue()
-    # --- Helper: Start Streaming ---
     async def start_streaming():
-        print("[Control] START Command Received! Initiating WebRTC...")
+        print("[WebRTC] START Command Received! Generating Offer...")
+        cam_track.resume()
         
-        # 1. Create Offer
         offer = await pc.createOffer()
         await pc.setLocalDescription(offer)
-        # 2. Vanilla ICE Wait (2초 대기)
         print("[WebRTC] Gathering ICE candidates (2s)...")
         await asyncio.sleep(2)
         
-        # 3. Send Offer (with Candidates)
         final_sdp = pc.localDescription.sdp
         payload = {
             "type": "OFFER",
@@ -136,13 +141,12 @@ async def main():
         }
         headers = {"destination": "/app/video/offer", "content-type": "application/json"}
         await send_q.put(stomp_frame("SEND", headers, json.dumps(payload)))
-        print("[WebRTC] OFFER Sent!")
+        print("[WebRTC] OFFER Sent to {}".format(PILOT_ID))
     async def ws_sender(ws):
         while True:
             msg = await send_q.get()
             if msg is None: return
             await ws.send(msg)
-    # 3. Connect & Listen
     async with websockets.connect(full_ws_url, subprotocols=["v12.stomp"]) as ws:
         sender_task = asyncio.create_task(ws_sender(ws))
         # STOMP CONNECT
@@ -150,47 +154,41 @@ async def main():
         # Wait for CONNECTED
         first_msg = await ws.recv()
         if "CONNECTED" in first_msg:
-            print("[STOMP] CONNECTED & WAITING FOR COMMAND...")
-        else:
-            print("[STOMP] Unexpected: {}".format(first_msg[:50]))
+            print("[STOMP] CONNECTED & Waiting for START command...")
         
-        # SUBSCRIBE to Control Topic (명령 대기)
-        sub_ctrl = {"id": "sub-ctrl", "destination": "/topic/video/control/{}".format(CAR_ID)}
-        await send_q.put(stomp_frame("SUBSCRIBE", sub_ctrl))
-        # SUBSCRIBE to Answer/ICE (Video Signaling)
-        sub_ans = {"id": "sub-ans", "destination": "/topic/video/answer/{}".format(CAR_ID)}
-        await send_q.put(stomp_frame("SUBSCRIBE", sub_ans))
-        sub_ice = {"id": "sub-ice", "destination": "/topic/video/ice/{}".format(CAR_ID)}
-        await send_q.put(stomp_frame("SUBSCRIBE", sub_ice))
+        # SUBSCRIBE
+        await send_q.put(stomp_frame("SUBSCRIBE", {"id": "sub-ctrl", "destination": "/topic/video/control/{}".format(CAR_ID)}))
+        await send_q.put(stomp_frame("SUBSCRIBE", {"id": "sub-ans", "destination": "/topic/video/answer/{}".format(CAR_ID)}))
+        await send_q.put(stomp_frame("SUBSCRIBE", {"id": "sub-ice", "destination": "/topic/video/ice/{}".format(CAR_ID)}))
         # Main Loop
         async for raw in ws:
             data = parse_stomp_message(raw)
             if not data: continue
             t = data.get("type")
-            
-            # [Control] START
             if t == "START":
                 await start_streaming()
-            
-            # [Signaling] ANSWER
+            elif t == "PAUSE":
+                cam_track.pause()
+            elif t == "RESUME":
+                cam_track.resume()
             elif t == "ANSWER":
-                print("[WebRTC] ANSWER Received")
+                print("[WebRTC] ANSWER Received!")
                 await pc.setRemoteDescription(RTCSessionDescription(sdp=data["sdp"], type="answer"))
-            
-            # [Signaling] ICE
             elif t == "ICE":
-                print("[WebRTC] ICE Received")
+                print("[WebRTC] ICE Candidate Received")
                 try:
                     cand = candidate_from_sdp(data["candidate"])
                     cand.sdpMid = data.get("sdpMid", "0")
                     cand.sdpMLineIndex = int(data.get("sdpMLineIndex", 0))
                     await pc.addIceCandidate(cand)
                 except Exception as e:
-                    print("ICE Error: {}".format(e))
+                    print("[WebRTC] ICE Error: {}".format(e))
         await send_q.put(None)
         await sender_task
         await pc.close()
         cam_track.stop()
+
+        
 if __name__ == "__main__":
     try:
         asyncio.run(main())
