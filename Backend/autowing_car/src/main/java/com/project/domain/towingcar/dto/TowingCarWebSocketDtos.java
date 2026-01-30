@@ -1,6 +1,6 @@
 package com.project.domain.towingcar.dto;
 
-import lombok.Getter;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import lombok.*;
 
@@ -26,6 +26,7 @@ public class TowingCarWebSocketDtos {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class CarDispatchRequestDto {
+        @JsonProperty("flightNumber")
         private String flightNumber;
         // private String reqId;
     }
@@ -47,6 +48,9 @@ public class TowingCarWebSocketDtos {
     }
 
     @Getter
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class TowingCarDTO {
         private String code;
         private Double posX;

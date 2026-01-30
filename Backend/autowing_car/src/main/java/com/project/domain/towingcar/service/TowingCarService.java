@@ -19,6 +19,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -65,7 +67,44 @@ public class TowingCarService {
         towingCarMqttService.moveCarToGate(assignedCar.getCode(), flight.getNodeCode());
 
         // WebSocket: MOVE_TO_GATE
-        towingCarWebSocketService.broadcastCarStatus(assignedCar.getCode(), assignedCar);
+        towingCarWebSocketService.broadcastCarStatus(assignedCar.getCode(), toDTO(assignedCar));
+
+        // [TEST] Simulate Auto-Connection Lifecycle
+        String carCode = assignedCar.getCode();
+        Long flightId = flight.getId();
+        simulateAutoConnection(carCode, flightId);
+    }
+
+    private void simulateAutoConnection(String carCode, Long flightId) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                // Wait 3 seconds (car "travels" to gate)
+                TimeUnit.SECONDS.sleep(3);
+
+                log.info("[TEST] {} arrived at gate, triggering connect...", carCode);
+
+                // Trigger connect (sets LOADING status)
+                TowingCar car = towingCarDBAdaptor.getCarByCode(carCode);
+                Flight flight = flightDBAdaptor.getFlightById(flightId);
+
+                car.updateStatus(car.getLastPosX(), car.getLastPosY(), car.getLastHeading(),
+                        car.getLastVelocity(), car.getBattery(), CarStatus.LOADING);
+                towingCarWebSocketService.broadcastCarStatus(carCode, toDTO(car));
+
+                // Wait another 3 seconds (loading process)
+                TimeUnit.SECONDS.sleep(3);
+
+                log.info("[TEST] {} loading complete, Connected (TOWING)", carCode);
+
+                // Set TOWING status
+                car.updateStatus(car.getLastPosX(), car.getLastPosY(), car.getLastHeading(),
+                        car.getLastVelocity(), car.getBattery(), CarStatus.TOWING);
+                towingCarWebSocketService.broadcastCarStatus(carCode, toDTO(car));
+
+            } catch (InterruptedException e) {
+                log.error("[TEST] Auto-connection simulation interrupted", e);
+            }
+        });
     }
 
     /**
@@ -91,7 +130,14 @@ public class TowingCarService {
                 assignedCar.getLastVelocity(), assignedCar.getBattery(), CarStatus.LOADING);
 
         // WebSocket: CONNECT
-        towingCarWebSocketService.broadcastCarStatus(assignedCar.getCode(), assignedCar);
+        towingCarWebSocketService.broadcastCarStatus(assignedCar.getCode(), toDTO(assignedCar));
+
+        // [REFLECT] Send Success Response to Pilot
+        towingCarWebSocketService.notifyPilotResult(pilotId,
+                MissionResponseDto.builder()
+                        .status("SUCCESS")
+                        .message("Connecting Initiated...")
+                        .build());
     }
 
     /**
@@ -109,6 +155,10 @@ public class TowingCarService {
         // MQTT: DISCONNECT
         towingCarMqttService.disconnectCar(assignedCar.getCode(), flight.getId());
 
+        // [MOCK SUPPORT] Set to UNLOADING so Scheduler can simulate transition to IDLE
+        assignedCar.updateStatus(assignedCar.getLastPosX(), assignedCar.getLastPosY(), assignedCar.getLastHeading(),
+                assignedCar.getLastVelocity(), assignedCar.getBattery(), CarStatus.UNLOADING);
+
         // 미션 완료 처리
         if (assignedCar.getCurrentMissionId() != null) {
             Mission mission = missionDBAdaptor.getMissionById(assignedCar.getCurrentMissionId());
@@ -117,7 +167,14 @@ public class TowingCarService {
         }
 
         // WebSocket: DISCONNECT
-        towingCarWebSocketService.broadcastCarStatus(assignedCar.getCode(), assignedCar);
+        towingCarWebSocketService.broadcastCarStatus(assignedCar.getCode(), toDTO(assignedCar));
+
+        // [REFLECT] Send Success Response to Pilot
+        towingCarWebSocketService.notifyPilotResult(pilotId,
+                MissionResponseDto.builder()
+                        .status("SUCCESS")
+                        .message("Disconnected Successfully")
+                        .build());
     }
 
     // =========================================================================
@@ -149,8 +206,9 @@ public class TowingCarService {
     }
 
     private void checkAndTriggerAutoActions(TowingCar assignedCar, double x, double y, CarStatus status) {
-        if (status != CarStatus.IDLE)
-            return;
+        // [Fix] Allow checking auto actions even if status is not IDLE (e.g.
+        // MOVING_TO_LOAD)
+        // if (status != CarStatus.IDLE) return;
 
         // Auto Connect
         if (isAutoConnectEnabled && assignedCar.getCarStatus() == CarStatus.MOVING_TO_LOAD) { // DB상 배차이동중
@@ -229,19 +287,17 @@ public class TowingCarService {
         towingCarDBAdaptor.saveDrivingLog(log);
     }
 
-    // private void sendMqttAfterCommit(String carCode, Map<String, Object> data) {
-    // if (TransactionSynchronizationManager.isSynchronizationActive()) {
-    // TransactionSynchronizationManager.registerSynchronization(new
-    // TransactionSynchronization() {
-    // @Override
-    // public void afterCommit() {
-    // towingCarMqttService.startTransport(carCode, data);
-    // }
-    // });
-    // } else {
-    // towingCarMqttService.startTransport(carCode, data);
-    // }
-    // }
+    private TowingCarDTO toDTO(TowingCar car) {
+        return TowingCarDTO.builder()
+                .code(car.getCode())
+                .posX(car.getLastPosX() != null ? car.getLastPosX() : 0.0)
+                .posY(car.getLastPosY() != null ? car.getLastPosY() : 0.0)
+                .heading(car.getLastHeading() != null ? car.getLastHeading() : 0.0)
+                .velocity(car.getLastVelocity() != null ? car.getLastVelocity() : 0.0)
+                .battery(car.getBattery())
+                .status(car.getCarStatus().name())
+                .build();
+    }
 
     private CarStatus parseCarStatus(String s) {
         try {

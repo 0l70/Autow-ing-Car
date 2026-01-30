@@ -5,8 +5,9 @@ import { MoveState, ConnectionState, PilotLog } from './types';
 import { FlightInfo, FlightInfoSchema } from "@/features/dashboard/model/dashboardTypes";
 
 import { useFlightWelcome } from './useFlightWelcome'; // [NEW]
+import { useGraphStore } from '@/entities/map/model/store';
 
-export function usePilotController(carId: string) {
+export function usePilotController(initialCarId?: string) {
     // --- State ---
     const [logs, setLogs] = useState<PilotLog[]>([]);
     const [moveState, setMoveState] = useState<MoveState>('stopped');
@@ -14,6 +15,10 @@ export function usePilotController(carId: string) {
     const [isAutoMode, setIsAutoMode] = useState(false);
     const [flightInfo, setFlightInfo] = useState<FlightInfo | null>(null);
     const lastLoadedFlightId = useRef<number | null>(null);
+
+    // [Dynamic Car ID Logic]
+    // If we have flight info with an assigned car, use it. Otherwise fallback to initial.
+    const activeCarId = flightInfo?.assignedCarId || initialCarId;
 
     // --- Modal State ---
     const [confirmModal, setConfirmModal] = useState<{
@@ -26,13 +31,52 @@ export function usePilotController(carId: string) {
     const { isOpen: isWelcomeOpen, checkAndShow: checkWelcome, close: closeWelcome } = useFlightWelcome();
 
     // --- WebSocket ---
-    const { request, onMessage, isConnected } = usePilotSocket(carId);
+    const { request, send, onMessage, isConnected } = usePilotSocket(activeCarId);
 
     // --- Logger ---
     const addLog = useCallback((type: 'info' | 'success' | 'warning' | 'error', message: string) => {
         const time = new Date().toLocaleTimeString('en-US', { hour12: false });
         setLogs(prev => [{ id: Date.now(), type, message, timestamp: time }, ...prev]);
     }, []);
+
+    // --- Dynamic Status Sync ---
+    const aircrafts = useGraphStore(s => s.aircrafts);
+    
+    useEffect(() => {
+        if (!activeCarId) {
+            // console.log("[Sync] Waiting for activeCarId...");
+            return;
+        }
+        const myCar = aircrafts.find(a => a.id === activeCarId);
+        
+        if (!myCar) {
+            // console.log(`[Sync] My car ${activeCarId} not found in store artifacts. Current cars:`, aircrafts.map(a => a.id));
+            return;
+        }
+
+        console.log(`[Sync] Car ${activeCarId} Status: ${myCar.status}, UI State: ${connState}`);
+
+        // Auto State Transition based on Real Telemetry
+        if (myCar.status === 'LOADING') {
+            if (connState !== 'waiting' && connState !== 'connecting') {
+                addLog('info', 'Status synchronized: Connecting...');
+                setConnState('waiting');
+            }
+        } else if (myCar.status === 'TOWING') {
+            if (connState !== 'connected') {
+                console.log("[Sync] Transitioning to CONNECTED");
+                addLog('success', 'Status synchronized: Connected');
+                setConnState('connected');
+            }
+        } else if (myCar.status === 'IDLE' || myCar.status === 'MOVING_TO_IDLE') {
+             // Only reset to DISCONNECTED if we were securely connected. 
+             // Do NOT reset if we are currently 'waiting' or 'connecting' for a response.
+             if (connState === 'connected' || connState === 'disconnecting') {
+                console.log("[Sync] Transitioning to DISCONNECTED");
+                setConnState('disconnected');
+             }
+        }
+    }, [aircrafts, activeCarId, connState, addLog]);
 
     // --- Message Handler ---
     useEffect(() => {
@@ -61,10 +105,9 @@ export function usePilotController(carId: string) {
 
                 // State Transitions based on Server Response
                 if (payload.status === 'SUCCESS') {
-                    if (payload.message.includes("Connected Successfully")) {
-                        setConnState('connected');
-                    } else if (payload.message.includes("Disconnected Successfully")) {
-                        setConnState('disconnected');
+                     // We rely on Telemetry for Connection State, but we can trust explicit "Disconnected" msg
+                    if (payload.message.includes("Disconnected Successfully")) {
+                        // setConnState('disconnected'); // Let telemetry handle it
                     }
                 } else if (payload.status === 'APPROVED') {
                     // Pushback Approved
@@ -92,26 +135,29 @@ export function usePilotController(carId: string) {
         setConfirmModal({
             open: true,
             action: moveState === 'stopped' ? 'REQUEST PUSHBACK' : 'STOP VEHICLE',
-            onConfirm: async () => {
+            onConfirm: () => {
                 if (moveState === 'stopped') {
                     setMoveState('waiting');
                     addLog('info', 'REQ: Requesting Pushback Agreement...');
-                    try {
-                        if (!flightInfo) {
-                            addLog('error', 'SYS: Flight Info not found');
-                            setMoveState('stopped');
-                            return;
-                        }
-                        await request('/app/car/move', {
-                            type: 'PUSHBACK',
-                            flightId: flightInfo.flightId,
-                            carId,
-                            reqId: `req-${Date.now()}`
-                        }, 5000);
-                    } catch (e) {
+
+                    if (!flightInfo) {
+                        addLog('error', 'SYS: Flight Info not found');
                         setMoveState('stopped');
-                        addLog('error', 'SYS: Pushback Request Timeout');
+                        return;
                     }
+                    
+                    const sent = send('SEND', { destination: '/app/car/move' }, JSON.stringify({
+                        type: 'PUSHBACK',
+                        flightId: flightInfo.flightId,
+                        carId: activeCarId,
+                        // reqId removed
+                    }));
+
+                    if (!sent) {
+                        setMoveState('stopped');
+                        addLog('error', 'SYS: Not Connected');
+                    }
+
                 } else {
                     setMoveState('stopped');
                     addLog('info', 'CMD: Vehicle Stopped');
@@ -127,26 +173,26 @@ export function usePilotController(carId: string) {
         setConfirmModal({
             open: true,
             action: connState === 'disconnected' ? 'CONNECT TUG' : 'DISCONNECT TUG',
-            onConfirm: async () => {
+            onConfirm: () => {
                 if (!flightInfo) {
                     addLog('error', 'SYS: Flight Info not loaded yet');
                     return;
                 }
                 const isConnecting = connState === 'disconnected';
-                const endpoint = isConnecting ? '/app/car/connect' : '/app/car/disconnect';
+                const endpoint = isConnecting ? '/app/car/dispatch' : '/app/car/disconnect';
                 
                 setConnState('waiting');
                 addLog('info', isConnecting ? 'REQ: Requesting Connection...' : 'REQ: Requesting Disconnection...');
 
-                try {
-                    await request(endpoint, {
-                        flightId: flightInfo.flightId,
-                        reqId: `req-${Date.now()}`
-                    }, 5000);
-                } catch (e) {
-                    // Revert state on failure
+                const payload = isConnecting
+                    ? { flightNumber: flightInfo.flightNumber }
+                    : { flightId: flightInfo.flightId };
+
+                const sent = send('SEND', { destination: endpoint }, JSON.stringify(payload));
+
+                if (!sent) {
                     setConnState(isConnecting ? 'disconnected' : 'connected');
-                    addLog('error', 'SYS: Request Timeout');
+                    addLog('error', 'SYS: Not Connected');
                 }
             }
         });

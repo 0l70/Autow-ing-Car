@@ -13,18 +13,19 @@ import { PilotConfirmModal } from "@/features/pilot-actions/ui/PilotConfirmModal
 import { PilotWelcomeModal } from "@/features/pilot-actions/ui/PilotWelcomeModal"; // [NEW]
 import { CameraWidget } from "@/widgets/camera-panel/ui/CameraWidget";
 import { PilotMapWidget } from "@/widgets/pilot-map/ui/PilotMapWidget"; 
-
-// --- Map Integration (Removed direct imports) ---
-import { Aircraft } from "@/entities/map/model/types";
-
+import { useGraphStore } from "@/entities/map/model/store"; 
 
 export function PilotDashboard() {
     // 1. Logic Binding (The "Brain")
-    const CAR_ID = 'CAR_102';
-    const { state, controls } = usePilotController(CAR_ID);
+    const { state, controls } = usePilotController(); // Dynamic Car ID
 
-    // 2. Map State (Simple Selection)
-    const [selectedAircraft, setSelectedAircraft] = useState<Aircraft | null>(null);
+    // 2. Data Integration (Live Store)
+    const { aircrafts } = useGraphStore();
+    
+    // Find MY assigned car from the store data
+    // If flightInfo is not loaded yet or no car assigned, this will be undefined.
+    const activeCarId = state.flightInfo?.assignedCarId;
+    const myAircraft = activeCarId ? aircrafts.find(a => a.id === activeCarId) || null : null;
 
     return (
             <div className="h-full w-full bg-black/50 p-4 text-slate-200 font-mono overflow-hidden flex flex-col gap-4 relative">
@@ -35,13 +36,13 @@ export function PilotDashboard() {
                     {/* T1: Camera Widget */}
                     <CameraWidget 
                         className="col-span-5" 
-                        carId={CAR_ID} 
+                        carId={state.flightInfo?.assignedCarId || ''} 
                     />
 
                     {/* T2: Digital Twin Map Widget */}
                     <PilotMapWidget 
                         className="col-span-5"
-                        onAircraftSelect={setSelectedAircraft}
+                        // Selection removed: Map is for visualization only now
                     />
 
                     {/* T3: Logs */}
@@ -61,14 +62,11 @@ export function PilotDashboard() {
 
                     {/* B2: Status */}
                     <PilotStatusPanel 
-                        aircraft={selectedAircraft} 
+                        aircraft={myAircraft} 
                     /> 
-                    {/* Note: Ideally 'selectedAircraft' should be MY aircraft. 
-                        For now, linking to map selection is okay, but Phase 2 should lock it to CAR_102 
-                    */}
 
                     {/* B3: Navigation Info */}
-                    <TowingCarInfo moveState={state.move} aircraft={selectedAircraft} />
+                    <TowingCarInfo moveState={state.move} aircraft={myAircraft} />
 
                     {/* B4: Safety */}
                     <PilotSafetyLock 

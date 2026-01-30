@@ -31,7 +31,7 @@ export const WS_TOPICS = {
      * [수신] 개인별 응답 (Private)
      * 나에게만 오는 응답을 수신할 때 사용합니다.
      */
-    PRIVATE_RESPONSES: '/user/queue/responses',
+    PRIVATE_RESPONSES: '/user/queue/reply',
 
     /**
      * [수신] 기장 비행 스케줄 정보 (Private)
@@ -44,7 +44,7 @@ export const WS_TOPICS = {
      * 기장이 서버로 명령을 보낼 때 사용하는 경로입니다.
      */
     PILOT: {
-        CONNECT: '/app/car/connect',       // 연결 요청
+        CONNECT: '/app/car/dispatch',       // 차량 배정 및 연결 요청
         DISCONNECT: '/app/car/disconnect', // 해제 요청
         MOVE: '/app/car/move',             // 이동 명령 (Pushback 등)
         MODE: '/app/car/mode',             // 모드 변경 (Auto/Manual)

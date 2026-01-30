@@ -8,7 +8,7 @@ import { WS_TOPICS } from '@/shared/realtime/config/topics';
 import { z } from 'zod';
 
 // Basic validation schema
-const AircraftStatusSchema = z.enum(['IDLE', 'MOVING', 'DOCKING', 'HOLD', 'ERROR']);
+const AircraftStatusSchema = z.enum(['IDLE', 'MOVING_TO_LOAD', 'LOADING', 'TOWING', 'UNLOADING', 'MOVING_TO_IDLE', 'STOP', 'ERROR']);
 
 const TelemetrySchema = z.object({
     car_id: z.string().optional(),
