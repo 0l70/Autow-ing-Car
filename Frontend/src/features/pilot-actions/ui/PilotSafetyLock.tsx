@@ -2,13 +2,13 @@ import { Button } from "@/shared/ui/Button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/shared/ui/Card";
 import { ShieldAlert, AlertTriangle } from "lucide-react";
 
-interface PilotSafetyControlsProps {
+interface PilotSafetyLockProps {
     isAutoMode: boolean;
     modeLongPress: any; // Return type of useLongPress
     handleEmergencyStop: () => void;
 }
 
-export function PilotSafetyControls({ isAutoMode, modeLongPress, handleEmergencyStop }: PilotSafetyControlsProps) {
+export function PilotSafetyLock({ isAutoMode, modeLongPress, handleEmergencyStop }: PilotSafetyLockProps) {
     return (
         <Card className="col-span-2 glass-panel border border-red-900/40 shadow-[0_0_20px_rgba(220,38,38,0.05)] flex flex-col">
             <CardHeader className="py-2 border-b border-red-900/30 bg-red-950/10">
