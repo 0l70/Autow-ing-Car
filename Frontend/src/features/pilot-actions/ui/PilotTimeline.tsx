@@ -1,15 +1,9 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/shared/ui/Card";
 import { Terminal } from "lucide-react";
-
-export interface TimelineLog {
-    id: number;
-    type: string;
-    message: string;
-    timestamp: string;
-}
+import { PilotLog } from "../model/types";
 
 interface PilotTimelineProps {
-    logs: TimelineLog[];
+    logs: PilotLog[];
 }
 
 export function PilotTimeline({ logs }: PilotTimelineProps) {

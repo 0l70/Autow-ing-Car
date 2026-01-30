@@ -1,14 +1,18 @@
 import { Button } from "@/shared/ui/Button";
-import { MoveState, ConnectionState } from "@/features/dashboard/model/dashboardTypes";
+import { MoveState, ConnectionState } from "../model/types";
 
-interface PilotCommandButtonsProps {
+interface PilotCommandBarProps {
     moveState: MoveState;
     connState: ConnectionState;
-    moveLongPress: any; // Return type of useLongPress
-    connLongPress: any; // Return type of useLongPress
+    // We will clean up the LongPress props later by passing handlers directly
+    // For now, keep as is to facilitate quick migration, or better, simplify to onClick
+    // The plan said "UI components... accept props instead of being context-aware".
+    // Passing longPress handlers is fine for now.
+    moveLongPress: any; 
+    connLongPress: any; 
 }
 
-export function PilotCommandButtons({ moveState, connState, moveLongPress, connLongPress }: PilotCommandButtonsProps) {
+export function PilotCommandBar({ moveState, connState, moveLongPress, connLongPress }: PilotCommandBarProps) {
     return (
         <div className="col-span-2 flex flex-col gap-4">
             {/* Move Button */}
