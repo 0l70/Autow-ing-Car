@@ -22,6 +22,7 @@ public class WebSocketTopics {
     public static final String TOPIC_VIDEO_OFFER_PREFIX = "/topic/video/offer/";
     public static final String TOPIC_VIDEO_ANSWER_PREFIX = "/topic/video/answer/";
     public static final String TOPIC_VIDEO_ICE_PREFIX = "/topic/video/ice/";
+    public static final String TOPIC_VIDEO_CONTROL_PREFIX = "/topic/video/control/";
 
     public static String carChannel(String carCode) {
         return TOPIC_TOWING_CAR_PREFIX + carCode;
@@ -41,5 +42,9 @@ public class WebSocketTopics {
 
     public static String videoIce(String receiverId) {
         return TOPIC_VIDEO_ICE_PREFIX + receiverId;
+    }
+
+    public static String videoControl(String receiverId) {
+        return TOPIC_VIDEO_CONTROL_PREFIX + receiverId;
     }
 }
