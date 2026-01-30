@@ -1,20 +1,24 @@
 package com.project.domain.towingcar.scheduler;
 
-import com.project.infra.mqtt.config.MqttTopics;
-import com.project.infra.mqtt.service.MqttOutboundService;
+import com.project.infra.mqtt.constant.MqttTopics;
+import com.project.infra.mqtt.service.MqttService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class MockTrafficScheduler {
 
-    private final MqttOutboundService mqttService;
+    private final MqttService mqttService;
     private double time = 0;
 
     // Safety Zone Center (Assume Map Center ~ 2000px / 0.05 res = 40000.. wait.
@@ -28,47 +32,29 @@ public class MockTrafficScheduler {
         // TC02: Circular Motion around (50, 50) with radius 15m
         double centerX = 50.0;
         double centerY = 50.0;
+        // TC03 (Linear Patrol) - Removed to silence warnings
         double radius = 15.0;
 
         // TC02 (Circle)
         double x2 = centerX + radius * Math.cos(time);
         double y2 = centerY + radius * Math.sin(time);
 
-        // TC03 (Linear Patrol)
-        // Oscillates between (30, 70) and (70, 70)
-        double x3 = 30.0 + (40.0 * (Math.sin(time * 0.5) + 1) / 2);
-        double y3 = 70.0;
-
-        // Payload Construction (Mimicking Real Robot JSON)
-        String payloadTC01 = String.format("""
-                    {
-                        "carId": "TC01",
-                        "lat": %.2f, "lng": 0.0,
-                        "x": %.2f, "y": %.2f,
-                        "yaw": 90.0,
-                "v": 1.5, "battery": 88,
-                "mode": "MOVING_TO_LOAD", "status": "job",
-                "timestamp": "%s"
-                    }
-                """, x2, x2, y2, LocalDateTime.now());
-
-        /*
-         * // TC03 is not in DB yet
-         * String payloadTC03 = String.format("""
-         * {
-         * "carId": "TC03",
-         * "lat": %.2f, "lng": 0.0,
-         * "x": %.2f, "y": %.2f,
-         * "v": 2.0, "battery": 72,
-         * "mode": "MOVING", "status": "job",
-         * "timestamp": "%s"
-         * }
-         * """, x3, x3, y3, LocalDateTime.now());
-         */
+        // Payload Construction (Using Map to avoid Double Serialization)
+        Map<String, Object> payloadTC01 = new HashMap<>();
+        payloadTC01.put("carId", "TC01");
+        payloadTC01.put("lat", x2); // Using x as lat (mock)
+        payloadTC01.put("lng", 0.0);
+        payloadTC01.put("x", x2);
+        payloadTC01.put("y", y2);
+        payloadTC01.put("yaw", 90.0);
+        payloadTC01.put("v", 1.5);
+        payloadTC01.put("battery", 88);
+        payloadTC01.put("mode", "MOVING_TO_LOAD");
+        payloadTC01.put("status", "job");
+        payloadTC01.put("timestamp", LocalDateTime.now().toString());
 
         // Publish to MQTT Broker (Loopback)
         mqttService.publish(MqttTopics.SUB_MONITORING, payloadTC01);
-        // mqttService.publish(MqttTopics.SUB_MONITORING, payloadTC03);
 
         time += 0.05;
 
@@ -90,24 +76,24 @@ public class MockTrafficScheduler {
             return;
 
         // Corrected Schema: map_id (snake_case), id (String)
-        String mockMapPayload = """
-                    {
-                        "map_id": "MOCK_MAP_01",
-                        "width": 100, "height": 100,
-                        "nodes": [
-                            {"id": "1", "x": 0, "y": 0, "status": "active"},
-                            {"id": "2", "x": 100, "y": 0, "status": "active"},
-                            {"id": "3", "x": 100, "y": 100, "status": "active"},
-                            {"id": "4", "x": 0, "y": 100, "status": "active"}
-                        ],
-                        "corners": {
-                            "TL": {"x": 0, "y": 100},
-                            "TR": {"x": 100, "y": 100},
-                            "BL": {"x": 0, "y": 0},
-                            "BR": {"x": 100, "y": 0}
-                        }
-                    }
-                """;
+        Map<String, Object> mockMapPayload = new HashMap<>();
+        mockMapPayload.put("map_id", "MOCK_MAP_01");
+        mockMapPayload.put("width", 100);
+        mockMapPayload.put("height", 100);
+
+        List<Map<String, Object>> nodes = new ArrayList<>();
+        nodes.add(Map.of("id", "1", "x", 0, "y", 0, "status", "active"));
+        nodes.add(Map.of("id", "2", "x", 100, "y", 0, "status", "active"));
+        nodes.add(Map.of("id", "3", "x", 100, "y", 100, "status", "active"));
+        nodes.add(Map.of("id", "4", "x", 0, "y", 100, "status", "active"));
+        mockMapPayload.put("nodes", nodes);
+
+        Map<String, Object> corners = new HashMap<>();
+        corners.put("TL", Map.of("x", 0, "y", 100));
+        corners.put("TR", Map.of("x", 100, "y", 100));
+        corners.put("BL", Map.of("x", 0, "y", 0));
+        corners.put("BR", Map.of("x", 100, "y", 0));
+        mockMapPayload.put("corners", corners);
 
         // Publish to Map Topic (autowing_car/v1/map)
         mqttService.publish(MqttTopics.SUB_MAP_INFO, mockMapPayload);
