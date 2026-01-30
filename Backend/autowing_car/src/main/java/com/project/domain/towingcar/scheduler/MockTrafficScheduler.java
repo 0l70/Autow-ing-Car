@@ -27,7 +27,7 @@ public class MockTrafficScheduler {
     // Center is 50m, 50m.
     // Let's orbit around 50, 50.
 
-    @Scheduled(fixedRate = 100) // 10Hz
+    // @Scheduled(fixedRate = 100) // 10Hz
     public void simulate() {
         // TC02: Circular Motion around (50, 50) with radius 15m
         double centerX = 50.0;
