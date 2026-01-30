@@ -28,7 +28,7 @@ export const useAuthStore = create<AuthState>()(
             login: (accessToken, socketToken, role, email, carId) => set({ 
                 accessToken,
                 socketToken,
-                user: { email, role, carId }, 
+                user: { email, role, ...(carId && { carId }) }, 
                 isAuthenticated: true 
             }),
             logout: () => set({ 
