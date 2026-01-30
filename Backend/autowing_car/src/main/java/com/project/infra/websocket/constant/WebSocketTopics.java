@@ -7,6 +7,7 @@ public class WebSocketTopics {
     public static final String QUEUE_REPLY = "/queue/reply";
     public static final String TOPIC_MISSION_UPDATES = "/topic/mission/updates";
     public static final String QUEUE_ERRORS = "/queue/errors";
+    public static final String QUEUE_FLIGHT_INFO = "/queue/flight-info";
 
     // Towing Car
     public static final String TOPIC_TOWING_CAR_PREFIX = "/topic/towingcar/";
@@ -22,7 +23,7 @@ public class WebSocketTopics {
     public static final String TOPIC_VIDEO_ANSWER_PREFIX = "/topic/video/answer/";
     public static final String TOPIC_VIDEO_ICE_PREFIX = "/topic/video/ice/";
 
-    public static String carStatus(String carCode) {
+    public static String carChannel(String carCode) {
         return TOPIC_TOWING_CAR_PREFIX + carCode;
     }
 

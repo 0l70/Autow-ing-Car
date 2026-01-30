@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import com.project.domain.common.UserRole;
 import com.project.domain.user.entity.User;
 import com.project.domain.user.repository.UserRepository;
+import com.project.global.error.domain.user.UserException;
 
 import lombok.RequiredArgsConstructor;
 
@@ -15,20 +16,22 @@ import lombok.RequiredArgsConstructor;
 public class UserDBAdaptor {
     private final UserRepository userRepository;
 
-    public User getUserById(Long id) {
-        return userRepository.findById(id).orElse(null);
+    public User findUserById(Long id) {
+        return userRepository.findById(id).orElseThrow(() -> new UserException("User not found: " + id));
     }
 
-    public User getUserByEmail(String email) {
-        return userRepository.findByEmail(email).orElse(null);
+    public User findUserByEmail(String email) {
+        return userRepository.findByEmail(email).orElseThrow(() -> new UserException("User not found: " + email));
     }
 
-    public User getUserByEmployeeCode(String employeeCode) {
-        return userRepository.findByEmployeeCode(employeeCode).orElse(null);
+    public User findUserByEmployeeCode(String employeeCode) {
+        return userRepository.findByEmployeeCode(employeeCode)
+                .orElseThrow(() -> new UserException("User not found: " + employeeCode));
     }
 
-    public User getUserByUsername(String username) {
-        return userRepository.findByUsername(username).orElse(null);
+    public User findUserByUsername(String username) {
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new UserException("User not found: " + username));
     }
 
     public boolean existsByEmail(String email) {

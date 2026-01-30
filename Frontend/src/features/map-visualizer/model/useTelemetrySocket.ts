@@ -132,6 +132,7 @@ export function useTelemetrySocket(url: string = WS_URL_DEV, enabled: boolean = 
     return {
         isConnected,
         request,
-        send
+        send,
+        onMessage
     };
 }

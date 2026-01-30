@@ -2,6 +2,7 @@ package com.project.infra.mqtt.handler.parser;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.project.infra.mqtt.config.MqttIncomingMessage;
+import com.project.global.error.domain.mqtt.MalformedMqttPayloadException;
 
 import org.springframework.stereotype.Component;
 
@@ -21,7 +22,7 @@ public class AckHandler implements MqttTopicHandler {
         } else if (payload.has("carId")) {
             carCode = payload.get("carId").asText();
         } else {
-            throw new IllegalArgumentException("ack Payload must contain 'car_code' or 'carId'");
+            throw new MalformedMqttPayloadException("Ack", new String[] { "car_code", "carId" });
         }
         return MqttIncomingMessage.Ack.builder()
                 .carCode(carCode)

@@ -83,7 +83,7 @@ export function LoginPage() {
                     </form>
                     
                     {/* Mock Login for Testing */}
-                    <div className="mt-4 pt-4 border-t border-slate-800 text-center">
+                    <div className="mt-4 pt-4 border-t border-slate-800 text-center space-y-2">
                          <div className="text-xs text-slate-500 mb-2">Dev Options</div>
                          <Button 
                             type="button"

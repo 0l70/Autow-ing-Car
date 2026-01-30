@@ -15,7 +15,7 @@ import { useMapSync } from "@/features/map-visualizer/model/useMapSync";
 import { useMockAircraftMqtt } from "@/entities/map/lib/mockAircraft";
 import { useAuthStore } from "@/features/auth/model/useAuthStore";
 import { LoginPage } from "@/features/auth/ui/LoginPage";
-import { PilotDashboard } from "@/features/dashboard/PilotDashboard";
+import { PilotDashboard } from "./PilotDashboard";
 
 export function DashboardPage() {
     // 🔐 AUTH GUARD
