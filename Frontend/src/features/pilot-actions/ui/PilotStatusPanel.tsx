@@ -3,11 +3,11 @@ import { Battery, Signal } from "lucide-react";
 import { VEHICLE_STATUS } from "@/features/dashboard/MockData";
 import { Aircraft } from "@/entities/map/model/types";
 
-interface PilotTugStatusProps {
+interface PilotStatusPanelProps {
     aircraft: Aircraft | null;
 }
 
-export function PilotTugStatus({ aircraft }: PilotTugStatusProps) {
+export function PilotStatusPanel({ aircraft }: PilotStatusPanelProps) {
     // Fallback to Mock Data if no aircraft connected yet
     const displayId = aircraft?.id || VEHICLE_STATUS.id;
     const displayBattery = aircraft?.battery ?? VEHICLE_STATUS.battery; // 0 could be valid
