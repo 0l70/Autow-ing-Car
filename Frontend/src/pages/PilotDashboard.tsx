@@ -10,6 +10,7 @@ import { TowingCarInfo } from "@/features/pilot-actions/ui/TowingCarInfo";
 import { PilotSafetyLock } from "@/features/pilot-actions/ui/PilotSafetyLock";
 import { PilotTimeline } from "@/features/pilot-actions/ui/PilotTimeline";
 import { PilotConfirmModal } from "@/features/pilot-actions/ui/PilotConfirmModal"; // [NEW]
+import { PilotWelcomeModal } from "@/features/pilot-actions/ui/PilotWelcomeModal"; // [NEW]
 import { CameraWidget } from "@/widgets/camera-panel/ui/CameraWidget";
 import { PilotMapWidget } from "@/widgets/pilot-map/ui/PilotMapWidget"; 
 
@@ -59,7 +60,9 @@ export function PilotDashboard() {
                     />
 
                     {/* B2: Status */}
-                    <PilotStatusPanel aircraft={selectedAircraft} /> 
+                    <PilotStatusPanel 
+                        aircraft={selectedAircraft} 
+                    /> 
                     {/* Note: Ideally 'selectedAircraft' should be MY aircraft. 
                         For now, linking to map selection is okay, but Phase 2 should lock it to CAR_102 
                     */}
@@ -81,6 +84,13 @@ export function PilotDashboard() {
                     action={state.confirmModal.action}
                     onConfirm={controls.handleConfirm}
                     onCancel={controls.closeConfirmModal}
+                />
+
+                {/* --- Welcome Modal (Flight Info) --- */}
+                <PilotWelcomeModal
+                    isOpen={state.welcomeModal.open}
+                    data={state.flightInfo}
+                    onClose={controls.closeWelcomeModal}
                 />
 
             </div>

@@ -25,18 +25,27 @@ export const useAuthStore = create<AuthState>()(
             socketToken: null,
             user: null,
             isAuthenticated: false,
-            login: (accessToken, socketToken, role, email, carId) => set({ 
-                accessToken,
-                socketToken,
-                user: { email, role, carId }, 
-                isAuthenticated: true 
-            }),
-            logout: () => set({ 
-                accessToken: null, 
-                socketToken: null,
-                user: null, 
-                isAuthenticated: false 
-            }),
+            login: (accessToken, socketToken, role, email) => {
+                const newUser: User = { 
+                    email, 
+                    role
+                };
+                set({ 
+                    accessToken,
+                    socketToken,
+                    user: newUser, 
+                    isAuthenticated: true 
+                });
+            },
+            logout: () => {
+                sessionStorage.clear(); // Clear session data (e.g. welcome flags) on logout
+                set({ 
+                    accessToken: null, 
+                    socketToken: null,
+                    user: null, 
+                    isAuthenticated: false 
+                });
+            },
         }),
         {
             name: 'auth-storage', // localStorage key

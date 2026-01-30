@@ -4,6 +4,8 @@ import { usePilotSocket } from './usePilotSocket';
 import { MoveState, ConnectionState, PilotLog } from './types';
 import { FlightInfo, FlightInfoSchema } from "@/features/dashboard/model/dashboardTypes";
 
+import { useFlightWelcome } from './useFlightWelcome'; // [NEW]
+
 export function usePilotController(carId: string) {
     // --- State ---
     const [logs, setLogs] = useState<PilotLog[]>([]);
@@ -19,6 +21,9 @@ export function usePilotController(carId: string) {
         action: string;
         onConfirm: () => void;
     }>({ open: false, action: '', onConfirm: () => { } });
+    
+    // --- Welcome Logic (Extracted) ---
+    const { isOpen: isWelcomeOpen, checkAndShow: checkWelcome, close: closeWelcome } = useFlightWelcome();
 
     // --- WebSocket ---
     const { request, onMessage, isConnected } = usePilotSocket(carId);
@@ -32,47 +37,52 @@ export function usePilotController(carId: string) {
     // --- Message Handler ---
     useEffect(() => {
         const unsubscribe = onMessage((msg) => {
+            const payload = msg.body || msg; // Unwrap Stomp Message Wrapper
+
             // 1. Flight Info
-            const flightParsed = FlightInfoSchema.safeParse(msg);
+            const flightParsed = FlightInfoSchema.safeParse(payload);
             if (flightParsed.success) {
                 const data = flightParsed.data;
                 if (lastLoadedFlightId.current !== data.flightId) {
                     addLog('info', `Flight ${data.flightNumber} loaded`);
                     lastLoadedFlightId.current = data.flightId;
+                    
+                    // Trigger Welcome Check using the hook
+                    checkWelcome(data.flightId);
                 }
                 setFlightInfo(data);
                 return;
             }
 
             // 2. Status / Response Messages
-            if (msg.status && msg.message) {
-                const type = msg.status === 'SUCCESS' || msg.status === 'APPROVED' ? 'success' : 'error';
-                addLog(type, `[${msg.status}] ${msg.message}`);
+            if (payload.status && payload.message) {
+                const type = payload.status === 'SUCCESS' || payload.status === 'APPROVED' ? 'success' : 'error';
+                addLog(type, `[${payload.status}] ${payload.message}`);
 
                 // State Transitions based on Server Response
-                if (msg.status === 'SUCCESS') {
-                    if (msg.message.includes("Connected Successfully")) {
+                if (payload.status === 'SUCCESS') {
+                    if (payload.message.includes("Connected Successfully")) {
                         setConnState('connected');
-                    } else if (msg.message.includes("Disconnected Successfully")) {
+                    } else if (payload.message.includes("Disconnected Successfully")) {
                         setConnState('disconnected');
                     }
-                } else if (msg.status === 'APPROVED') {
+                } else if (payload.status === 'APPROVED') {
                     // Pushback Approved
                     if (moveState === 'waiting') {
                         setMoveState('pushback');
-                        if (msg.data && msg.data.destNodeName) {
-                            addLog('info', `PATH: To [${msg.data.destNodeName}] assigned`);
+                        if (payload.data && payload.data.destNodeName) {
+                            addLog('info', `PATH: To [${payload.data.destNodeName}] assigned`);
                         }
                     }
-                } else if (msg.status === 'FAIL') {
-                    if (msg.message.includes("Connect")) setConnState('disconnected');
-                    if (msg.message.includes("Disconnect")) setConnState('connected');
+                } else if (payload.status === 'FAIL') {
+                    if (payload.message.includes("Connect")) setConnState('disconnected');
+                    if (payload.message.includes("Disconnect")) setConnState('connected');
                     if (moveState === 'waiting') setMoveState('stopped');
                 }
             }
         });
         return () => unsubscribe();
-    }, [onMessage, moveState, connState, addLog]);
+    }, [onMessage, moveState, connState, addLog, checkWelcome]);
 
 
     // --- Actions ---
@@ -181,7 +191,8 @@ export function usePilotController(carId: string) {
              isAutoMode,
              flightInfo,
              isConnected,
-             confirmModal
+             confirmModal,
+             welcomeModal: { open: isWelcomeOpen } // [Refactored]
         },
         controls: {
             moveLongPress,
@@ -190,6 +201,7 @@ export function usePilotController(carId: string) {
             handleEmergencyStop,
             handleConfirm,
             closeConfirmModal,
+            closeWelcomeModal: closeWelcome, // [Refactored]
             addLog
         }
     };
