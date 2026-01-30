@@ -1,14 +1,14 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/shared/ui/Card";
 import { NAVIGATION_DATA } from "@/features/dashboard/MockData";
-import { MoveState } from "@/features/dashboard/model/dashboardTypes";
+import { MoveState } from "../model/types";
 import { Aircraft } from "@/entities/map/model/types";
 
-interface PilotFlightInfoProps {
+interface TowingCarInfoProps {
     moveState: MoveState;
     aircraft: Aircraft | null;
 }
 
-export function PilotFlightInfo({ moveState, aircraft }: PilotFlightInfoProps) {
+export function TowingCarInfo({ moveState, aircraft }: TowingCarInfoProps) {
     // Data Calculation
     // Speed: m/s -> km/h
     const speedKmh = aircraft ? (aircraft.speed * 3.6).toFixed(1) : (moveState !== 'stopped' ? '15' : '0');
