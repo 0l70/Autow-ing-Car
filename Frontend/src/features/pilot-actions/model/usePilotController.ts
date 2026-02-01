@@ -4,10 +4,16 @@ import { usePilotSocket } from './usePilotSocket';
 import { MoveState, ConnectionState, PilotLog } from './types';
 import { FlightInfo, FlightInfoSchema } from "@/features/dashboard/model/dashboardTypes";
 
-import { useFlightWelcome } from './useFlightWelcome'; // [NEW]
+import { useFlightWelcome } from './useFlightWelcome';
 import { useGraphStore } from '@/entities/map/model/store';
+import { useAuthStore } from '@/features/auth/model/useAuthStore'; // [NEW]
+import { pilotApi } from '../api/pilotApi'; // [NEW]
+import { AircraftStatus } from '@/entities/map/model/types'; // [NEW]
 
 export function usePilotController(initialCarId?: string) {
+    const { accessToken } = useAuthStore(); // [NEW]
+    const { updateAircraft } = useGraphStore(); // [NEW]
+
     // --- State ---
     const [logs, setLogs] = useState<PilotLog[]>([]);
     const [moveState, setMoveState] = useState<MoveState>('stopped');
@@ -15,10 +21,99 @@ export function usePilotController(initialCarId?: string) {
     const [isAutoMode, setIsAutoMode] = useState(false);
     const [flightInfo, setFlightInfo] = useState<FlightInfo | null>(null);
     const lastLoadedFlightId = useRef<number | null>(null);
+    const hasFetchedStatus = useRef(false); // [NEW] Prevent double fetch
 
-    // [Dynamic Car ID Logic]
-    // If we have flight info with an assigned car, use it. Otherwise fallback to initial.
-    const activeCarId = flightInfo?.assignedCarId || initialCarId;
+    // [Dynamic Car ID Logic with IDLE Filtering]
+    // Only show car info if it's actively moving or connected (not IDLE)
+    const aircrafts = useGraphStore(s => s.aircrafts);
+    const assignedCar = flightInfo?.assignedCarId 
+        ? aircrafts.find(a => a.id === flightInfo.assignedCarId) 
+        : null;
+    
+    // Filter: Only show Tug if status is NOT IDLE/UNLOADING (i.e., actively dispatched or connected)
+    const activeCarId = (assignedCar && 
+                         assignedCar.status !== 'IDLE' && 
+                         assignedCar.status !== 'UNLOADING')
+        ? assignedCar.id 
+        : (initialCarId && aircrafts.find(a => a.id === initialCarId && a.status !== 'IDLE') ? initialCarId : undefined);
+
+    // --- Initial State Sync (REST API) ---
+    useEffect(() => {
+        if (!accessToken || hasFetchedStatus.current) return;
+
+        const syncStatus = async () => {
+             try {
+                // Fetch Current Status from Backend
+                const statusData = await pilotApi.getTowingCarStatus(accessToken);
+                console.log("[StateSync] Fetched Initial Status:", statusData);
+
+                if (statusData.code && statusData.status !== 'NONE') {
+                    const status = statusData.status as AircraftStatus;
+                    updateAircraft({
+                        id: statusData.code,
+                        callsign: statusData.code,
+                        type: 'TUG',
+                        status: status,
+                        position: { x: statusData.posX, y: statusData.posY, r: statusData.heading },
+                        battery: statusData.battery,
+                        speed: statusData.velocity,
+                        isLoaded: status === 'TOWING' || status === 'UNLOADING'
+                    });
+                    hasFetchedStatus.current = true;
+                }
+             } catch (err) {
+                 console.warn("[StateSync] Failed to sync initial status:", err);
+             }
+        };
+
+        syncStatus();
+    }, [accessToken, updateAircraft]);
+
+    // [New] Safe Sync on Assignment (Race Condition Fix)
+    useEffect(() => {
+        if (!activeCarId || !accessToken) return;
+
+        const safeSync = async () => {
+             try {
+                const statusData = await pilotApi.getTowingCarStatus(accessToken);
+                // Ensure we are syncing the correct car
+                if (statusData.code === activeCarId && statusData.status !== 'NONE') {
+                     console.log("[SafeSync] Resyncing status for assigned car:", activeCarId);
+                     const status = statusData.status as AircraftStatus;
+                     
+                     // Update Aircraft in Store
+                     updateAircraft({
+                        id: statusData.code,
+                        callsign: statusData.code,
+                        type: 'TUG',
+                        status: status,
+                        position: { x: statusData.posX, y: statusData.posY, r: statusData.heading },
+                        battery: statusData.battery,
+                        speed: statusData.velocity,
+                        isLoaded: status === 'TOWING' || status === 'UNLOADING'
+                    });
+
+                    // [FIX] Sync connState based on car status
+                    if (status === 'TOWING') {
+                        console.log("[SafeSync] Setting connState: connected");
+                        setConnState('connected');
+                    } else if (status === 'LOADING') {
+                        console.log("[SafeSync] Setting connState: connecting");
+                        setConnState('connecting');
+                    } else if (status === 'MOVING_TO_LOAD') {
+                        console.log("[SafeSync] Setting connState: waiting");
+                        setConnState('waiting');
+                    } else if (status === 'IDLE' || status === 'MOVING_TO_IDLE' || status === 'UNLOADING') {
+                        console.log("[SafeSync] Setting connState: disconnected");
+                        setConnState('disconnected');
+                    }
+                }
+             } catch (err) {
+                 console.warn("[SafeSync] Failed:", err);
+             }
+        };
+        safeSync();
+    }, [activeCarId, accessToken, updateAircraft]);
 
     // --- Modal State ---
     const [confirmModal, setConfirmModal] = useState<{
@@ -40,40 +135,63 @@ export function usePilotController(initialCarId?: string) {
     }, []);
 
     // --- Dynamic Status Sync ---
-    const aircrafts = useGraphStore(s => s.aircrafts);
     
     useEffect(() => {
         if (!activeCarId) {
-            // console.log("[Sync] Waiting for activeCarId...");
             return;
         }
         const myCar = aircrafts.find(a => a.id === activeCarId);
         
         if (!myCar) {
-            // console.log(`[Sync] My car ${activeCarId} not found in store artifacts. Current cars:`, aircrafts.map(a => a.id));
             return;
         }
 
-        console.log(`[Sync] Car ${activeCarId} Status: ${myCar.status}, UI State: ${connState}`);
+        console.log(`[Sync] MyCar: ${myCar.id}, Status: ${myCar.status}, UI State: ${connState}`);
 
-        // Auto State Transition based on Real Telemetry
-        if (myCar.status === 'LOADING') {
-            if (connState !== 'waiting' && connState !== 'connecting') {
-                addLog('info', 'Status synchronized: Connecting...');
+        // [Logic Update] Map Backend Status to UI State
+        // 1. MOVING_TO_LOAD (Dispatch -> Gate) => 'waiting'
+        if (myCar.status === 'MOVING_TO_LOAD') {
+            if (connState !== 'waiting') {
+                console.log("[Sync] Status: MOVING_TO_LOAD -> UI: waiting");
+                addLog('info', 'Tug dispatching to gate...');
                 setConnState('waiting');
             }
-        } else if (myCar.status === 'TOWING') {
+        }
+        // 2. LOADING (Gate -> Docking) => 'connecting'
+        else if (myCar.status === 'LOADING') {
+            if (connState !== 'connecting') {
+                console.log("[Sync] Status: LOADING -> UI: connecting");
+                addLog('info', 'Tug arrived. Docking in progress...');
+                setConnState('connecting');
+            }
+        } 
+        // 3. TOWING (Connected) => 'connected'
+        else if (myCar.status === 'TOWING') {
             if (connState !== 'connected') {
-                console.log("[Sync] Transitioning to CONNECTED");
-                addLog('success', 'Status synchronized: Connected');
+                console.log("[Sync] Status: TOWING -> UI: connected");
+                addLog('success', 'Tug connected successfully.');
                 setConnState('connected');
             }
-        } else if (myCar.status === 'IDLE' || myCar.status === 'MOVING_TO_IDLE') {
-             // Only reset to DISCONNECTED if we were securely connected. 
-             // Do NOT reset if we are currently 'waiting' or 'connecting' for a response.
-             if (connState === 'connected' || connState === 'disconnecting') {
-                console.log("[Sync] Transitioning to DISCONNECTED");
-                setConnState('disconnected');
+        } 
+        // 4. IDLE / MOVING_TO_IDLE (Disconnected)
+        else if (myCar.status === 'IDLE' || myCar.status === 'MOVING_TO_IDLE') {
+             // Only reset to DISCONNECTED if we were currently in a connected-related state
+             if (connState === 'connected' || connState === 'disconnecting' || connState === 'connecting' || connState === 'waiting') {
+                // Check if we originated this connection (optional safeguard, but simple transition is better here)
+                // If we are 'waiting' (dispatching) and suddenly 'IDLE', maybe dispatch failed or was cancelled.
+                
+                // Don't reset if we literally JUST clicked connect (race condition prevention usually handled by 'waiting')
+                // But here, if backend sends IDLE, we should trust it. assuming 'waiting' corresponds to 'MOVING_TO_LOAD' eventually.
+                
+                // However, we must be careful not to flicker 'disconnected' before the first 'MOVING_TO_LOAD' arrives 
+                // if the connection request hasn't been processed by backend yet.
+                // But typically backend request returns, sends 'MOVING_TO_LOAD' immediately.
+                
+                if (connState === 'connected' || connState === 'disconnecting') {
+                    console.log("[Sync] Status: IDLE -> UI: disconnected");
+                    addLog('info', 'Tug disconnected.');
+                    setConnState('disconnected');
+                }
              }
         }
     }, [aircrafts, activeCarId, connState, addLog]);

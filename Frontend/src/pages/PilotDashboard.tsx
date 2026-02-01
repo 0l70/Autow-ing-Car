@@ -23,25 +23,30 @@ export function PilotDashboard() {
     const { aircrafts } = useGraphStore();
     
     // Find MY assigned car from the store data
-    // If flightInfo is not loaded yet or no car assigned, this will be undefined.
+    // [FILTER] Only show if car is actively dispatched or connected (not IDLE/UNLOADING)
     const activeCarId = state.flightInfo?.assignedCarId;
-    const myAircraft = activeCarId ? aircrafts.find(a => a.id === activeCarId) || null : null;
+    const assignedAircraft = activeCarId ? aircrafts.find(a => a.id === activeCarId) || null : null;
+    const myAircraft = (assignedAircraft && 
+                        assignedAircraft.status !== 'IDLE' && 
+                        assignedAircraft.status !== 'UNLOADING') 
+                        ? assignedAircraft 
+                        : null;
 
     return (
-            <div className="h-full w-full bg-black/50 p-4 text-slate-200 font-mono overflow-hidden flex flex-col gap-4 relative">
+            <div className="h-full w-full bg-black/50 p-4 text-slate-200 font-mono overflow-hidden flex flex-col gap-[2%] relative">
                 
-                {/* --- TOP ROW (Visuals) --- */}
-                <div className="grid grid-cols-12 gap-4 h-[60%]">
+                {/* --- TOP ROW (Visuals: ~60%) --- */}
+                <div className="grid grid-cols-12 gap-4 h-[58%] min-h-0">
                     
                     {/* T1: Camera Widget */}
                     <CameraWidget 
-                        className="col-span-5" 
+                        className="col-span-5 h-full overflow-hidden" 
                         carId={state.flightInfo?.assignedCarId || ''} 
                     />
 
                     {/* T2: Digital Twin Map Widget */}
                     <PilotMapWidget 
-                        className="col-span-5"
+                        className="col-span-5 h-full overflow-hidden"
                         // Selection removed: Map is for visualization only now
                     />
 
@@ -49,8 +54,8 @@ export function PilotDashboard() {
                     <PilotTimeline logs={state.logs} />
                 </div>
 
-                {/* --- BOTTOM ROW (Controls) --- */}
-                <div className="grid grid-cols-12 gap-4 h-[40%]">
+                {/* --- BOTTOM ROW (Controls: ~40%) --- */}
+                <div className="grid grid-cols-12 gap-4 h-[38%] min-h-0 shrink-0">
                     
                     {/* B1: Command Actions */}
                     <PilotCommandBar 
