@@ -53,12 +53,32 @@ export function ApprovalQueue() {
 
     // 3. Active Client
     const client = context || fallbackClient;
-    const { onMessage, request } = client;
+    const { onMessage, request, send, isConnected } = client;
+
+    // [New] Explicit Subscription Logic
+    useEffect(() => {
+        if (isConnected) {
+            console.log("[ApprovalQueue] Subscribing to ATC Channels...");
+            
+            // 1. Mission Updates (Global)
+            send("SUBSCRIBE", {
+                id: "sub-atc-mission-updates",
+                destination: WS_TOPICS.MISSION_UPDATES
+            });
+            
+            // 2. Controller Requests (Private/Broadcast)
+            send("SUBSCRIBE", {
+                id: "sub-atc-controller-requests",
+                destination: WS_TOPICS.CONTROLLER_REQUESTS
+            });
+        }
+    }, [isConnected, send]);
 
     useEffect(() => {
         const unsubscribe = onMessage((msg: any) => {
             // Filter by destination to avoid data leakage
-            if (msg.destination !== WS_TOPICS.MISSION_UPDATES) return;
+            if (msg.destination !== WS_TOPICS.MISSION_UPDATES && 
+                msg.destination !== WS_TOPICS.CONTROLLER_REQUESTS) return;
 
             const data = msg.body;
              // Basic structure check

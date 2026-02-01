@@ -47,6 +47,15 @@ public class TowingCarWebSocketDtos {
         // private String reqId;
     }
 
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class CarMoveRequestDto {
+        private String type; // "PUSHBACK"
+        private Long flightId;
+        private String carId;
+    }
+
     @Getter
     @Builder
     @NoArgsConstructor

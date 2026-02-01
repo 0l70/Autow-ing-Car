@@ -22,6 +22,11 @@ export const WS_TOPICS = {
     MISSION_UPDATES: '/topic/mission/updates',
 
     /**
+     * [수신] 관제사 요청 알림 (ATC)
+     */
+    CONTROLLER_REQUESTS: '/topic/controller/requests',
+
+    /**
      * [수신] 공용 시스템 응답 (Legacy)
      * 추후 개인별 응답(/user/queue/responses)으로 대체될 수 있습니다.
      */
