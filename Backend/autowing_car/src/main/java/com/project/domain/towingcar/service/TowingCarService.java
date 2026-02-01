@@ -27,8 +27,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.Map;
 import com.project.domain.towingcar.dto.TowingCarStatusResponse;
 
 @Slf4j
@@ -92,25 +95,17 @@ public class TowingCarService {
 
         log.info("🚗 [Dispatch] {} -> {}", assignedCar.getCode(), flightNumber);
 
-        // MQTT: MOVE_TO_GATE
-        towingCarMqttService.moveCarToGate(assignedCar.getCode(), flight.getNodeCode());
+        // ✅ 알림: WebSocket (Helper 메서드로 위임)
+        notifyCarDispatched(assignedCar, flight);
 
-        // WebSocket: Car Status Update
-        towingCarWebSocketService.broadcastCarStatus(assignedCar.getCode(), toDTO(assignedCar));
+        // ✅ MQTT: 트랜잭션 커밋 후 전송
+        final String carCode = assignedCar.getCode();
+        final String nodeCode = flight.getNodeCode();
+        sendMqttAfterCommit(() -> towingCarMqttService.moveCarToGate(carCode, nodeCode));
 
-        // [RESTORED] Notify Pilot of Assigned Car
-        try {
-            String pilotId = flight.getPilot().getUsername();
-            FlightInfoDto updatedInfo = flightService.getFlightInfoByPilot(pilotId);
-            towingCarWebSocketService.notifyPilotFlightInfo(pilotId, updatedInfo);
-        } catch (Exception e) {
-            log.error("Failed to broadcast updated flight info to pilot", e);
-        }
-
-        // [TEST] Simulate Auto-Connection Lifecycle
-        String carCode = assignedCar.getCode();
-        Long flightId = flight.getId();
-        simulateAutoConnection(carCode, flightId);
+        // ✅ 비동기 시뮬레이션: 트랜잭션 커밋 후 시작
+        final Long flightId = flight.getId();
+        sendMqttAfterCommit(() -> simulateAutoConnection(carCode, flightId));
     }
 
     private void simulateAutoConnection(String carCode, Long flightId) {
@@ -127,6 +122,7 @@ public class TowingCarService {
 
                 car.updateStatus(car.getLastPosX(), car.getLastPosY(), car.getLastHeading(),
                         car.getLastVelocity(), car.getBattery(), CarStatus.LOADING);
+                towingCarDBAdaptor.save(car); // [FIX] DB Sync
                 towingCarWebSocketService.broadcastCarStatus(carCode, toDTO(car));
 
                 // Wait another 3 seconds (loading process)
@@ -137,6 +133,7 @@ public class TowingCarService {
                 // Set TOWING status
                 car.updateStatus(car.getLastPosX(), car.getLastPosY(), car.getLastHeading(),
                         car.getLastVelocity(), car.getBattery(), CarStatus.TOWING);
+                towingCarDBAdaptor.save(car); // [FIX] DB Sync
                 towingCarWebSocketService.broadcastCarStatus(carCode, toDTO(car));
 
             } catch (InterruptedException e) {
@@ -160,22 +157,18 @@ public class TowingCarService {
 
         log.info("🔗 [Connect] Flight={} (By {})", flight.getFlightNumber(), pilotId);
 
-        // MQTT: CONNECT
-        towingCarMqttService.connectCar(assignedCar.getCode(), flight.getId());
+        // ✅ 비즈니스 로직: 상태 변경만
+        assignedCar.updateStatus(assignedCar.getLastPosX(), assignedCar.getLastPosY(),
+                assignedCar.getLastHeading(), assignedCar.getLastVelocity(),
+                assignedCar.getBattery(), CarStatus.LOADING);
 
-        // 상태 즉시 반영 (또는 로봇 응답 대기)
-        assignedCar.updateStatus(assignedCar.getLastPosX(), assignedCar.getLastPosY(), assignedCar.getLastHeading(),
-                assignedCar.getLastVelocity(), assignedCar.getBattery(), CarStatus.LOADING);
+        // ✅ 알림: WebSocket (Helper 메서드로 위임)
+        notifyCarConnected(assignedCar, pilotId);
 
-        // WebSocket: CONNECT
-        towingCarWebSocketService.broadcastCarStatus(assignedCar.getCode(), toDTO(assignedCar));
-
-        // [REFLECT] Send Success Response to Pilot
-        towingCarWebSocketService.notifyPilotResult(pilotId,
-                MissionResponseDto.builder()
-                        .status("SUCCESS")
-                        .message("Connecting Initiated...")
-                        .build());
+        // ✅ MQTT: 트랜잭션 커밋 후 전송
+        final String carCode = assignedCar.getCode();
+        final Long flightId = flight.getId();
+        sendMqttAfterCommit(() -> towingCarMqttService.connectCar(carCode, flightId));
     }
 
     /**
@@ -190,12 +183,10 @@ public class TowingCarService {
 
         log.info("🔌 [Disconnect] Flight={} (By {})", flight.getFlightNumber(), pilotId);
 
-        // MQTT: DISCONNECT
-        towingCarMqttService.disconnectCar(assignedCar.getCode(), flight.getId());
-
-        // [MOCK SUPPORT] Set to UNLOADING so Scheduler can simulate transition to IDLE
-        assignedCar.updateStatus(assignedCar.getLastPosX(), assignedCar.getLastPosY(), assignedCar.getLastHeading(),
-                assignedCar.getLastVelocity(), assignedCar.getBattery(), CarStatus.UNLOADING);
+        // ✅ 비즈니스 로직: 상태 변경과 미션 종료
+        assignedCar.updateStatus(assignedCar.getLastPosX(), assignedCar.getLastPosY(),
+                assignedCar.getLastHeading(), assignedCar.getLastVelocity(),
+                assignedCar.getBattery(), CarStatus.UNLOADING);
 
         // 미션 완료 처리
         if (assignedCar.getCurrentMissionId() != null) {
@@ -204,15 +195,13 @@ public class TowingCarService {
             assignedCar.clearMission();
         }
 
-        // WebSocket: DISCONNECT
-        towingCarWebSocketService.broadcastCarStatus(assignedCar.getCode(), toDTO(assignedCar));
+        // ✅ 알림: WebSocket (Helper 메서드로 위임)
+        notifyCarDisconnected(assignedCar, pilotId);
 
-        // [REFLECT] Send Success Response to Pilot
-        towingCarWebSocketService.notifyPilotResult(pilotId,
-                MissionResponseDto.builder()
-                        .status("SUCCESS")
-                        .message("Disconnected Successfully")
-                        .build());
+        // ✅ MQTT: 트랜잭션 커밋 후 전송
+        final String carCode = assignedCar.getCode();
+        final Long flightId = flight.getId();
+        sendMqttAfterCommit(() -> towingCarMqttService.disconnectCar(carCode, flightId));
     }
 
     // =========================================================================
@@ -272,15 +261,13 @@ public class TowingCarService {
     public void switchMode(String pilotId, CarModeRequestDto request) {
         log.info("[WS] Mode Switch: Pilot={}, Mode={}, Car={}", pilotId, request.getMode(), request.getCar_code());
 
-        // MQTT로 차량에 직접 명령 전송
-        towingCarMqttService.setMode(request.getCar_code(), request.getMode());
+        // ✅ 알림 (Helper)
+        notifyModeSwitched(pilotId, request.getMode());
 
-        // 결과 알림
-        towingCarWebSocketService.notifyPilotResult(pilotId,
-                MissionResponseDto.builder()
-                        .status("SUCCESS")
-                        .message("Mode Switched to: " + request.getMode())
-                        .build());
+        // ✅ MQTT (커밋 후)
+        final String carCode = request.getCar_code();
+        final String mode = request.getMode();
+        sendMqttAfterCommit(() -> towingCarMqttService.setMode(carCode, mode));
     }
 
     /**
@@ -290,15 +277,12 @@ public class TowingCarService {
     public void emergencyStop(String pilotId, CarEmergencyRequestDto request) {
         log.info("[WS] EMERGENCY STOP: Pilot={}, Car={}", pilotId, request.getCarId());
 
-        // MQTT로 차량에 직접 명령 전송
-        towingCarMqttService.emergencyStop(request.getCarId());
+        // ✅ 알림 (Helper)
+        notifyEmergencyStop(pilotId);
 
-        // 결과 알림
-        towingCarWebSocketService.notifyPilotResult(pilotId,
-                MissionResponseDto.builder()
-                        .status("SUCCESS")
-                        .message("EMERGENCY STOP EXECUTED")
-                        .build());
+        // ✅ MQTT (커밋 후)
+        final String carCode = request.getCarId();
+        sendMqttAfterCommit(() -> towingCarMqttService.emergencyStop(carCode));
     }
 
     // =========================================================================
@@ -355,5 +339,82 @@ public class TowingCarService {
         } catch (Exception e) {
             return CarStatus.IDLE;
         }
+    }
+
+    // =========================================================================
+    // Helper Methods (Notification & MQTT-After-Commit)
+    // =========================================================================
+
+    /**
+     * TransactionSynchronization을 사용하여 트랜잭션 커밋 후 MQTT 명령 전송
+     * MissionService 패턴 적용
+     */
+    private void sendMqttAfterCommit(Runnable mqttCommand) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            mqttCommand.run();
+                        }
+                    });
+        } else {
+            mqttCommand.run();
+        }
+    }
+
+    /**
+     * 배차 완료 알림
+     */
+    private void notifyCarDispatched(TowingCar car, Flight flight) {
+        towingCarWebSocketService.broadcastCarStatus(car.getCode(), toDTO(car));
+        towingCarWebSocketService.notifyFlightChannel(flight.getId(),
+                Map.of("event", "CAR_DISPATCHED", "carCode", car.getCode()));
+    }
+
+    /**
+     * 연결 완료 알림
+     */
+    private void notifyCarConnected(TowingCar car, String pilotId) {
+        towingCarWebSocketService.broadcastCarStatus(car.getCode(), toDTO(car));
+        towingCarWebSocketService.notifyPilotResult(pilotId,
+                MissionResponseDto.builder()
+                        .status("SUCCESS")
+                        .message("Connecting Initiated...")
+                        .build());
+    }
+
+    /**
+     * 연결 해제 알림
+     */
+    private void notifyCarDisconnected(TowingCar car, String pilotId) {
+        towingCarWebSocketService.broadcastCarStatus(car.getCode(), toDTO(car));
+        towingCarWebSocketService.notifyPilotResult(pilotId,
+                MissionResponseDto.builder()
+                        .status("SUCCESS")
+                        .message("Disconnected Successfully")
+                        .build());
+    }
+
+    /**
+     * 모드 전환 결과 알림
+     */
+    private void notifyModeSwitched(String pilotId, String mode) {
+        towingCarWebSocketService.notifyPilotResult(pilotId,
+                MissionResponseDto.builder()
+                        .status("SUCCESS")
+                        .message("Mode Switched to: " + mode)
+                        .build());
+    }
+
+    /**
+     * 비상 정지 결과 알림
+     */
+    private void notifyEmergencyStop(String pilotId) {
+        towingCarWebSocketService.notifyPilotResult(pilotId,
+                MissionResponseDto.builder()
+                        .status("SUCCESS")
+                        .message("EMERGENCY STOP EXECUTED")
+                        .build());
     }
 }
