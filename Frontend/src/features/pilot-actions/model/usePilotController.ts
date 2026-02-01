@@ -17,7 +17,7 @@ export function usePilotController(initialCarId?: string) {
     // --- State ---
     const [logs, setLogs] = useState<PilotLog[]>([]);
     const [moveState, setMoveState] = useState<MoveState>('stopped');
-    const [connState, setConnState] = useState<ConnectionState>('disconnected');
+    const [connState, setConnState] = useState<ConnectionState>('idle');
     const [isAutoMode, setIsAutoMode] = useState(false);
     const [flightInfo, setFlightInfo] = useState<FlightInfo | null>(null);
     const lastLoadedFlightId = useRef<number | null>(null);
@@ -97,15 +97,13 @@ export function usePilotController(initialCarId?: string) {
                     if (status === 'TOWING') {
                         console.log("[SafeSync] Setting connState: connected");
                         setConnState('connected');
-                    } else if (status === 'LOADING') {
+                    } else if (status === 'LOADING' || status === 'MOVING_TO_LOAD') {
+                        // Both dispatching and docking count as "Connecting..." phase for the button
                         console.log("[SafeSync] Setting connState: connecting");
                         setConnState('connecting');
-                    } else if (status === 'MOVING_TO_LOAD') {
-                        console.log("[SafeSync] Setting connState: waiting");
-                        setConnState('waiting');
                     } else if (status === 'IDLE' || status === 'MOVING_TO_IDLE' || status === 'UNLOADING') {
-                        console.log("[SafeSync] Setting connState: disconnected");
-                        setConnState('disconnected');
+                        console.log("[SafeSync] Setting connState: idle");
+                        setConnState('idle');
                     }
                 }
              } catch (err) {
@@ -126,7 +124,9 @@ export function usePilotController(initialCarId?: string) {
     const { isOpen: isWelcomeOpen, checkAndShow: checkWelcome, close: closeWelcome } = useFlightWelcome();
 
     // --- WebSocket ---
-    const { request, send, onMessage, isConnected } = usePilotSocket(activeCarId);
+    // [FIX] Always subscribe to assigned car even if it's IDLE (so we can catch status changes)
+    const socketCarId = flightInfo?.assignedCarId || initialCarId;
+    const { request, send, onMessage, isConnected } = usePilotSocket(socketCarId);
 
     // --- Logger ---
     const addLog = useCallback((type: 'info' | 'success' | 'warning' | 'error', message: string) => {
@@ -136,11 +136,15 @@ export function usePilotController(initialCarId?: string) {
 
     // --- Dynamic Status Sync ---
     
+    // --- Dynamic Status Sync ---
+    
     useEffect(() => {
-        if (!activeCarId) {
+        // [FIX] Use socketCarId to ensure we sync even if car is IDLE (filtered from activeCarId)
+        const targetId = socketCarId;
+        if (!targetId) {
             return;
         }
-        const myCar = aircrafts.find(a => a.id === activeCarId);
+        const myCar = aircrafts.find(a => a.id === targetId);
         
         if (!myCar) {
             return;
@@ -148,24 +152,18 @@ export function usePilotController(initialCarId?: string) {
 
         console.log(`[Sync] MyCar: ${myCar.id}, Status: ${myCar.status}, UI State: ${connState}`);
 
-        // [Logic Update] Map Backend Status to UI State
-        // 1. MOVING_TO_LOAD (Dispatch -> Gate) => 'waiting'
-        if (myCar.status === 'MOVING_TO_LOAD') {
-            if (connState !== 'waiting') {
-                console.log("[Sync] Status: MOVING_TO_LOAD -> UI: waiting");
-                addLog('info', 'Tug dispatching to gate...');
-                setConnState('waiting');
-            }
-        }
-        // 2. LOADING (Gate -> Docking) => 'connecting'
-        else if (myCar.status === 'LOADING') {
+        // [Logic Update] Map Backend Status to UI Button State
+        
+        // 1. MOVING_TO_LOAD / LOADING => 'connecting' (User sees "Connecting...")
+        if (myCar.status === 'MOVING_TO_LOAD' || myCar.status === 'LOADING') {
             if (connState !== 'connecting') {
-                console.log("[Sync] Status: LOADING -> UI: connecting");
-                addLog('info', 'Tug arrived. Docking in progress...');
+                console.log(`[Sync] Status: ${myCar.status} -> UI: connecting`);
+                addLog('info', myCar.status === 'MOVING_TO_LOAD' ? 'Tug dispatching to gate...' : 'Tug docking...');
                 setConnState('connecting');
             }
         } 
-        // 3. TOWING (Connected) => 'connected'
+        
+        // 2. TOWING (Connected) => 'connected' (User sees "Disconnect Tug")
         else if (myCar.status === 'TOWING') {
             if (connState !== 'connected') {
                 console.log("[Sync] Status: TOWING -> UI: connected");
@@ -173,28 +171,25 @@ export function usePilotController(initialCarId?: string) {
                 setConnState('connected');
             }
         } 
-        // 4. IDLE / MOVING_TO_IDLE (Disconnected)
-        else if (myCar.status === 'IDLE' || myCar.status === 'MOVING_TO_IDLE') {
+        
+        // 3. IDLE / MOVING_TO_IDLE / UNLOADING => 'disconnected' (User sees "Connect Tug")
+        else if (myCar.status === 'IDLE' || myCar.status === 'MOVING_TO_IDLE' || myCar.status === 'UNLOADING') {
              // Only reset to DISCONNECTED if we were currently in a connected-related state
-             if (connState === 'connected' || connState === 'disconnecting' || connState === 'connecting' || connState === 'waiting') {
-                // Check if we originated this connection (optional safeguard, but simple transition is better here)
-                // If we are 'waiting' (dispatching) and suddenly 'IDLE', maybe dispatch failed or was cancelled.
+             if (connState === 'connected' || connState === 'connecting' || connState === 'waiting') {
                 
-                // Don't reset if we literally JUST clicked connect (race condition prevention usually handled by 'waiting')
-                // But here, if backend sends IDLE, we should trust it. assuming 'waiting' corresponds to 'MOVING_TO_LOAD' eventually.
-                
-                // However, we must be careful not to flicker 'disconnected' before the first 'MOVING_TO_LOAD' arrives 
-                // if the connection request hasn't been processed by backend yet.
-                // But typically backend request returns, sends 'MOVING_TO_LOAD' immediately.
-                
-                if (connState === 'connected' || connState === 'disconnecting') {
-                    console.log("[Sync] Status: IDLE -> UI: disconnected");
-                    addLog('info', 'Tug disconnected.');
-                    setConnState('disconnected');
-                }
+                // [Race Condition Fix] If 'waiting' (Just clicked Connect), and status is IDLE...
+                // Ideally, backend receives request and sets MOVING_TO_LOAD.
+                // If we receive IDLE *after* clicking (delayed packet), we might flicker.
+                // But usually, receiving IDLE means "Job Done" or "Reset".
+                // We will trust the backend status for now.
+
+                    console.log(`[Sync] Status: ${myCar.status} -> UI: idle`);
+                    // Only log if we were connected
+                    if (connState === 'connected') addLog('info', 'Tug disconnected.');
+                    setConnState('idle');
              }
         }
-    }, [aircrafts, activeCarId, connState, addLog]);
+    }, [aircrafts, socketCarId, connState, addLog]);
 
     // --- Message Handler ---
     useEffect(() => {
@@ -214,6 +209,12 @@ export function usePilotController(initialCarId?: string) {
                 }
                 setFlightInfo(data);
                 return;
+            } else {
+                 // [DEBUG LOG]
+                 // Only log if it LOOKS like flight info (check some unique field) to avoid spamming on every misc message
+                 if (payload.flightId || payload.flightNumber) {
+                     console.warn("[PilotController] FlightInfo Parse Failed:", flightParsed.error);
+                 }
             }
 
             // 2. Status / Response Messages
@@ -236,7 +237,7 @@ export function usePilotController(initialCarId?: string) {
                         }
                     }
                 } else if (payload.status === 'FAIL') {
-                    if (payload.message.includes("Connect")) setConnState('disconnected');
+                    if (payload.message.includes("Connect")) setConnState('idle');
                     if (payload.message.includes("Disconnect")) setConnState('connected');
                     if (moveState === 'waiting') setMoveState('stopped');
                 }
@@ -286,17 +287,17 @@ export function usePilotController(initialCarId?: string) {
 
     // 2. Connection Actions (Connect / Disconnect)
     const connLongPress = useLongPress(() => {
-        if (connState === 'waiting' || connState === 'connecting' || connState === 'disconnecting') return;
+        if (connState === 'waiting' || connState === 'connecting') return;
 
         setConfirmModal({
             open: true,
-            action: connState === 'disconnected' ? 'CONNECT TUG' : 'DISCONNECT TUG',
+            action: connState === 'idle' ? 'CONNECT TUG' : 'DISCONNECT TUG',
             onConfirm: () => {
                 if (!flightInfo) {
                     addLog('error', 'SYS: Flight Info not loaded yet');
                     return;
                 }
-                const isConnecting = connState === 'disconnected';
+                const isConnecting = connState === 'idle';
                 const endpoint = isConnecting ? '/app/car/dispatch' : '/app/car/disconnect';
                 
                 setConnState('waiting');
@@ -309,7 +310,7 @@ export function usePilotController(initialCarId?: string) {
                 const sent = send('SEND', { destination: endpoint }, JSON.stringify(payload));
 
                 if (!sent) {
-                    setConnState(isConnecting ? 'disconnected' : 'connected');
+                    setConnState(isConnecting ? 'idle' : 'connected');
                     addLog('error', 'SYS: Not Connected');
                 }
             }
