@@ -1,6 +1,6 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/shared/ui/Card";
 import { Battery, Signal } from "lucide-react";
-import { VEHICLE_STATUS } from "@/features/dashboard/MockData";
+// import { VEHICLE_STATUS } from "@/features/dashboard/MockData";
 import { Aircraft } from "@/entities/map/model/types";
 
 interface PilotStatusPanelProps {
@@ -9,10 +9,10 @@ interface PilotStatusPanelProps {
 
 export function PilotStatusPanel({ aircraft }: PilotStatusPanelProps) {
     // Fallback to Mock Data if no aircraft connected yet
-    const displayId = aircraft?.id || VEHICLE_STATUS.id;
-    const displayBattery = aircraft?.battery ?? VEHICLE_STATUS.battery; // 0 could be valid
+    const displayId = aircraft?.id || 'NO TUG'; // Changed from VEHICLE_STATUS.id
+    const displayBattery = aircraft?.battery ?? 0; // Changed from VEHICLE_STATUS.battery
     // Signal strength is not in Aircraft type yet, assume GOOD if connected
-    const displaySignal = aircraft ? "EXCELLENT" : "WAITING";
+    const displaySignal = aircraft ? "EXCELLENT" : "NO SIG"; // Changed from WAITING
 
     return (
         <Card className="col-span-3 glass-panel flex flex-col">

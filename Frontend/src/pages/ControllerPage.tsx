@@ -1,6 +1,5 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { MainLayout } from "@/shared/ui/layout/MainLayout";
-import { RootLayout } from "@/shared/ui/layout/RootLayout";
 import { ApprovalQueue } from "@/features/dashboard/ApprovalQueue";
 import { ActivityTimeline } from "@/features/dashboard/ActivityTimeline";
 import { MissionInspector } from "@/features/dashboard/MissionInspector";
@@ -9,52 +8,26 @@ import { GraphInteractionLayer } from "@/features/map-editor/ui/GraphInteraction
 import { AircraftLayer } from "@/features/map-visualizer/ui/AircraftLayer";
 import { useGraphStore } from "@/entities/map/model/store";
 import { MapMeta, Aircraft } from "@/entities/map/model/types";
-import { MOCK_EDGES, MOCK_NODES, MOCK_MAP_SIZE } from "@/entities/map/lib/mockData";
+import { MOCK_MAP_SIZE } from "@/entities/map/lib/mockData";
 import { useTelemetrySocket } from "@/features/map-visualizer/model/useTelemetrySocket";
 import { useMapSync } from "@/features/map-visualizer/model/useMapSync";
-import { useMockAircraftMqtt } from "@/entities/map/lib/mockAircraft";
-import { useAuthStore } from "@/features/auth/model/useAuthStore";
-import { LoginPage } from "@/features/auth/ui/LoginPage";
-import { PilotDashboard } from "./PilotDashboard";
+import { useMapLoader } from "@/features/map-visualizer/model/useMapLoader";
 
-export function DashboardPage() {
-    // 🔐 AUTH GUARD
-    const { isAuthenticated, user } = useAuthStore();
-
-    const { loadGraph, setAircrafts } = useGraphStore();
+export function ControllerPage() {
+    const { mapWidth: storeMapWidth, mapHeight: storeMapHeight } = useGraphStore();
     const [mapMeta, setMapMeta] = useState<MapMeta | null>(null);
     const [mapHeight, setMapHeight] = useState(0);
     const [selectedAircraft, setSelectedAircraft] = useState<Aircraft | null>(null);
     
     // --- DATA SOURCE CONTROL ---
-    const USE_REAL_DATA = true; // Toggle this to true to use WebSocket URL
+    const USE_REAL_DATA = true;
     
-    // 1. Real WebSocket (Only connects if authenticated inside hook)
-    useTelemetrySocket(undefined, USE_REAL_DATA);
-    useMapSync(USE_REAL_DATA); // Sync Map Data
+    // 1. Data Loading Hooks
+    useMapLoader(); // Load Static Map Data
+    useTelemetrySocket(undefined, USE_REAL_DATA); // Live Traffic (Global)
+    useMapSync(USE_REAL_DATA); // Sync Dynamic Map Elements
     
-    // 2. Mock Data (Fallback)
-    const mockData = useMockAircraftMqtt();
-    
-    // Access Map Dimensions from Store
-    const { mapWidth: storeMapWidth, mapHeight: storeMapHeight, corners } = useGraphStore();
-
-    useEffect(() => {
-        if (!USE_REAL_DATA) {
-            setAircrafts(mockData);
-        }
-    }, [mockData, setAircrafts, USE_REAL_DATA]); // Only update store from mock if Real Data is OFF
-    // ---------------------------
-
-    // Initial Data Load (Simulate Fetch from Edge)
-    useEffect(() => {
-        // Only load mock graph if no real map data is present yet
-        if (!corners) {
-            loadGraph(MOCK_NODES, MOCK_EDGES);
-        }
-    }, [loadGraph, corners]);
-
-    // UseCallback to prevent infinite re-rendering loop in MapCanvas
+    // 2. Handlers
     const handleMapLoad = useCallback((info: { meta: MapMeta; width: number; height: number }) => {
         setMapMeta(info.meta);
         setMapHeight(info.height);
@@ -66,14 +39,8 @@ export function DashboardPage() {
         resolution: 0.05
     }), [storeMapWidth, storeMapHeight]);
 
-    // 🔐 AUTH GUARD CHECK
-    if (!isAuthenticated) {
-        return <LoginPage />;
-    }
-
-    const content = user?.role === 'PILOT' ? (
-        <PilotDashboard />
-    ) : (
+    // 3. Render
+    return (
         <MainLayout
             leftPanel={
                 <>
@@ -127,11 +94,5 @@ export function DashboardPage() {
                 </div>
             </div>
         </MainLayout>
-    );
-
-    return (
-        <RootLayout>
-            {content}
-        </RootLayout>
     );
 }

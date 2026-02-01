@@ -12,12 +12,22 @@ const AircraftStatusSchema = z.enum(['IDLE', 'MOVING_TO_LOAD', 'LOADING', 'TOWIN
 const TelemetrySchema = z.object({
     car_id: z.string().optional(),
     carId: z.string().optional(),
-    code: z.string().optional(), // Added to support TowingCarDTO format
+    code: z.string().optional(), // Backend DTO uses 'code'
+    
+    // Backend DTO fields
+    posX: z.number().optional(),
+    posY: z.number().optional(),
+    heading: z.number().optional(),
+    velocity: z.number().optional(),
+    status: AircraftStatusSchema.optional(),
+
+    // Legacy/MQTT fields
     x: z.number().default(0),
     y: z.number().default(0),
     yaw: z.number().default(0),
     v: z.number().default(0),
     mode: AircraftStatusSchema.catch('IDLE'),
+    
     battery: z.number().default(0),
     currentMission: z.any().optional(),
     is_loaded: z.boolean().default(false)
@@ -67,7 +77,7 @@ export function usePilotSocket(targetCarId?: string | null, enabled: boolean = t
     useEffect(() => {
         if (isConnected && targetCarId) {
             const subId = `sub-pilot-monitor-${targetCarId}`;
-            console.log(`[PilotSocket] Subscribing to car telemetry: ${targetCarId}`);
+            console.log(`[PilotSocket] 🎯 Subscribing to car telemetry: ${targetCarId}`);
             
             send("SUBSCRIBE", {
                 id: subId,
@@ -78,6 +88,8 @@ export function usePilotSocket(targetCarId?: string | null, enabled: boolean = t
                 console.log(`[PilotSocket] Unsubscribing from car telemetry: ${targetCarId}`);
                 send("UNSUBSCRIBE", { id: subId });
             };
+        } else {
+             // console.log(`[PilotSocket] ⚠️ Subscription Skipped - Connected: ${isConnected}, TargetCar: ${targetCarId}`);
         }
     }, [isConnected, targetCarId, send]);
 
@@ -101,23 +113,30 @@ export function usePilotSocket(targetCarId?: string | null, enabled: boolean = t
         
         const data = result.data;
         // Backend DTO uses 'code', MQTT uses 'carId' or 'car_id'
-        const rawId = data.car_id || data.carId || data.code;
+        const rawId = data.code || data.car_id || data.carId;
+        
+        // Priority: DTO fields -> MQTT fields -> Default
+        const finalStatus = data.status || data.mode;
+        const finalX = data.posX ?? data.x;
+        const finalY = data.posY ?? data.y;
+        const finalYaw = data.heading ?? data.yaw;
+        const finalV = data.velocity ?? data.v;
 
         // 내 차 정보만 업데이트
         if (rawId && rawId === targetCarId) {
-            // console.log(`[PilotSocket] Updating Store for ${rawId} with status: ${data.mode}`);
+            // console.log(`[PilotSocket] Updating Store for ${rawId} with status: ${finalStatus}`);
             const aircraft: Aircraft = {
                 id: rawId,
                 callsign: rawId,
                 type: 'TUG',
                 position: {
-                    x: data.x,
-                    y: data.y,
-                    r: data.yaw * (Math.PI / 180)
+                    x: finalX,
+                    y: finalY,
+                    r: finalYaw * (Math.PI / 180)
                 },
-                status: data.mode,
+                status: finalStatus,
                 battery: data.battery,
-                speed: data.v,
+                speed: finalV,
                 currentMission: data.currentMission,
                 isLoaded: data.is_loaded
             };

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-type UserRole = 'PILOT' | 'ATC'; // ADMIN 제외
+export type UserRole = 'PILOT' | 'ATC'; // Backend Enum Value
 
 interface User {
     email: string;
