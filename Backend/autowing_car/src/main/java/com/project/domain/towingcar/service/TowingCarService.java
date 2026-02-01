@@ -7,49 +7,78 @@ import com.project.domain.flight.entity.Flight;
 import com.project.domain.flight.service.FlightDBAdaptor;
 import com.project.domain.map.entity.Node;
 import com.project.domain.map.service.MapDBAdaptor;
+import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.CarConnectRequestDto;
+import com.project.domain.user.service.UserDBAdaptor;
+import com.project.domain.flight.service.FlightService;
+import com.project.domain.flight.dto.FlightWebSocketDtos.FlightInfoDto;
 import com.project.domain.mission.dto.MissionWebSocketDtos.MissionResponseDto;
 import com.project.domain.mission.entity.Mission;
 import com.project.domain.mission.service.MissionDBAdaptor;
 import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.*;
 import com.project.domain.towingcar.entity.DrivingLog;
 import com.project.domain.towingcar.entity.TowingCar;
+import com.project.domain.user.entity.User;
+import com.project.domain.user.service.UserDBAdaptor;
 import com.project.global.error.domain.car.CarAlreadyInUseException;
 import com.project.global.error.domain.car.TowingCarNotAssignedException;
+import com.project.global.error.domain.flight.FlightNotFoundException;
+import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import com.project.domain.towingcar.dto.TowingCarStatusResponse;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class TowingCarService {
 
+    private final UserDBAdaptor userDBAdaptor;
     private final TowingCarDBAdaptor towingCarDBAdaptor;
     private final MissionDBAdaptor missionDBAdaptor;
     private final FlightDBAdaptor flightDBAdaptor;
     private final MapDBAdaptor mapDBAdaptor;
     private final TowingCarMqttService towingCarMqttService;
     private final TowingCarWebSocketService towingCarWebSocketService;
+    private final FlightService flightService; // [RESTORED]
 
+    // [Restored Configuration Fields]
     private boolean isAutoConnectEnabled = true;
     private boolean isAutoDisconnectEnabled = true;
     private static final double ARRIVAL_THRESHOLD = 2.0;
 
-    // =========================================================================
-    // 1. 배차 & 연결 & 해제 (Dispatch / Connect / Disconnect)
-    // =========================================================================
+    // ... (unchanged)
+    public TowingCarStatusResponse getTowingCarStatusByPilot(String pilotId) {
+        // 1. Find Pilot
+        User pilot = userDBAdaptor.findUserByEmail(pilotId);
 
-    /**
-     * [배차] 기장 호출 -> 차량 배정 -> 이동 명령
-     * // 배정이 이미 되어있어도 차가 놀고 있으면 차량에게 이동 명령 내려야함
-     */
+        // 2. Find Today's Flight
+        Flight flight = flightDBAdaptor.findByPilotAndDepartureDate(pilot, LocalDate.now());
+
+        if (flight == null) {
+            throw new FlightNotFoundException("No active flight found for pilot today.");
+        }
+
+        // 3. Get Assigned Car
+        TowingCar car = flight.getAssignedTowingCar();
+        if (car == null) {
+            return TowingCarStatusResponse.builder()
+                    .code(null)
+                    .status("NONE")
+                    .build();
+        }
+
+        return toResponseDTO(car);
+    }
+    // ...
+
     @Transactional
     public void dispatchCarToFlight(String flightNumber) {
         Flight flight = flightDBAdaptor.getFlightByFlightNumber(flightNumber);
-        TowingCar assignedCar = flight.getAssignedTowingCar(); // 알아서 예외 처리됨.
+        TowingCar assignedCar = flight.getAssignedTowingCar();
         if (assignedCar == null)
             assignedCar = towingCarDBAdaptor.findFirstByCarStatusOrderByBatteryDesc(CarStatus.IDLE);
         else if (assignedCar.getCarStatus() != CarStatus.IDLE) {
@@ -66,8 +95,17 @@ public class TowingCarService {
         // MQTT: MOVE_TO_GATE
         towingCarMqttService.moveCarToGate(assignedCar.getCode(), flight.getNodeCode());
 
-        // WebSocket: MOVE_TO_GATE
+        // WebSocket: Car Status Update
         towingCarWebSocketService.broadcastCarStatus(assignedCar.getCode(), toDTO(assignedCar));
+
+        // [RESTORED] Notify Pilot of Assigned Car
+        try {
+            String pilotId = flight.getPilot().getUsername();
+            FlightInfoDto updatedInfo = flightService.getFlightInfoByPilot(pilotId);
+            towingCarWebSocketService.notifyPilotFlightInfo(pilotId, updatedInfo);
+        } catch (Exception e) {
+            log.error("Failed to broadcast updated flight info to pilot", e);
+        }
 
         // [TEST] Simulate Auto-Connection Lifecycle
         String carCode = assignedCar.getCode();
@@ -285,6 +323,18 @@ public class TowingCarService {
                 .heading(car.getLastHeading()).velocity(car.getLastVelocity()).battery(car.getBattery())
                 .build();
         towingCarDBAdaptor.saveDrivingLog(log);
+    }
+
+    private TowingCarStatusResponse toResponseDTO(TowingCar car) {
+        return TowingCarStatusResponse.builder()
+                .code(car.getCode())
+                .posX(car.getLastPosX() != null ? car.getLastPosX() : 0.0)
+                .posY(car.getLastPosY() != null ? car.getLastPosY() : 0.0)
+                .heading(car.getLastHeading() != null ? car.getLastHeading() : 0.0)
+                .velocity(car.getLastVelocity() != null ? car.getLastVelocity() : 0.0)
+                .battery(car.getBattery())
+                .status(car.getCarStatus().name())
+                .build();
     }
 
     private TowingCarDTO toDTO(TowingCar car) {
