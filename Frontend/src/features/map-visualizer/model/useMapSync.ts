@@ -46,12 +46,15 @@ export function useMapSync(enabled: boolean = true) {
 
     // 6. Message Processing Logic
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleMapMessage = useCallback((payload: any) => {
-        console.log("[MapSync] Received Map Payload", payload);
-        const result = MapInfoPayloadSchema.safeParse(payload);
+    const handleMapMessage = useCallback((msg: any) => {
+        // Filter by destination to avoid data leakage (especially telemetry)
+        if (msg.destination !== WS_TOPICS.MAP_INFO) return;
+
+        console.log("[MapSync] Received Map Payload", msg.body);
+        const result = MapInfoPayloadSchema.safeParse(msg.body);
         
         if (!result.success) {
-            console.error("[MapSync] Invalid Map Data:", result.error);
+            console.error("[MapSync] Invalid Map Data Schema:", result.error);
             return;
         }
 

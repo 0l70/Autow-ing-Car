@@ -21,9 +21,9 @@ const RTC_CONFIG: RTCConfiguration = {
 const SignalingSchema = z.object({
     type: z.enum(['OFFER', 'ANSWER', 'ICE']),
     sdp: z.string().optional(),
-    candidate: z.string().optional(),
-    sdpMid: z.string().optional(),
-    sdpMLineIndex: z.number().optional().nullable(), // Allow null explicitly
+    candidate: z.string().nullable().optional(),
+    sdpMid: z.string().nullable().optional(),
+    sdpMLineIndex: z.number().nullable().optional(), // Allow null explicitly
     senderId: z.string(),
     receiverId: z.string()
 });
@@ -40,11 +40,14 @@ export function useWebRTC({ enabled, carId, pilotId }: UseWebRTCProps) {
     const [stream, setStream] = useState<MediaStream | null>(null);
     const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>('new');
     const pcRef = useRef<RTCPeerConnection | null>(null);
-    const { socketToken } = useAuthStore();
+    // Keep track if we already sent START
+    const isStartedRef = useRef(false);
     
+    const { socketToken } = useAuthStore();
+
     // --- 1. Connect & Subscribe ---
     const handleConnect = useCallback((sendFn: (cmd: string, headers: Record<string, string>, body?: string) => void) => {
-        console.log("WebRTC Signaling Connected. Subscribing...");
+        console.log(`[useWebRTC] Connected! Subscribing for Pilot: ${pilotId}`);
         
         // Subscribe to Offer
         sendFn("SUBSCRIBE", { 
@@ -57,16 +60,56 @@ export function useWebRTC({ enabled, carId, pilotId }: UseWebRTCProps) {
             id: "sub-video-ice", 
             destination: `/topic/video/ice/${pilotId}` 
         });
-    }, [pilotId]);
+    }, [pilotId]); // Stabilized: only depends on pilotId
 
-
-    // Use Shared Stomp Client
-    const { onMessage, send } = useStompClient({ 
+    // Use Shared Stomp Client (Always enabled to keep connection alive)
+    const { onMessage, send, isConnected } = useStompClient({ 
         url: import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8080/ws-server/websocket',
         token: socketToken,
-        enabled: enabled,
+        enabled: true, // Always keep WebSocket alive
         onConnect: handleConnect 
     });
+
+    // Helper to send Control Messages
+    const sendControl = useCallback((type: 'START' | 'PAUSE' | 'RESUME') => {
+        if (!isConnected) {
+            console.warn(`[useWebRTC] Cannot send ${type}: WebSocket not connected`);
+            return;
+        }
+        
+        console.log(`[useWebRTC] Sending ${type} Command to CAR: ${carId}`);
+        send("SEND", { destination: '/app/video/control' }, JSON.stringify({
+            type,
+            senderId: pilotId,
+            receiverId: carId
+        }));
+    }, [isConnected, send, pilotId, carId]);
+
+    // Handle Enable/Disable (START/PAUSE/RESUME)
+    useEffect(() => {
+        if (!isConnected) {
+            console.log('[useWebRTC] Socket Disconnected - Resetting START flag');
+            isStartedRef.current = false;
+            return;
+        }
+
+        if (enabled) {
+            if (!isStartedRef.current) {
+                // First time -> START
+                console.log('[useWebRTC] Triggering Initial START');
+                sendControl('START');
+                isStartedRef.current = true;
+            } else {
+                // Subsequent -> RESUME
+                sendControl('RESUME');
+            }
+        } else {
+            // Disabled -> PAUSE (only if we ever started)
+            if (isStartedRef.current) {
+                sendControl('PAUSE');
+            }
+        }
+    }, [enabled, isConnected, sendControl]);
 
     // --- 2. WebRTC Initialization ---
     const createPeerConnection = useCallback(() => {
@@ -89,7 +132,6 @@ export function useWebRTC({ enabled, carId, pilotId }: UseWebRTCProps) {
 
         pc.onicecandidate = (event) => {
             if (event.candidate) {
-                // Correct send usage: Command, Headers, Body
                 send('SEND', { destination: '/app/video/ice' }, JSON.stringify({
                     type: 'ICE',
                     candidate: event.candidate.candidate,
@@ -126,7 +168,6 @@ export function useWebRTC({ enabled, carId, pilotId }: UseWebRTCProps) {
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
 
-            // Correct send usage
             send('SEND', { destination: '/app/video/answer' }, JSON.stringify({
                 type: 'ANSWER',
                 sdp: answer.sdp,
@@ -159,43 +200,32 @@ export function useWebRTC({ enabled, carId, pilotId }: UseWebRTCProps) {
 
     // --- 4. Message Listener ---
     useEffect(() => {
-        if (!enabled) {
+        // Always initialize PC on mount to be ready
+        createPeerConnection();
+
+        const unsubscribe = onMessage((msg: any) => {
+            const { destination, body: payload } = msg;
+
+            if (!destination?.startsWith('/topic/video/')) return;
+            if (!destination?.endsWith(`/${pilotId}`)) return;
+
+            const result = SignalingSchema.safeParse(payload);
+            if (!result.success) return;
+
+            const data = result.data;
+            if (data.type === 'OFFER') handleOffer(data);
+            else if (data.type === 'ICE') handleIce(data);
+        });
+
+        return () => {
+            // Unmount cleanup
+            unsubscribe();
             if (pcRef.current) {
                 pcRef.current.close();
                 pcRef.current = null;
-                setStream(null);
-                setConnectionState('closed');
             }
-            return;
-        }
-
-        // Initialize PC immediately
-        createPeerConnection();
-
-        // Register Global Message Listener and Filter by Type
-        const unsubscribe = onMessage((payload) => {
-            const result = SignalingSchema.safeParse(payload);
-            if (!result.success) return; // Not a signaling message
-
-            const msg = result.data;
-            // Filter logic: Check if message is intended for me?
-            // (Backend already filters by topic, but double check doesn't hurt)
-            
-            if (msg.type === 'OFFER') {
-                handleOffer(msg);
-            } else if (msg.type === 'ICE') {
-                handleIce(msg);
-            }
-        });
-
-        // Request Stream (Optional trigger)
-        // send('SEND', { destination: '/app/start-stream' }, JSON.stringify({ targetId: carId }));
-
-        return () => {
-            unsubscribe();
         };
-
-    }, [enabled, onMessage, createPeerConnection, handleOffer, handleIce, send, carId]);
+    }, [onMessage, createPeerConnection, handleOffer, handleIce, pilotId]);
 
     return {
         stream,

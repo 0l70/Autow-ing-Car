@@ -58,7 +58,6 @@ public class MissionWebSocketDtos {
         private String destNode;
     }
 
-    // [서버 -> 클라이언트] 상태 응답
     @Data
     @Builder
     @NoArgsConstructor
@@ -70,11 +69,22 @@ public class MissionWebSocketDtos {
         private String correlationId; // 프론트엔드 Request ID와 매핑
         private Object data; // 추가 페이로드 (경로 등)
 
+        // ✅ [NEW] Context Fields for ATC UI
+        private String flightNumber;
+        private String towingCarCode;
+        private String departNode;
+        private String destNode;
+
         public static MissionResponseDto from(Mission mission) {
             return MissionResponseDto.builder()
                     .missionId(mission.getId())
                     .status(mission.getStatus().name())
                     .message("Mission Updated")
+                    // ✅ Map Entity Fields
+                    .flightNumber(mission.getFlight().getFlightNumber())
+                    .towingCarCode(mission.getTowingCar().getCode())
+                    .departNode(mission.getDepartNode())
+                    .destNode(mission.getDestNode())
                     .build();
         }
     }

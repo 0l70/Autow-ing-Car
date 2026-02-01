@@ -117,20 +117,49 @@ export function useStompClient({ url, token, enabled = true, onConnect }: StompC
                     }
 
                 } else if (data.startsWith("MESSAGE")) {
-                    const bodyIndex = data.indexOf("\n\n");
+                    const lines = data.split('\n');
+                    const headers: Record<string, string> = {};
+                    let bodyIndex = -1;
+
+                    // Parse Headers
+                    for (let i = 1; i < lines.length; i++) {
+                        const line = lines[i];
+                        if (line === '') {
+                            bodyIndex = i + 1;
+                            break;
+                        }
+                        const parts = line.split(':');
+                        if (parts.length >= 2) {
+                            headers[parts[0]] = parts.slice(1).join(':');
+                        }
+                    }
+
+                    // Extract Body
                     if (bodyIndex !== -1) {
-                        const rawBody = data.substring(bodyIndex + 2).replace(/\0$/, '');
+                        const rawBody = lines.slice(bodyIndex).join('\n').replace(/\0$/, '');
                         if (rawBody) {
-                            const parseData = JSON.parse(rawBody);
+                            try {
+                                const parseData = JSON.parse(rawBody);
+                                const destination = headers['destination'];
 
-                            // 1. Notify global listeners
-                            messageListeners.current.forEach(listener => listener(parseData));
+                                // 1. Notify global listeners with { destination, body, headers }
+                                const messageWrapper = {
+                                    destination,
+                                    body: parseData,
+                                    headers
+                                };
 
-                            // 2. Resolver pending requests
-                            if (parseData.correlationId && pendingRequests.current.has(parseData.correlationId)) {
-                                const { resolve } = pendingRequests.current.get(parseData.correlationId)!;
-                                resolve(parseData);
-                                pendingRequests.current.delete(parseData.correlationId);
+                                messageListeners.current.forEach(listener => listener(messageWrapper));
+
+                                // 2. Resolver pending requests (Legacy support for correlationId)
+                                const corrId = parseData.correlationId || headers['correlation-id'];
+                                if (corrId && pendingRequests.current.has(corrId)) {
+                                    const { resolve } = pendingRequests.current.get(corrId)!;
+                                    resolve(parseData);
+                                    pendingRequests.current.delete(corrId);
+                                }
+                            } catch (e) {
+                                console.error("[StompClient] JSON Parse Error in Body:", e);
                             }
                         }
                     }
@@ -150,9 +179,11 @@ export function useStompClient({ url, token, enabled = true, onConnect }: StompC
         };
 
         return () => {
-            if (ws.readyState === WebSocket.OPEN) {
+            if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+                console.log("[StompClient] Closing socket in state:", ws.readyState);
                 ws.close();
             }
+            wsRef.current = null;
             setIsConnected(false);
         };
     }, [url, enabled, token, onConnect]);

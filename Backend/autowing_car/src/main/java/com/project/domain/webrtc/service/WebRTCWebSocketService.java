@@ -37,4 +37,12 @@ public class WebRTCWebSocketService {
             log.debug("WebRTC ICE relayed to {}", msg.getReceiverId());
         }
     }
+
+    public void broadcastControl(Object payload) {
+        if (payload instanceof SignalingMessage) {
+            SignalingMessage msg = (SignalingMessage) payload;
+            webSocketService.broadcast(WebSocketTopics.videoControl(msg.getReceiverId()), msg);
+            log.debug("WebRTC CONTROL relayed to {}", msg.getReceiverId());
+        }
+    }
 }

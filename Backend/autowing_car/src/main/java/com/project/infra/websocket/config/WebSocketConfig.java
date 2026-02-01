@@ -26,8 +26,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws-server")
-                .setAllowedOriginPatterns(
-                        "http://127.0.0.1:3000", "http://localhost:3000")
+                .setAllowedOriginPatterns("*")
                 .addInterceptors(authHandshakeInterceptor) // 👈 Interceptor 추가
                 .setHandshakeHandler(new DefaultHandshakeHandler() { // 2. 핸들러: Principal 승격
                     @Override

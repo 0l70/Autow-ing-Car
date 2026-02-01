@@ -110,7 +110,7 @@ export function usePilotDashboard() {
                 else setMoveState('stopped');
             }
         });
-    }, () => { });
+    });
 
     const connLongPress = useLongPress(() => {
         if (['waiting', 'connecting', 'disconnecting'].includes(connState)) return;
@@ -140,7 +140,7 @@ export function usePilotDashboard() {
                 }
             }
         });
-    }, () => { });
+    });
 
     const modeLongPress = useLongPress(() => {
         setConfirmModal({
@@ -159,7 +159,7 @@ export function usePilotDashboard() {
                 }
             }
         });
-    }, () => { });
+    });
 
     return {
         // States

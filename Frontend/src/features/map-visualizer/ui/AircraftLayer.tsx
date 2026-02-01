@@ -84,10 +84,22 @@ export function AircraftLayer({ meta, mapWidth, mapHeight, onAircraftClick }: Ai
             ctx.rotate(-ac.position.r); 
 
             // Draw Body
-            const color = STATUS_COLORS[ac.status] || '#FFFFFF';
+            let color = STATUS_COLORS[ac.status] || '#FFFFFF';
+            let blur = 10;
+            let labelText = ac.callsign;
+
+            // [ATC Visualization] Towing State = Active Glow
+            if (ac.isLoaded) {
+                color = '#FFFFFF'; // Body is White
+                ctx.shadowColor = '#00FF00'; // Neon Green Glow
+                blur = 30; // Strong Pulse
+                labelText += ' (TOW)';
+            } else {
+                ctx.shadowColor = color;
+            }
+
             ctx.fillStyle = color;
-            ctx.shadowColor = color;
-            ctx.shadowBlur = 10;
+            ctx.shadowBlur = blur;
             
             ctx.beginPath();
             // Triangle pointing East (0 deg)
@@ -108,7 +120,7 @@ export function AircraftLayer({ meta, mapWidth, mapHeight, onAircraftClick }: Ai
             ctx.font = 'bold 12px monospace';
             ctx.textAlign = 'center';
             // Offset label below aircraft
-            ctx.fillText(ac.callsign, 0, 35);
+            ctx.fillText(labelText, 0, 35);
             ctx.restore();
         });
 
