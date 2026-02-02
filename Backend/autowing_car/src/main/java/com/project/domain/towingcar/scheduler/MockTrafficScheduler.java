@@ -35,7 +35,7 @@ public class MockTrafficScheduler {
     // [NEW] Flight Info Tick Counter
     private int flightInfoTick = 0;
 
-    @Scheduled(fixedRate = 1000) // 10Hz
+    // @Scheduled(fixedRate = 100) // 10Hz
     public void simulate() {
         double centerX = 50.0;
         double centerY = 50.0;

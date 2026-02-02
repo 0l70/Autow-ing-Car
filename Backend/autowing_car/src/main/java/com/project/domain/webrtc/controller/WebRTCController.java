@@ -34,4 +34,11 @@ public class WebRTCController {
         log.debug("Received ICE from {}", message.getSenderId());
         webRTCWebSocketService.broadcastIce(message);
     }
+
+    // 4. Control 명령 (Start/Stop) 수신 -> Jetson에게 전달
+    @MessageMapping("/video/control")
+    public void processControl(SignalingMessage message) {
+        log.debug("Received CONTROL ({}) from {}", message.getType(), message.getSenderId());
+        webRTCWebSocketService.broadcastControl(message);
+    }
 }

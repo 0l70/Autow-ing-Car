@@ -179,9 +179,11 @@ export function useStompClient({ url, token, enabled = true, onConnect }: StompC
         };
 
         return () => {
-            if (ws.readyState === WebSocket.OPEN) {
+            if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+                console.log("[StompClient] Closing socket in state:", ws.readyState);
                 ws.close();
             }
+            wsRef.current = null;
             setIsConnected(false);
         };
     }, [url, enabled, token, onConnect]);
