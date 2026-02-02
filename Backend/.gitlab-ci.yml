@@ -17,6 +17,7 @@ backend-build-test:
   stage: build
   image: eclipse-temurin:17-jdk-alpine
   rules:
+    # MR일 때만 실행 (기존 유지)
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"'
       changes:
         - Backend/**/*
@@ -35,16 +36,15 @@ backend-docker:
   services:
     - docker:24.0.5-dind
   rules:
-    - if: '$CI_COMMIT_REF_NAME == "master"' # master 브랜치일 때만
+    # ✅ [수정됨] master 또는 dev 브랜치일 때 실행
+    - if: '$CI_COMMIT_REF_NAME == "master" || $CI_COMMIT_REF_NAME == "dev"'
       changes:
         - Backend/**/*
   before_script:
-    # GitLab Container Registry 로그인
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
   script:
     - echo "📦 [Backend] Docker build & Push"
     - cd $BACKEND_DIR
-    # 캐시 효율을 위해 --pull 옵션 추가
     - docker build --pull -t $BACKEND_IMAGE .
     - docker push $BACKEND_IMAGE
 
@@ -57,7 +57,8 @@ backend-deploy:
   needs:
     - backend-docker
   rules:
-    - if: '$CI_COMMIT_REF_NAME == "master"'
+    # ✅ [수정됨] master 또는 dev 브랜치일 때 실행
+    - if: '$CI_COMMIT_REF_NAME == "master" || $CI_COMMIT_REF_NAME == "dev"'
       changes:
         - Backend/**/*
   before_script:
@@ -79,14 +80,16 @@ backend-deploy:
         docker stop backend-app || true &&
         docker rm backend-app || true &&
 
-        # 3. [핵심] 환경 변수 파일(.env) 동적 생성
-        # (GitLab Variables에 등록된 값들을 사용하여 서버에 파일을 만듭니다)
+        # 3. 환경 변수 파일(.env) 동적 생성
         echo 'MQTT_HOST=autowingcar.o-r.kr' > deploy.env &&
         echo 'MQTT_PORT=8883' >> deploy.env &&
         echo 'JWT_SECRET=$JWT_SECRET' >> deploy.env &&
         echo 'JWT_EXPIRATION=86400000' >> deploy.env &&
+        
+        # 이미지 정보 추가 (필요 시)
+        echo \"BACKEND_IMAGE=$BACKEND_IMAGE\" >> deploy.env &&
 
-        # 4. 새 컨테이너 실행 (생성한 env 파일 사용)
+        # 4. 새 컨테이너 실행
         docker run -d --name backend-app \
           --network app-network \
           --restart always \
@@ -94,7 +97,7 @@ backend-deploy:
           --env-file deploy.env \
           $BACKEND_IMAGE &&
 
-        # 5. 보안을 위해 임시 env 파일 삭제 및 이미지 정리
+        # 5. 정리
         rm deploy.env &&
         docker image prune -f
       "
