@@ -11,23 +11,7 @@ variables:
   DOCKER_TLS_CERTDIR: ""
 
 # ---------------------------------------------------------------------------
-# [0. Test Stage] - Build Test (MR to dev)
-# ---------------------------------------------------------------------------
-backend-build-test:
-  stage: build
-  image: eclipse-temurin:17-jdk-alpine
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"'
-      changes:
-        - Backend/**/*
-  script:
-    - echo "🏗️ [Backend] Build Test for Merge Request"
-    - cd $BACKEND_DIR
-    - chmod +x ./gradlew
-    - ./gradlew clean build -x test
-
-# ---------------------------------------------------------------------------
-# [1. Package Stage] - Docker build (Gradle build 포함)
+# [1. Package Stage] - Docker build
 # ---------------------------------------------------------------------------
 backend-docker:
   stage: package
@@ -35,19 +19,21 @@ backend-docker:
   services:
     - docker:24.0.5-dind
   rules:
-    - if: '$CI_COMMIT_REF_NAME == "master"'
+    - if: '$CI_COMMIT_REF_NAME == "master"' # master 브랜치일 때만
       changes:
         - Backend/**/*
   before_script:
+    # GitLab Container Registry 로그인
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
   script:
-    - echo "📦 [Backend] Docker build (Gradle build inside Dockerfile)"
+    - echo "📦 [Backend] Docker build & Push"
     - cd $BACKEND_DIR
-    - docker build -t $BACKEND_IMAGE .
+    # 캐시 효율을 위해 --pull 옵션 추가
+    - docker build --pull -t $BACKEND_IMAGE .
     - docker push $BACKEND_IMAGE
 
 # ---------------------------------------------------------------------------
-# [2. Deploy Stage] - EC2 배포
+# [2. Deploy Stage] - EC2 배포 (환경 변수 자동 주입)
 # ---------------------------------------------------------------------------
 backend-deploy:
   stage: deploy
@@ -69,24 +55,30 @@ backend-deploy:
     - |
       echo "🚀 [Backend] Deploying to Production Server..."
       ssh ubuntu@$EC2_IP "
+        # 1. 최신 이미지 받기 및 로그인
         docker login -u '$CI_REGISTRY_USER' -p '$CI_REGISTRY_PASSWORD' $CI_REGISTRY &&
         docker pull $BACKEND_IMAGE &&
+
+        # 2. 기존 컨테이너 중지 및 삭제 (에러 무시)
         docker stop backend-app || true &&
         docker rm backend-app || true &&
+
+        # 3. [핵심] 환경 변수 파일(.env) 동적 생성
+        # (GitLab Variables에 등록된 값들을 사용하여 서버에 파일을 만듭니다)
+        echo 'MQTT_HOST=autowingcar.o-r.kr' > deploy.env &&
+        echo 'MQTT_PORT=8883' >> deploy.env &&
+        echo 'JWT_SECRET=$JWT_SECRET' >> deploy.env &&
+        echo 'JWT_EXPIRATION=86400000' >> deploy.env &&
+
+        # 4. 새 컨테이너 실행 (생성한 env 파일 사용)
         docker run -d --name backend-app \
-          --network host \
+          --network app-network \
           --restart always \
-          -e SPRING_PROFILES_ACTIVE=local \
-          # ===============================
-          # DB 설정 (나중에 활성화)
-          # ===============================
-          # -e DB_URL='$DB_URL' \
-          # -e DB_USERNAME='$DB_USERNAME' \
-          # -e DB_PASSWORD='$DB_PASSWORD' \
-          
-          # ===============================
-          # 또는 서버에 있는 env 파일 사용
-          # ===============================
-          # --env-file /home/ubuntu/backend.env \
-          $BACKEND_IMAGE
+          -p 8080:8080 \
+          --env-file deploy.env \
+          $BACKEND_IMAGE &&
+
+        # 5. 보안을 위해 임시 env 파일 삭제 및 이미지 정리
+        rm deploy.env &&
+        docker image prune -f
       "

@@ -6,3 +6,6 @@
 *.iws
 *.ipr
 out/
+
+# Secrets
+.env
