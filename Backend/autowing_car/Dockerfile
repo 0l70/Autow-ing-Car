@@ -17,6 +17,7 @@ RUN ./gradlew dependencies || true
 # ---- 전체 소스 복사 후 빌드 ----
 COPY . .
 
+RUN chmod +x ./gradlew
 RUN ./gradlew clean build -x test
 
 # =========================
