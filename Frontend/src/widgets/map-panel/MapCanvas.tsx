@@ -1,24 +1,21 @@
-import { useEffect, useRef, useState, type MouseEvent, type WheelEvent } from "react";
+import { useEffect, useRef, useState, useLayoutEffect, type MouseEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import yaml from "js-yaml";
 import { Loader2 } from "lucide-react";
-import { MapMetaSchema } from "@/entities/map/model/schema";
 import { type MapMeta, type WorldCoord } from "@/entities/map/model/types";
+import { MapMetaSchema } from "@/entities/map/model/schema";
 import { loadPGM } from "@/entities/map/lib/pgmParser";
 import { pixelToWorld } from "@/entities/map/lib/coordinate";
 
+// --- Types ---
 interface MapInfo {
     meta: MapMeta;
     width: number;
     height: number;
 }
 
-interface MapBoardProps {
-    // Legacy support alias if needed, or just standard naming
-}
-
 interface MapCanvasProps {
-    mapName: string; // e.g., "airport_map1"
+    mapName: string; 
     onMapLoad?: (info: MapInfo) => void;
     onMapClick?: (worldPos: WorldCoord) => void;
     className?: string;
@@ -31,13 +28,15 @@ export function MapCanvas({ mapName, onMapLoad, onMapClick, className, children,
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     
-    // Viewport State (Pan/Zoom)
+    // Viewport State
     const [scale, setScale] = useState(1);
     const [offset, setOffset] = useState({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
-    const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+    const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 }); // for drag delta
 
-    // 1. Fetch Map Metadata (Only in default mode)
+    // --- 1. Data Fetching ---
+    
+    // Fetch Meta
     const { data: meta, isLoading: isMetaLoading } = useQuery({
         queryKey: ['map', mapName, 'meta'],
         queryFn: async () => {
@@ -50,9 +49,9 @@ export function MapCanvas({ mapName, onMapLoad, onMapClick, className, children,
         enabled: visualStyle === 'default'
     });
 
-    // 2. Fetch & Prepare Map Image (Only in default mode)
+    // Fetch Image
     const { data: mapImage, isLoading: isImageLoading } = useQuery({
-        queryKey: ['map', mapName, 'image'],
+        queryKey: ['map', mapName, 'image', visualStyle],
         queryFn: async () => {
             if (visualStyle === 'abstract') return null;
             if (!meta) return null;
@@ -61,169 +60,208 @@ export function MapCanvas({ mapName, onMapLoad, onMapClick, className, children,
         enabled: visualStyle === 'default' && !!meta
     });
 
-    // 3. Render Map OR Abstract Grid
-    useEffect(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+    // --- 2. Helper Logic (Dimensions) ---
+    const getMapDimensions = () => {
+        if (visualStyle === 'abstract') {
+            return { width: gridMetadata?.width || 2000, height: gridMetadata?.height || 1500 };
+        }
+        return { width: mapImage?.width || 0, height: mapImage?.height || 0 };
+    };
 
-        let width = 0;
-        let height = 0;
+    // --- 3. Clamp & Fit Logic ---
+    
+    const clampOffset = (targetOffset: {x: number, y: number}, targetScale: number) => {
+        const container = containerRef.current;
+        if (!container) return targetOffset;
 
-        if (visualStyle === 'default') {
-             if (!mapImage) return;
-             width = mapImage.width;
-             height = mapImage.height;
+        const { width: mapW, height: mapH } = getMapDimensions();
+        if (mapW === 0 || mapH === 0) return targetOffset;
+
+        const containerW = container.clientWidth;
+        const containerH = container.clientHeight;
+
+        const scaledMapW = mapW * targetScale;
+        const scaledMapH = mapH * targetScale;
+
+        let newX = targetOffset.x;
+        let newY = targetOffset.y;
+
+        // X Axis: Center if smaller, Clamp if larger
+        if (scaledMapW <= containerW) {
+             newX = (containerW - scaledMapW) / 2;
         } else {
-             // Abstract Mode uses provided metadata or defaults
-             width = gridMetadata?.width || 2000;
-             height = gridMetadata?.height || 1500;
+             // range: [containerW - scaledMapW, 0]
+             const minX = containerW - scaledMapW;
+             const maxX = 0;
+             newX = Math.min(Math.max(newX, minX), maxX);
         }
 
-        // Resize canvas
-        canvas.width = width;
-        canvas.height = height;
-
-        // --- RENDERING ---
-        if (visualStyle === 'default' && mapImage) {
-            // Draw Debug Background
-            ctx.fillStyle = '#330000';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            // Draw Image
-            ctx.drawImage(mapImage, 0, 0);
-        } else if (visualStyle === 'abstract') {
-            // == NEON GRID RENDERING ==
-            
-            // 1. Background (Dark Void)
-            ctx.fillStyle = '#020408'; // Deep Dark Blue-Black
-            ctx.fillRect(0, 0, width, height);
-
-            // 2. Grid Lines
-            const resolution = gridMetadata?.resolution || 0.05;
-            const meterPerPixel = 1 / resolution; // Pixels per meter
-            const gridSizeMajor = 10 / resolution; // 10 meters
-            const gridSizeMinor = 1 / resolution;  // 1 meter
-
-            // Draw Minor Grid (Faint)
-            ctx.beginPath();
-            ctx.strokeStyle = 'rgba(0, 255, 255, 0.03)';
-            ctx.lineWidth = 1;
-            
-            for (let x = 0; x <= width; x += gridSizeMinor) {
-                ctx.moveTo(x, 0); ctx.lineTo(x, height);
-            }
-            for (let y = 0; y <= height; y += gridSizeMinor) {
-                ctx.moveTo(0, y); ctx.lineTo(width, y);
-            }
-            ctx.stroke();
-
-            // Draw Major Grid (Brighter)
-            ctx.beginPath();
-            ctx.strokeStyle = 'rgba(0, 255, 255, 0.1)';
-            ctx.lineWidth = 1.5;
-            
-            for (let x = 0; x <= width; x += gridSizeMajor) {
-                ctx.moveTo(x, 0); ctx.lineTo(x, height);
-            }
-            for (let y = 0; y <= height; y += gridSizeMajor) {
-                ctx.moveTo(0, y); ctx.lineTo(width, y);
-            }
-            ctx.shadowColor = '#00FFFF';
-            ctx.shadowBlur = 4;
-            ctx.stroke();
-            
-            // Reset Shadow
-            ctx.shadowBlur = 0;
+        // Y Axis
+        if (scaledMapH <= containerH) {
+             newY = (containerH - scaledMapH) / 2;
+        } else {
+             const minY = containerH - scaledMapH;
+             const maxY = 0;
+             newY = Math.min(Math.max(newY, minY), maxY);
         }
+
+        return { x: newX, y: newY };
+    };
+
+    const fitToScreen = () => {
+        const container = containerRef.current;
+        if (!container) return;
+        const { width, height } = getMapDimensions();
+        if (!width || !height) return;
+
+        const containerW = container.clientWidth;
+        const containerH = container.clientHeight;
+        if (containerW === 0) return;
+
+        const scaleX = (containerW - 40) / width;
+        const scaleY = (containerH - 40) / height;
+        const fitScale = Math.min(scaleX, scaleY, 5) * 0.9; // 90% fill
+
+        // Apply
+        const startOffset = { 
+            x: (containerW - width * fitScale) / 2, 
+            y: (containerH - height * fitScale) / 2 
+        };
         
-        console.log(`[MapCanvas] Drawn Mode: ${visualStyle} (${width}x${height})`);
+        setScale(fitScale);
+        setOffset(startOffset);
+    };
 
-    }, [mapImage, visualStyle, gridMetadata]);
-
-    // 4. Auto-Center Logic (Runs when dimensions change or Resize occurs)
+    // --- 4. Auto Fit on Load ---
     useEffect(() => {
+        const timer = setInterval(() => {
+             const { width } = getMapDimensions();
+             const container = containerRef.current;
+             if (width > 0 && container && container.clientWidth > 0) {
+                 fitToScreen();
+                 clearInterval(timer);
+             }
+        }, 100);
+        return () => clearInterval(timer);
+    // eslint-disable-next-line
+    }, [mapImage, visualStyle, gridMetadata?.width]); // Re-run if map changes
+
+
+    // --- 5. Event Handlers (Wheel & Drag) ---
+    
+    // Imperative Wheel Handler for { passive: false }
+    useLayoutEffect(() => {
         const container = containerRef.current;
         if (!container) return;
 
-        const handleAutoFit = () => {
-            const width = visualStyle === 'default' ? mapImage?.width : (gridMetadata?.width || 2000);
-            const height = visualStyle === 'default' ? mapImage?.height : (gridMetadata?.height || 1500);
+        const onWheel = (e: WheelEvent) => {
+            e.preventDefault();
 
-            if (!width || !height) return;
-
+            // Calculate Zoom
+            const zoomFactor = 1.1;
+            const delta = -Math.sign(e.deltaY);
+            // Limit Zoom Speed
+            const scaleMul = delta > 0 ? zoomFactor : (1 / zoomFactor);
+            
+            // Current Scale / Offset (Captured via refs or dependency re-bind)
+            const newScaleRaw = scale * scaleMul;
+            
+            // Limit Min/Max Scale
+            const { width: mapW, height: mapH } = getMapDimensions();
             const containerW = container.clientWidth;
-            const containerH = container.clientHeight;
-
-            if (containerW === 0 || containerH === 0) {
-                 // Container not ready yet
-                 return;
-            }
-
-            const scaleX = (containerW - 50 * 2) / width;
-            const scaleY = (containerH - 50 * 2) / height;
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const _unusedMapH = mapH; // Ack lint
             
-            // Use 60% of the calculated fit to leave significant breathing room (User requested ~0.31 scale)
-            const fitScale = Math.min(scaleX, scaleY, 10) * 0.6; 
-            
-            const offsetX = (containerW - width * fitScale) / 2;
-            const offsetY = (containerH - height * fitScale) / 2;
+            // Fix: Strict Min Scale (Fit to Screen)
+            // Do NOT allow zooming out smaller than the container fit (no 0.1 factor)
+            const fitScale = Math.min(containerW / (mapW || 1), 1);
+            const minScale = fitScale; 
 
-            setScale(fitScale);
-            setOffset({ x: offsetX, y: offsetY });
-            console.log(`[MapCanvas] Auto-Centered: Scale ${fitScale.toFixed(3)}, Container: ${containerW}x${containerH}`);
+            // Clamp Scale using stricter minScale
+            const newScale = Math.min(Math.max(newScaleRaw, minScale), 5);
+
+            // Cursor Centered Zoom Math
+            const rect = container.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            // mapX = (mouseX - offset.x) / scale
+            const mapX = (mouseX - offset.x) / scale;
+            const mapY = (mouseY - offset.y) / scale;
+
+            // newOffset.x = mouseX - mapX * newScale
+            const newOffsetX = mouseX - (mapX * newScale);
+            const newOffsetY = mouseY - (mapY * newScale);
+
+            // Apply Clamp
+            const finalOffset = clampOffset({x: newOffsetX, y: newOffsetY}, newScale);
+
+            setScale(newScale);
+            setOffset(finalOffset);
         };
 
-        // Polling to wait for container to have valid dimensions (Fixes 0 size issue on load)
-        const timer = setInterval(() => {
-            if (!container) {
-                return;
-            }
-            const containerW = container.clientWidth;
-            const containerH = container.clientHeight;
-
-            if (containerW > 0 && containerH > 0) {
-                 const width = visualStyle === 'default' ? mapImage?.width : (gridMetadata?.width || 2000);
-                 const height = visualStyle === 'default' ? mapImage?.height : (gridMetadata?.height || 1500);
-                 
-                 if (!width || !height) return;
-
-                 const scaleX = (containerW - 50 * 2) / width;
-                 const scaleY = (containerH - 50 * 2) / height;
-
-                 // User preferred ~0.31. Assuming standard 1080p layout (~1000px wide space):
-                 // 1000 / 2000 = 0.5. So 0.5 * 0.65 = 0.325.
-                 // We'll use 0.8 to be safe but allow it to be larger than 0.15.
-                 // If previous result was 0.15, then scaleX/Y was ~0.25. (container ~500px?).
-                 // Let's try 0.9 factor to fill more space, relying on manual zoom for preference.
-                 const fitScale = Math.min(scaleX, scaleY, 1) * 0.9; 
-                 
-                 const offsetX = (containerW - width * fitScale) / 2;
-                 const offsetY = (containerH - height * fitScale) / 2;
-    
-                 setScale(fitScale);
-                 setOffset({ x: offsetX, y: offsetY });
-                 console.log(`[MapCanvas] Initial Auto-Fit: Scale ${fitScale.toFixed(3)}, Container: ${containerW}x${containerH}`);
-                 
-                 // Clear interval once successfully fitted
-                 clearInterval(timer);
-            }
-        }, 100); // Check every 100ms
-
+        container.addEventListener('wheel', onWheel, { passive: false });
+        
         return () => {
-             clearInterval(timer);
+            container.removeEventListener('wheel', onWheel);
+        };
+    // Added missing dependencies to prevent stale closures
+    }, [scale, offset, mapImage, visualStyle, gridMetadata]);
+
+    
+    // Formatting Pan Handlers
+    const handleMouseDown = (e: MouseEvent) => {
+        setIsDragging(true);
+        setLastMousePos({ x: e.clientX, y: e.clientY });
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+        if (!isDragging) return;
+        
+        const deltaX = e.clientX - lastMousePos.x;
+        const deltaY = e.clientY - lastMousePos.y;
+        
+        const targetOffset = {
+            x: offset.x + deltaX,
+            y: offset.y + deltaY
         };
 
-    }, [mapImage, visualStyle, gridMetadata]);
+        const finalOffset = clampOffset(targetOffset, scale);
+        
+        setOffset(finalOffset);
+        setLastMousePos({ x: e.clientX, y: e.clientY });
+    };
 
-    // 5. Notify Parent
+    const handleMouseUp = () => setIsDragging(false);
+
+
+    // Click Handler (Coordinates)
+    const handleClick = (e: MouseEvent) => {
+        if (isDragging) return; 
+        
+        if (!meta || !mapImage || !onMapClick) return;
+
+        const rect = containerRef.current?.getBoundingClientRect();
+        if(!rect) return;
+
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        const canvasX = (mouseX - offset.x) / scale;
+        const canvasY = (mouseY - offset.y) / scale;
+        
+        // Bounds check
+        if (canvasX < 0 || canvasX > mapImage.width || canvasY < 0 || canvasY > mapImage.height) return;
+
+        const world = pixelToWorld({x: canvasX, y: canvasY}, meta, mapImage.height);
+        onMapClick(world);
+    };
+
+    
+    // --- 6. Notify Parent ---
     useEffect(() => {
-         const width = visualStyle === 'default' ? mapImage?.width : (gridMetadata?.width || 2000);
-         const height = visualStyle === 'default' ? mapImage?.height : (gridMetadata?.height || 1500);
-
+         const { width, height } = getMapDimensions();
          if (width && height && onMapLoad) {
-             // Mock Meta for Abstract
              const metaToPass = meta || {
                  image: 'abstract',
                  resolution: gridMetadata?.resolution || 0.05,
@@ -233,123 +271,98 @@ export function MapCanvas({ mapName, onMapLoad, onMapClick, className, children,
                  free_thresh: 0.5,
                  mode: 'raw' as const
              };
-
-            onMapLoad({
-                meta: metaToPass,
-                width,
-                height
-            });
+            onMapLoad({ meta: metaToPass, width, height });
         }
-    }, [mapImage, meta, onMapLoad, visualStyle, gridMetadata]);
+    }, [mapImage, meta, visualStyle]); // Notify when ready
 
-    // Handlers: Zoom (Wheel)
-    const handleWheel = (e: WheelEvent) => {
-        e.preventDefault(); // Stop page scroll
-        const zoomFactor = 1.1;
-        const delta = -Math.sign(e.deltaY);
-        const newScale = delta > 0 ? scale * zoomFactor : scale / zoomFactor;
-        
-        // Clamp Zoom
-        const clampedScale = Math.min(Math.max(newScale, 0.1), 10);
-        setScale(clampedScale);
-    };
 
-    // Handlers: Pan (Drag)
-    const handleMouseDown = (e: MouseEvent) => {
-        // Only drag if middle mouse or space held? Or simplistic logic:
-        // Let's use left click for Pan if no tool selected (default)
-        setIsDragging(true);
-        setDragStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
-    };
-
-    const handleMouseMove = (e: MouseEvent) => {
-        if (isDragging) {
-            setOffset({
-                x: e.clientX - dragStart.x,
-                y: e.clientY - dragStart.y
-            });
-        }
-    };
-
-    const handleMouseUp = () => setIsDragging(false);
-
-    // Handler: Click (Coordinate Picking)
-    const handleClick = (e: MouseEvent) => {
-        if (isDragging) return; // Did a drag, not a click
-        if (!meta || !canvasRef.current || !onMapClick) return;
-
-        // 1. Get click position relative to Container (Viewport)
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        
-        const viewportX = e.clientX - rect.left;
-        const viewportY = e.clientY - rect.top;
-
-        // 2. Transform Viewport -> Canvas Pixel
-        // Canvas is transformed by: translate(offset.x, offset.y) scale(scale)
-        // inverse: (viewport - offset) / scale
-        const canvasX = (viewportX - offset.x) / scale;
-        const canvasY = (viewportY - offset.y) / scale;
-
-        // check bounds
-        if (canvasX < 0 || canvasX > (mapImage?.width || 0) || canvasY < 0 || canvasY > (mapImage?.height || 0)) {
-            return;
-        }
-
-        // 3. Pixel -> World
-        const worldPos = pixelToWorld({ x: canvasX, y: canvasY }, meta, mapImage!.height);
-        onMapClick(worldPos);
-        
-        console.log(`[MapCanvas] Click: Pixel(${canvasX.toFixed(0)}, ${canvasY.toFixed(0)}) -> World(${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)})`);
-    };
-
-    // Fix: Only block rendering if we are in 'default' mode and actually loading
+    // --- 7. Render ---
     const isLoading = visualStyle === 'default' && (isMetaLoading || isImageLoading);
 
-    if (isLoading) {
-        return <div className="flex items-center justify-center h-full text-accent-cyan animate-pulse gap-2">
-            <Loader2 className="animate-spin" /> Loading Map System...
-        </div>;
-    }
+    // Canvas Rendering
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        const ctx = canvas?.getContext('2d');
+        if (!canvas || !ctx) return;
+
+        const { width, height } = getMapDimensions();
+        canvas.width = width;
+        canvas.height = height;
+
+        // Draw Logic
+        if (visualStyle === 'abstract') {
+            drawAbstractGrid(ctx, width, height, gridMetadata?.resolution || 0.05);
+        } else if (mapImage) {
+            // Background
+            ctx.fillStyle = '#330000';
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(mapImage, 0, 0);
+        }
+
+    }, [mapImage, visualStyle, gridMetadata]); // Re-draw on resource change
 
     return (
         <div 
             ref={containerRef}
-            className={`relative overflow-hidden bg-[#050505] cursor-crosshair select-none ${className}`}
-            onWheel={handleWheel}
+            className={`relative overflow-hidden bg-[#020408] select-none ${className}`}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
             onClick={handleClick}
+            style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
         >
-            {/* The Scalable Map Layer */}
+            {isLoading && (
+                 <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/50 backdrop-blur-sm">
+                    <Loader2 className="w-8 h-8 text-accent-cyan animate-spin" />
+                 </div>
+            )}
+
             <div 
                 style={{
                     transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
                     transformOrigin: '0 0',
-                    transition: isDragging ? 'none' : 'transform 0.1s ease-out'
+                    willChange: 'transform',
+                    backfaceVisibility: 'hidden'
                 }}
             >
-                <canvas ref={canvasRef} className="image-pixelated block" />
+                <canvas ref={canvasRef} className="block" style={{ imageRendering: 'pixelated' }} />
                 
-                {/* Overlay Layer for Children (Routes, Nodes, Aircraft) */}
+                {/* Children Overlay (Graph, Aircraft) */}
                 <div className="absolute inset-0">
                     {children}
                 </div>
             </div>
 
-            {/* HUD / Debug Info */}
-            <div className="absolute bottom-4 right-4 flex flex-col items-end gap-1 pointer-events-none">
-                 <div className="bg-black/80 text-[10px] font-mono text-accent-cyan px-2 py-1 rounded border border-accent-cyan/20">
-                    SCALE: {scale.toFixed(2)}x | OFFSET: {offset.x | 0}, {offset.y | 0}
-                 </div>
-                 {/* DEBUG INFO: Helps user verify map data if screen is black */}
-                 <div className="bg-red-900/80 text-[10px] font-mono text-white px-2 py-1 rounded border border-red-500/50">
-                    DEBUG: {mapImage ? `${mapImage.width}x${mapImage.height}` : 'Loading...'} 
-                    {meta ? ` | RES: ${meta.resolution}` : ''}
-                 </div>
+            {/* Debug HUD */}
+            <div className="absolute bottom-4 right-4 pointer-events-none bg-black/60 text-[10px] text-accent-cyan font-mono px-2 py-1 rounded border border-white/10">
+                ZOOM: {(scale * 100).toFixed(0)}%
+                <span className="mx-2">|</span>
+                POS: {offset.x.toFixed(0)}, {offset.y.toFixed(0)}
             </div>
         </div>
     );
+}
+
+// Helper: Draw Abstract Grid
+function drawAbstractGrid(ctx: CanvasRenderingContext2D, w: number, h: number, res: number) {
+    ctx.clearRect(0, 0, w, h);
+    
+    // Grid logic
+    const gridSizeMajor = 10 / res; 
+    const gridSizeMinor = 1 / res;
+
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+    ctx.beginPath();
+    for (let x=0; x<=w; x+=gridSizeMinor) { ctx.moveTo(x,0); ctx.lineTo(x,h); }
+    for (let y=0; y<=h; y+=gridSizeMinor) { ctx.moveTo(0,y); ctx.lineTo(w,y); }
+    ctx.stroke();
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(0, 255, 255, 0.1)';
+    ctx.beginPath();
+    for (let x=0; x<=w; x+=gridSizeMajor) { ctx.moveTo(x,0); ctx.lineTo(x,h); }
+    for (let y=0; y<=h; y+=gridSizeMajor) { ctx.moveTo(0,y); ctx.lineTo(w,y); }
+    ctx.stroke();
 }

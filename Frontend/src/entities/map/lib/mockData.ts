@@ -9,7 +9,7 @@ export const MOCK_MAP_META: MapMeta = {
     negate: false,
     occupied_thresh: 0.65,
     free_thresh: 0.196,
-    mode: "trinary"
+    mode: "raw"
 };
 
 // Virtual Map Size for Grid Rendering

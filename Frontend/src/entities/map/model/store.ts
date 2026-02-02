@@ -176,6 +176,26 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 
   setAircrafts: (list) => set({ aircrafts: list }),
   setMapMeta: (meta) => set({ mapMeta: meta }),
-  setCorners: (corners) => set({ corners: corners }),
+  setCorners: (corners) => set((state) => {
+    // [Plan B] Fallback: Calculate dimensions from corners if they exist
+    let newWidth = state.mapWidth;
+    let newHeight = state.mapHeight;
+
+    if (corners && corners.TR && corners.TL && corners.BL) {
+        const calculatedWidth = Math.abs(corners.TR.x - corners.TL.x);
+        const calculatedHeight = Math.abs(corners.TL.y - corners.BL.y);
+        
+        if (!isNaN(calculatedWidth) && calculatedWidth > 0) newWidth = calculatedWidth;
+        if (!isNaN(calculatedHeight) && calculatedHeight > 0) newHeight = calculatedHeight;
+        
+        console.log(`[Store] Calculated Map Size from Corners: ${newWidth}x${newHeight}`);
+    }
+
+    return { 
+        corners: corners,
+        mapWidth: newWidth,
+        mapHeight: newHeight
+    };
+  }),
   setMapDimensions: (width, height) => set({ mapWidth: width, mapHeight: height }),
 }));

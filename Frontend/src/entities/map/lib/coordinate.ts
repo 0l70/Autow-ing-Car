@@ -13,12 +13,20 @@ import { MapMeta, PixelCoord, WorldCoord } from "../model/types";
 export function worldToPixel(world: WorldCoord, meta: MapMeta, imageHeight: number): PixelCoord {
     const originX = meta.origin[0];
     const originY = meta.origin[1];
-    const resolution = meta.resolution;
+    
+    // Fix: If RAW mode (Abstract Grid), use 1:1 mapping (ignore resolution scaling)
+    const isRaw = meta.mode === 'raw' || (meta as any).mode === 'abstract';
+    const effectiveRes = isRaw ? 1.0 : meta.resolution;
 
     // 1. Calculate grid coordinates (bottom-left origin)
-    // grid_x = (world_x - origin_x) / resolution
-    const mapX = (world.x - originX) / resolution;
-    const mapY = (world.y - originY) / resolution;
+    const mapX = (world.x - originX) / effectiveRes;
+    const mapY = (world.y - originY) / effectiveRes;
+
+    // Fix: Raw mode usually means "Screen Coordinates" (Top-Left Origin) already.
+    // If we invert Y, we might be flipping it unnecessarily or misaligning it.
+    if (isRaw) {
+        return { x: mapX, y: mapY };
+    }
 
     // 2. Invert Y for Canvas (top-left origin)
     return {

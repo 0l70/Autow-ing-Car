@@ -14,7 +14,8 @@ export function useMapLoader() {
         // Only load mock graph if no real map data is present yet
         // In a real app, this might fetch from an API
         if (!corners) {
-            loadGraph(MOCK_NODES, MOCK_EDGES);
+            // [Fix] Do NOT load static mock data. Wait for backend WebSocket data.
+            // loadGraph(MOCK_NODES, MOCK_EDGES);
         }
     }, [loadGraph, corners]);
 }
