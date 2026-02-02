@@ -41,6 +41,9 @@ public class MissionWebSocketDtos {
         private String currentGate;
         private String activeRunway;
         private List<PathOptionDto> pathOptions;
+
+        // [NEW] Timestamp for Notification
+        private Long timestamp;
     }
 
     // [관제사 -> 서버] 승인/반려 결정

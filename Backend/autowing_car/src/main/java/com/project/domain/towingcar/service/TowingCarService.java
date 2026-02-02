@@ -15,6 +15,8 @@ import com.project.domain.mission.dto.MissionWebSocketDtos.MissionResponseDto;
 import com.project.domain.mission.entity.Mission;
 import com.project.domain.mission.service.MissionDBAdaptor;
 import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.*;
+import com.project.domain.mission.dto.MissionWebSocketDtos.AdminAlertDto;
+import com.project.domain.mission.dto.MissionWebSocketDtos.NotificationType; // [NEW]
 import com.project.domain.towingcar.entity.DrivingLog;
 import com.project.domain.towingcar.entity.TowingCar;
 import com.project.domain.user.entity.User;
@@ -277,12 +279,12 @@ public class TowingCarService {
     public void emergencyStop(String pilotId, CarEmergencyRequestDto request) {
         log.info("[WS] EMERGENCY STOP: Pilot={}, Car={}", pilotId, request.getCarId());
 
-        // ✅ 알림 (Helper)
-        notifyEmergencyStop(pilotId);
-
-        // ✅ MQTT (커밋 후)
+        // 1. MQTT (커밋 후 전송 - 즉시 정지)
         final String carCode = request.getCarId();
         sendMqttAfterCommit(() -> towingCarMqttService.emergencyStop(carCode));
+
+        // 2. 알림 (Helper) - 관제사에게 알림 추가
+        notifyEmergencyStop(pilotId, request.getCarId());
     }
 
     // =========================================================================
@@ -410,11 +412,24 @@ public class TowingCarService {
     /**
      * 비상 정지 결과 알림
      */
-    private void notifyEmergencyStop(String pilotId) {
+    private void notifyEmergencyStop(String pilotId, String carCode) {
+        // 1. Pilot에게 알림
         towingCarWebSocketService.notifyPilotResult(pilotId,
                 MissionResponseDto.builder()
                         .status("SUCCESS")
                         .message("EMERGENCY STOP EXECUTED")
                         .build());
+
+        // 2. 관제사(Admin)에게 알림
+        // AdminAlertDto 생성
+        AdminAlertDto alert = AdminAlertDto.builder()
+                .type(NotificationType.EMERGENCY_STOP) // [FIX] Use Enum
+                .message("Pilot triggered EMERGENCY STOP for Car " + carCode)
+                .severity("CRITICAL")
+                .flightNumber("N/A") // 필요 시 Flight 조회하여 채움
+                .timestamp(System.currentTimeMillis())
+                .build();
+
+        towingCarWebSocketService.notifyAdminEmergency(alert);
     }
 }
