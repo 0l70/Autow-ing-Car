@@ -22,7 +22,7 @@ spring:
       enabled: true # http://localhost:8080/h2-console 접속 가능
   mqtt:
     broker:
-      url: tcp://13.125.137.99:8183
+      url: ssl://autowingcar.o-r.kr:8883
 logging:
   level:
     org.springframework.web: DEBUG
