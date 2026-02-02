@@ -138,7 +138,8 @@ public class MockTrafficScheduler {
         payload.put("v", v);
         payload.put("battery", 80 + (int) (Math.sin(time) * 10));
         payload.put("mode", modeToSend); // Injected Status
-        payload.put("status", "job"); // Display requirement
+        payload.put("mode", modeToSend); // Injected Status
+        payload.put("status", modeToSend); // [FIX] Use valid Enum string instead of "job"
         payload.put("timestamp", LocalDateTime.now().toString());
 
         mqttService.publish(MqttTopics.SUB_MONITORING, payload);

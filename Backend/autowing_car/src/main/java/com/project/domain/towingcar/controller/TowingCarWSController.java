@@ -12,7 +12,9 @@ import com.project.domain.mission.service.MissionService;
 import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.CarConnectRequestDto;
 import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.CarDisconnectRequestDto;
 import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.CarDispatchRequestDto;
+import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.CarDispatchRequestDto;
 import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.CarMoveRequestDto;
+import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.CarEmergencyRequestDto; // [NEW]
 import com.project.domain.towingcar.service.TowingCarService;
 
 import io.github.springwolf.core.asyncapi.annotations.AsyncListener;
@@ -71,6 +73,13 @@ public class TowingCarWSController {
         } else {
             log.warn("[WS] Unknown Move Type: {}", request.getType());
         }
+    }
+
+    @MessageMapping("/car/emergency")
+    @AsyncPublisher(operation = @AsyncOperation(channelName = "/app/car/emergency", description = "기장이 긴급 정지를 요청합니다. 엣지에 즉시 정지 명령을 보내고 관제사에게 알림을 전송합니다."))
+    public void emergencyStop(@Payload CarEmergencyRequestDto request, Principal principal) {
+        log.info("[WS] EMERGENCY STOP Request: Pilot={}, Car={}", principal.getName(), request.getCarId());
+        towingCarService.emergencyStop(principal.getName(), request);
     }
 
     // ========== Server → Client (SUBSCRIBE) - 문서화용 ==========

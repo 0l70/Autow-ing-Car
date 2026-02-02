@@ -91,6 +91,7 @@ export function ApprovalQueue() {
         return;
 
       const data = msg.body;
+      console.log("[ApprovalQueue] 📨 Received Message:", msg.destination, data); // [DEBUG]
       // Basic structure check
       if (data.flightId || data.type) {
         const newAlert: AdminAlertDto = {

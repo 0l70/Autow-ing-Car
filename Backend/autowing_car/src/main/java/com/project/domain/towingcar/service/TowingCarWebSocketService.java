@@ -37,4 +37,11 @@ public class TowingCarWebSocketService {
         log.info("[WS] Sending Result to Pilot: {}", pilotId);
         webSocketService.sendToUser(pilotId, WebSocketTopics.QUEUE_REPLY, result);
     }
+
+    // 5. [NEW] 관제사에게 긴급 알림 전송 (Topic: /topic/controller/requests)
+    public void notifyAdminEmergency(Object alertDto) {
+        log.info("[WS] Sending Emergency Alert to Admin: {}", alertDto);
+        // Topic: /topic/controller/requests
+        webSocketService.broadcast("/topic/controller/requests", alertDto);
+    }
 }
