@@ -95,6 +95,16 @@ export function LoginPage() {
                         >
                             Mock Login (ATC)
                         </Button>
+                        <Button 
+                            type="button"
+                            variant="outline"
+                            className="w-full border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800 mt-2"
+                            onClick={() => {
+                                login('mock-access-token-pilot', 'mock-socket-token-pilot', 'PILOT', 'pilot@atc.com');
+                            }}
+                        >
+                            Mock Login (PILOT)
+                        </Button>
                     </div>
                 </CardContent>
             </Card>

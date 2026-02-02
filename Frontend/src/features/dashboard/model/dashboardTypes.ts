@@ -11,9 +11,9 @@ export interface FlightInfo {
     aircraftRegistrationNum: string; // 항공기 등록 번호 (예: HL7755)
     aircraftTypeCode: string;        // 항공기 기종 (예: B777)
     destination: string;
-    departureTime?: string | undefined;
-    gateNode?: string | undefined;
-    assignedCarId?: string | undefined;
+    departureTime?: string | null | undefined;
+    gateNode?: string | null | undefined;
+    assignedCarId?: string | null | undefined;
 }
 
 export const FlightInfoSchema = z.object({
@@ -23,7 +23,7 @@ export const FlightInfoSchema = z.object({
     aircraftRegistrationNum: z.string(),
     aircraftTypeCode: z.string(),
     destination: z.string(),
-    departureTime: z.string().optional(),
-    gateNode: z.string().optional(),
-    assignedCarId: z.string().optional()
+    departureTime: z.string().nullish(),
+    gateNode: z.string().nullish(),
+    assignedCarId: z.string().nullish()
 });

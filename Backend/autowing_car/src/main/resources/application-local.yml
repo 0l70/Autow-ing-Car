@@ -2,6 +2,9 @@ spring:
   config:
     activate:
       on-profile: local
+
+  # [Local Dev] Mock MQTT to avoid conflicts with shared broker
+
   datasource:
     url: jdbc:h2:mem:ats_db;MODE=PostgreSQL # Postgres 모드로 실행 (호환성 UP)
     username: sa
@@ -30,6 +33,9 @@ logging:
 jwt:
   secret: "c2lsdmVybGlnaHQtdGVzdC1zZWNyZXQtbmVvbi1sYXNlci1hdGMtY29udHJvbC1jZW50ZXItMTIzNDU2Nzg=" # Base64 encoded dummy key (at least 256 bits)
   expiration: 86400000 # 24hrs
+app:
+  mqtt:
+    mock: true
 
 springwolf:
   enabled: true

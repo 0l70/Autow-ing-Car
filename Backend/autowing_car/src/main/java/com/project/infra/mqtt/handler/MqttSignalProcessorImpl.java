@@ -38,7 +38,7 @@ public class MqttSignalProcessorImpl implements MqttSignalProcessor {
                     towingCarService.processCarMonitoring(carCode, carData.getPayload());
 
                     // B. 웹소켓 전송 (Targeted: Pilot + ATCs)
-                    carWebSocketService.broadcastCarStatus(carCode, payload);
+                    carWebSocketService.broadcastCarStatus(carCode, carData.getPayload());
                 }
             } else if (baseMsg instanceof MqttIncomingMessage.MapData mapData) {
                 log.info("Map Info Received: Broadcasting...");

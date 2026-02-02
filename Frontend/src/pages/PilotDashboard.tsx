@@ -10,45 +10,52 @@ import { TowingCarInfo } from "@/features/pilot-actions/ui/TowingCarInfo";
 import { PilotSafetyLock } from "@/features/pilot-actions/ui/PilotSafetyLock";
 import { PilotTimeline } from "@/features/pilot-actions/ui/PilotTimeline";
 import { PilotConfirmModal } from "@/features/pilot-actions/ui/PilotConfirmModal"; // [NEW]
+import { PilotWelcomeModal } from "@/features/pilot-actions/ui/PilotWelcomeModal"; // [NEW]
 import { CameraWidget } from "@/widgets/camera-panel/ui/CameraWidget";
 import { PilotMapWidget } from "@/widgets/pilot-map/ui/PilotMapWidget"; 
-
-// --- Map Integration (Removed direct imports) ---
-import { Aircraft } from "@/entities/map/model/types";
-
+import { useGraphStore } from "@/entities/map/model/store"; 
 
 export function PilotDashboard() {
     // 1. Logic Binding (The "Brain")
-    const CAR_ID = 'CAR_102';
-    const { state, controls } = usePilotController(CAR_ID);
+    const { state, controls } = usePilotController(); // Dynamic Car ID
 
-    // 2. Map State (Simple Selection)
-    const [selectedAircraft, setSelectedAircraft] = useState<Aircraft | null>(null);
+    // 2. Data Integration (Live Store)
+    const { aircrafts } = useGraphStore();
+    
+    // Find MY assigned car from the store data
+    // [FILTER] Only show if car is actively dispatched or connected (not IDLE/UNLOADING)
+    const activeCarId = state.flightInfo?.assignedCarId;
+    const assignedAircraft = activeCarId ? aircrafts.find(a => a.id === activeCarId) || null : null;
+    const myAircraft = (assignedAircraft && 
+                        assignedAircraft.status !== 'IDLE' && 
+                        assignedAircraft.status !== 'UNLOADING') 
+                        ? assignedAircraft 
+                        : null;
 
     return (
-            <div className="h-full w-full bg-black/50 p-4 text-slate-200 font-mono overflow-hidden flex flex-col gap-4 relative">
+            <div className="h-full w-full bg-black/50 p-4 text-slate-200 font-mono overflow-hidden flex flex-col gap-[2%] relative">
                 
-                {/* --- TOP ROW (Visuals) --- */}
-                <div className="grid grid-cols-12 gap-4 h-[60%]">
+                {/* --- TOP ROW (Visuals: ~60%) --- */}
+                <div className="grid grid-cols-12 gap-4 h-[58%] min-h-0">
                     
                     {/* T1: Camera Widget */}
                     <CameraWidget 
-                        className="col-span-5" 
-                        carId={CAR_ID} 
+                        className="col-span-5 h-full overflow-hidden" 
+                        carId={state.flightInfo?.assignedCarId || ''} 
                     />
 
                     {/* T2: Digital Twin Map Widget */}
                     <PilotMapWidget 
-                        className="col-span-5"
-                        onAircraftSelect={setSelectedAircraft}
+                        className="col-span-5 h-full overflow-hidden"
+                        // Selection removed: Map is for visualization only now
                     />
 
                     {/* T3: Logs */}
                     <PilotTimeline logs={state.logs} />
                 </div>
 
-                {/* --- BOTTOM ROW (Controls) --- */}
-                <div className="grid grid-cols-12 gap-4 h-[40%]">
+                {/* --- BOTTOM ROW (Controls: ~40%) --- */}
+                <div className="grid grid-cols-12 gap-4 h-[38%] min-h-0 shrink-0">
                     
                     {/* B1: Command Actions */}
                     <PilotCommandBar 
@@ -59,13 +66,12 @@ export function PilotDashboard() {
                     />
 
                     {/* B2: Status */}
-                    <PilotStatusPanel aircraft={selectedAircraft} /> 
-                    {/* Note: Ideally 'selectedAircraft' should be MY aircraft. 
-                        For now, linking to map selection is okay, but Phase 2 should lock it to CAR_102 
-                    */}
+                    <PilotStatusPanel 
+                        aircraft={myAircraft} 
+                    /> 
 
                     {/* B3: Navigation Info */}
-                    <TowingCarInfo moveState={state.move} aircraft={selectedAircraft} />
+                    <TowingCarInfo moveState={state.move} aircraft={myAircraft} />
 
                     {/* B4: Safety */}
                     <PilotSafetyLock 
@@ -81,6 +87,13 @@ export function PilotDashboard() {
                     action={state.confirmModal.action}
                     onConfirm={controls.handleConfirm}
                     onCancel={controls.closeConfirmModal}
+                />
+
+                {/* --- Welcome Modal (Flight Info) --- */}
+                <PilotWelcomeModal
+                    isOpen={state.welcomeModal.open}
+                    data={state.flightInfo}
+                    onClose={controls.closeWelcomeModal}
                 />
 
             </div>

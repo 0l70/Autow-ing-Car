@@ -8,7 +8,7 @@ const INITIAL_AIRCRAFT: Aircraft[] = [
         callsign: "TC01",
         type: "TUG",
         position: { x: 50, y: 37.5, r: 0 }, 
-        status: "MOVING",
+        status: 'MOVING_TO_LOAD',
         battery: 85,
         speed: 1.2,
         currentMission: "DOCKING_A",
