@@ -3,11 +3,15 @@ import { Aircraft } from "@/entities/map/model/types";
 import { useGraphStore } from "@/entities/map/model/store";
 
 interface MissionInspectorProps {
-    selectedAircraft: Aircraft | null;
+    selectedAircraftId: string | null;
 }
 
-export function MissionInspector({ selectedAircraft }: MissionInspectorProps) {
+export function MissionInspector({ selectedAircraftId }: MissionInspectorProps) {
     const activeMissions = useGraphStore(state => state.activeMissions);
+    // [Fix] Subscribe to live store updates finding the aircraft by ID
+    const selectedAircraft = useGraphStore(state => 
+        state.aircrafts.find(a => a.id === selectedAircraftId) ?? null
+    );
 
     if (!selectedAircraft) {
         return (

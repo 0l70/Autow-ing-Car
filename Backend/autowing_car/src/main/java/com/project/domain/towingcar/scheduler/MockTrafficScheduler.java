@@ -162,8 +162,8 @@ public class MockTrafficScheduler {
 
         Map<String, Object> mockMapPayload = new HashMap<>();
         mockMapPayload.put("map_id", "MOCK_MAP_01");
-        mockMapPayload.put("width", 2000);
-        mockMapPayload.put("height", 1500);
+        // mockMapPayload.put("width", 2000); // [Test] Simulate Missing Width
+        // mockMapPayload.put("height", 1500); // [Test] Simulate Missing Height
 
         List<Map<String, Object>> nodes = new ArrayList<>();
         // 1. RUNWAY (Central Horizontal)

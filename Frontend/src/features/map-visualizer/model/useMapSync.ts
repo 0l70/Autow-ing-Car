@@ -7,7 +7,7 @@ import { MapInfoPayloadSchema } from '@/shared/realtime/api/map.schema';
 import { useAuthStore } from '@/features/auth/model/useAuthStore';
 
 export function useMapSync(enabled: boolean = true) {
-    const { loadGraph, setCorners } = useGraphStore();
+    const { loadGraph, setCorners, setMapDimensions } = useGraphStore();
     const { socketToken } = useAuthStore();
 
     // 1. Try to consume Context
@@ -60,30 +60,28 @@ export function useMapSync(enabled: boolean = true) {
 
         const data = result.data;
         
-        // Update Corners & Dimensions
+        // [New] Update Map Dimensions from Payload
+        if (data.width && data.height) {
+             setMapDimensions(data.width, data.height);
+             // console.log(`[MapSync] Synced Map Size: ${data.width}x${data.height}`);
+        }
+
+        // Update Corners
         if (data.corners) {
             setCorners(data.corners);
-
-            // const tl = data.corners.TL;
-            // const tr = data.corners.TR;
-            // const bl = data.corners.BL;
-
-            // const widthM = Math.sqrt(Math.pow(tr.x - tl.x, 2) + Math.pow(tr.y - tl.y, 2));
-            // const heightM = Math.sqrt(Math.pow(bl.x - tl.x, 2) + Math.pow(bl.y - tl.y, 2));
-            
-            // PPU (Pixels Per Unit) for MapCanvas
-            // const PPU = 20; 
-            // const wPx = Math.ceil(widthM * PPU);
-            // const hPx = Math.ceil(heightM * PPU);
-
-            // console.log(`[MapSync] Dimensions: ${widthM.toFixed(2)}m x ${heightM.toFixed(2)}m -> ${wPx}x${hPx}px`);
         }
 
         // Update Graph
-        // console.log(`[MapSync] Updating Graph: ${data.nodes.length} nodes, ${data.edges?.length || 0} edges`);
-        loadGraph(data.nodes as any, (data.edges || []) as any);
+        // [Fix] Adapter Pattern: Map "Wire Protocol" (from, to) to "Store Protocol" (fromId, toId)
+        const adaptedEdges = (data.edges || []).map((e: any) => ({
+            ...e,
+            fromId: e.from,
+            toId: e.to
+        }));
+
+        loadGraph(data.nodes as any, adaptedEdges as any);
         
-    }, [loadGraph, setCorners]);
+    }, [loadGraph, setCorners, setMapDimensions]);
 
     // 7. Subscribe to Messages
     useEffect(() => {
