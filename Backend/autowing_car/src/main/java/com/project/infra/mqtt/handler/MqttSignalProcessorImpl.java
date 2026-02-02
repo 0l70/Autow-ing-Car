@@ -7,8 +7,6 @@ import com.project.domain.towingcar.service.TowingCarWebSocketService;
 import com.project.infra.mqtt.config.MqttIncomingMessage;
 import com.project.infra.mqtt.handler.parser.MqttIncomingMessageParser;
 import com.project.domain.map.service.MapWebSocketService;
-import com.project.domain.towingcar.service.TowingCarWebSocketService;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 

@@ -40,6 +40,8 @@ export const MapCornersSchema = z.object({
  */
 export const MapInfoPayloadSchema = z.object({
     map_id: z.string(),
+    width: z.number().optional(),
+    height: z.number().optional(),
     corners: MapCornersSchema,
     nodes: z.array(MapNodeSchema),
     edges: z.array(MapEdgeSchema).optional().default([]),

@@ -23,7 +23,10 @@ public class StompWebSocketService implements WebSocketService {
 
     @Override
     public void sendToUser(String username, String destination, Object payload) {
+        log.info("🔔 [WebSocket] Sending to User: username={}, destination={}, payload={}",
+                username, destination, payload);
         messagingTemplate.convertAndSendToUser(username, destination, payload);
+        log.info("✅ [WebSocket] Message sent to /user/{}/{}", username, destination);
     }
 
     @Override

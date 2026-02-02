@@ -17,7 +17,7 @@ export function ControllerPage() {
     const { mapWidth: storeMapWidth, mapHeight: storeMapHeight } = useGraphStore();
     const [mapMeta, setMapMeta] = useState<MapMeta | null>(null);
     const [mapHeight, setMapHeight] = useState(0);
-    const [selectedAircraft, setSelectedAircraft] = useState<Aircraft | null>(null);
+    const [selectedAircraftId, setSelectedAircraftId] = useState<string | null>(null);
     
     // --- DATA SOURCE CONTROL ---
     const USE_REAL_DATA = true;
@@ -48,7 +48,7 @@ export function ControllerPage() {
                     <ActivityTimeline />
                 </>
             }
-            rightPanel={<MissionInspector selectedAircraft={selectedAircraft} />}
+            rightPanel={<MissionInspector selectedAircraftId={selectedAircraftId} />}
         >
             <div className="absolute inset-0 flex items-center justify-center p-8">
                 {/* Map Container */}
@@ -57,13 +57,35 @@ export function ControllerPage() {
                     {/* Map Legend */}
                     <div className="absolute top-4 left-4 p-3 bg-black/80 rounded-lg border border-white/10 text-xs shadow-lg backdrop-blur z-20 pointer-events-none">
                         <div className="text-gray-400 font-bold mb-2 uppercase tracking-wider text-[10px]">Map Legend</div>
+                        
+                        {/* Routes */}
                         <div className="flex items-center gap-2 mb-1">
                             <span className="w-6 h-0.5 bg-accent-orange shadow-[0_0_5px_rgba(255,120,0,1)]"></span>
                             <span className="text-white font-mono">Confirmed Route</span>
                         </div>
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-center gap-2 mb-2">
                             <span className="w-6 h-0.5 bg-accent-cyan/50 dashed border-b border-dashed border-accent-cyan"></span>
                             <span className="text-gray-400 font-mono">Candidate Route</span>
+                        </div>
+
+                        {/* Nodes */}
+                        <div className="space-y-1.5 pt-2 border-t border-white/10">
+                            <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-sm bg-blue-500 border border-blue-300 shadow-[0_0_5px_rgba(59,130,246,0.8)]"></span>
+                                <span className="text-gray-300 font-mono text-[10px]">RUNWAY</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-full bg-green-500 border border-green-300 shadow-[0_0_5px_rgba(34,197,94,0.8)]"></span>
+                                <span className="text-gray-300 font-mono text-[10px]">GATE (Stand)</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-full bg-yellow-500 border border-yellow-300 shadow-[0_0_5px_rgba(234,179,8,0.8)]"></span>
+                                <span className="text-gray-300 font-mono text-[10px]">CHARGER</span>
+                            </div>
+                             <div className="flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-full bg-gray-400 border border-gray-300"></span>
+                                <span className="text-gray-400 font-mono text-[10px]">INTERSECTION</span>
+                            </div>
                         </div>
                     </div>
 
@@ -86,7 +108,7 @@ export function ControllerPage() {
                             mapHeight={storeMapHeight || MOCK_MAP_SIZE.height}
                             onAircraftClick={(ac) => {
                                 console.log("Selected Aircraft:", ac.callsign);
-                                setSelectedAircraft(ac);
+                                setSelectedAircraftId(ac.id);
                             }}
                         />
                     </MapCanvas>
