@@ -1,30 +1,36 @@
 import { useEffect, useRef, useState, useLayoutEffect, type MouseEvent } from "react";
-import { useQuery } from "@tanstack/react-query";
-import yaml from "js-yaml";
 import { Loader2 } from "lucide-react";
 import { type MapMeta, type WorldCoord } from "@/entities/map/model/types";
-import { MapMetaSchema } from "@/entities/map/model/schema";
-import { loadPGM } from "@/entities/map/lib/pgmParser";
 import { pixelToWorld } from "@/entities/map/lib/coordinate";
 
-// --- Types ---
-interface MapInfo {
-    meta: MapMeta;
-    width: number;
-    height: number;
-}
-
 interface MapCanvasProps {
-    mapName: string; 
-    onMapLoad?: (info: MapInfo) => void;
-    onMapClick?: (worldPos: WorldCoord) => void;
-    className?: string;
-    children?: React.ReactNode;
-    visualStyle?: 'default' | 'abstract';
-    gridMetadata?: { width: number; height: number; resolution: number; }; 
+    // Data (Optional: if not provided, just renders grid)
+    mapImage: CanvasImageSource | null;
+    meta: MapMeta | null;
+    
+    // Config
+    visualStyle?: 'default' | 'abstract' | undefined;
+    gridMetadata?: { width: number; height: number; resolution: number; } | undefined; 
+    
+    // Viewport Control (Optional)
+    initialViewBox?: { x: number; y: number; width: number; height: number; } | undefined;
+    
+    // Events
+    onMapLoad?: ((info: { width: number; height: number }) => void) | undefined;
+    onMapClick?: ((worldPos: WorldCoord) => void) | undefined;
+    
+    className?: string | undefined;
+    children?: React.ReactNode | undefined;
 }
 
-export function MapCanvas({ mapName, onMapLoad, onMapClick, className, children, visualStyle = 'default', gridMetadata }: MapCanvasProps) {
+/**
+ * 컴포넌트: 맵 캔버스 (공통)
+ * 데이터 로딩 로직을 제거하고, 순수하게 렌더링 및 뷰포트 제어만 담당합니다.
+ */
+export function MapCanvas({ 
+    mapImage, meta, visualStyle = 'default', gridMetadata, 
+    initialViewBox, onMapLoad, onMapClick, className, children 
+}: MapCanvasProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     
@@ -32,44 +38,41 @@ export function MapCanvas({ mapName, onMapLoad, onMapClick, className, children,
     const [scale, setScale] = useState(1);
     const [offset, setOffset] = useState({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
-    const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 }); // for drag delta
+    const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
 
-    // --- 1. Data Fetching ---
-    
-    // Fetch Meta
-    const { data: meta, isLoading: isMetaLoading } = useQuery({
-        queryKey: ['map', mapName, 'meta'],
-        queryFn: async () => {
-             if (visualStyle === 'abstract') return null;
-             const res = await fetch(`/maps/${mapName}.yaml`);
-             const text = await res.text();
-             const parsed = yaml.load(text);
-             return MapMetaSchema.parse(parsed); 
-        },
-        enabled: visualStyle === 'default'
-    });
+    // --- Helper: Dimensions ---
+    const getSourceDimensions = (source: CanvasImageSource | null) => {
+        if (!source) return { width: 0, height: 0 };
+        
+        // 1. VideoFrame (Standard)
+        if ('displayWidth' in source) {
+            return { width: source.displayWidth, height: source.displayHeight };
+        }
+        
+        // 2. HTMLVideoElement
+        if ('videoWidth' in source) {
+            return { width: source.videoWidth, height: source.videoHeight };
+        }
+        
+        // 3. HTMLImageElement, ImageBitmap, HTMLCanvasElement, OffscreenCanvas
+        if ('width' in source && 'height' in source) {
+            // SVGImageElement의 경우 width가 object(SVGAnimatedLength)일 수 있음. 이를 숫자로 변환.
+            const w = typeof source.width === 'number' ? source.width : source.width.baseVal.value;
+            const h = typeof source.height === 'number' ? source.height : source.height.baseVal.value;
+            return { width: w, height: h };
+        }
 
-    // Fetch Image
-    const { data: mapImage, isLoading: isImageLoading } = useQuery({
-        queryKey: ['map', mapName, 'image', visualStyle],
-        queryFn: async () => {
-            if (visualStyle === 'abstract') return null;
-            if (!meta) return null;
-            return loadPGM(`/maps/${meta.image}`);
-        },
-        enabled: visualStyle === 'default' && !!meta
-    });
+        return { width: 0, height: 0 };
+    };
 
-    // --- 2. Helper Logic (Dimensions) ---
     const getMapDimensions = () => {
         if (visualStyle === 'abstract') {
             return { width: gridMetadata?.width || 2000, height: gridMetadata?.height || 1500 };
         }
-        return { width: mapImage?.width || 0, height: mapImage?.height || 0 };
+        return getSourceDimensions(mapImage);
     };
 
-    // --- 3. Clamp & Fit Logic ---
-    
+    // --- Helper: Clamp & Fit ---
     const clampOffset = (targetOffset: {x: number, y: number}, targetScale: number) => {
         const container = containerRef.current;
         if (!container) return targetOffset;
@@ -86,23 +89,20 @@ export function MapCanvas({ mapName, onMapLoad, onMapClick, className, children,
         let newX = targetOffset.x;
         let newY = targetOffset.y;
 
-        // X Axis: Center if smaller, Clamp if larger
+        // X Axis
         if (scaledMapW <= containerW) {
-             newX = (containerW - scaledMapW) / 2;
+            newX = (containerW - scaledMapW) / 2;
         } else {
-             // range: [containerW - scaledMapW, 0]
-             const minX = containerW - scaledMapW;
-             const maxX = 0;
-             newX = Math.min(Math.max(newX, minX), maxX);
+            const minX = containerW - scaledMapW;
+            newX = Math.min(Math.max(newX, minX), 0);
         }
 
         // Y Axis
         if (scaledMapH <= containerH) {
-             newY = (containerH - scaledMapH) / 2;
+            newY = (containerH - scaledMapH) / 2;
         } else {
-             const minY = containerH - scaledMapH;
-             const maxY = 0;
-             newY = Math.min(Math.max(newY, minY), maxY);
+            const minY = containerH - scaledMapH;
+            newY = Math.min(Math.max(newY, minY), 0);
         }
 
         return { x: newX, y: newY };
@@ -118,11 +118,38 @@ export function MapCanvas({ mapName, onMapLoad, onMapClick, className, children,
         const containerH = container.clientHeight;
         if (containerW === 0) return;
 
+        // 1. 초기 뷰박스가 있으면 그것을 기준으로 맞춤
+        if (initialViewBox) {
+            // ViewBox Width/Height를 화면에 맞춤
+            const scaleX = containerW / initialViewBox.width;
+            const scaleY = containerH / initialViewBox.height;
+            const fitScale = Math.min(scaleX, scaleY); // 꽉 차게 하려면 max, 다 보이게 하려면 min
+
+            // Offset 계산: 뷰박스의 시작점(x,y)이 화면 (0,0)에 오도록 하고 스케일 적용
+            // Target: (0,0) of container should map to (ivb.x * scale, ivb.y * scale) relative to map origin?
+            // No.
+            // Map Origin (0,0) is drawing at `offset`.
+            // We want `initialViewBox.x` to be at Container(0).
+            // ContainerX = OffsetX + MapX * Scale
+            // 0 = OffsetX + ivb.x * Scale => OffsetX = -ivb.x * Scale
+            
+            // Center the ViewBox in Container if Aspect Ratio differs
+            const centeredOffsetX = (containerW - initialViewBox.width * fitScale) / 2;
+            const centeredOffsetY = (containerH - initialViewBox.height * fitScale) / 2;
+
+            setScale(fitScale);
+            setOffset({
+                x: -initialViewBox.x * fitScale + centeredOffsetX,
+                y: -initialViewBox.y * fitScale + centeredOffsetY
+            });
+            return;
+        }
+
+        // 2. 없으면 전체 맵 맞춤 (기존 로직)
         const scaleX = (containerW - 40) / width;
         const scaleY = (containerH - 40) / height;
-        const fitScale = Math.min(scaleX, scaleY, 5) * 0.9; // 90% fill
+        const fitScale = Math.min(scaleX, scaleY, 5) * 0.9; 
 
-        // Apply
         const startOffset = { 
             x: (containerW - width * fitScale) / 2, 
             y: (containerH - height * fitScale) / 2 
@@ -132,84 +159,64 @@ export function MapCanvas({ mapName, onMapLoad, onMapClick, className, children,
         setOffset(startOffset);
     };
 
-    // --- 4. Auto Fit on Load ---
+    // --- Init Effect ---
     useEffect(() => {
-        const timer = setInterval(() => {
-             const { width } = getMapDimensions();
-             const container = containerRef.current;
-             if (width > 0 && container && container.clientWidth > 0) {
-                 fitToScreen();
-                 clearInterval(timer);
-             }
-        }, 100);
-        return () => clearInterval(timer);
+        const { width, height } = getMapDimensions();
+        const container = containerRef.current;
+        
+        // 데이터 로드 완료 확인
+        if (width > 0 && container && container.clientWidth > 0) {
+            // 약간의 지연 후 핏 (레이아웃 안정화)
+            const timer = setTimeout(() => {
+                fitToScreen();
+                if (onMapLoad) onMapLoad({ width, height });
+            }, 50);
+            return () => clearTimeout(timer);
+        }
     // eslint-disable-next-line
-    }, [mapImage, visualStyle, gridMetadata?.width]); // Re-run if map changes
+    }, [mapImage, visualStyle, gridMetadata?.width, initialViewBox]); // 의존성 추가
 
-
-    // --- 5. Event Handlers (Wheel & Drag) ---
-    
-    // Imperative Wheel Handler for { passive: false }
+    // --- Event Handlers ---
     useLayoutEffect(() => {
         const container = containerRef.current;
         if (!container) return;
 
         const onWheel = (e: WheelEvent) => {
             e.preventDefault();
-
-            // Calculate Zoom
             const zoomFactor = 1.1;
             const delta = -Math.sign(e.deltaY);
-            // Limit Zoom Speed
             const scaleMul = delta > 0 ? zoomFactor : (1 / zoomFactor);
-            
-            // Current Scale / Offset (Captured via refs or dependency re-bind)
             const newScaleRaw = scale * scaleMul;
             
-            // Limit Min/Max Scale
-            const { width: mapW, height: mapH } = getMapDimensions();
+            // Min Scale: 컨테이너보다 작아지지 않게
+            const { width: mapW } = getMapDimensions();
             const containerW = container.clientWidth;
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            const _unusedMapH = mapH; // Ack lint
+            const minScale = Math.min(containerW / (mapW || 1), 1);
             
-            // Fix: Strict Min Scale (Fit to Screen)
-            // Do NOT allow zooming out smaller than the container fit (no 0.1 factor)
-            const fitScale = Math.min(containerW / (mapW || 1), 1);
-            const minScale = fitScale; 
+            const newScale = Math.min(Math.max(newScaleRaw, minScale), 10);
 
-            // Clamp Scale using stricter minScale
-            const newScale = Math.min(Math.max(newScaleRaw, minScale), 5);
-
-            // Cursor Centered Zoom Math
+            // Zoom Center Logic
             const rect = container.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
-
-            // mapX = (mouseX - offset.x) / scale
+            
             const mapX = (mouseX - offset.x) / scale;
             const mapY = (mouseY - offset.y) / scale;
-
-            // newOffset.x = mouseX - mapX * newScale
+            
             const newOffsetX = mouseX - (mapX * newScale);
             const newOffsetY = mouseY - (mapY * newScale);
-
-            // Apply Clamp
+            
+            // 뷰박스 제한이 있다면 여기서 clampOffset을 initialViewBox 기준으로 해야 하나,
+            // 일단 전체 맵 Clamp만 적용
             const finalOffset = clampOffset({x: newOffsetX, y: newOffsetY}, newScale);
 
             setScale(newScale);
             setOffset(finalOffset);
         };
-
         container.addEventListener('wheel', onWheel, { passive: false });
-        
-        return () => {
-            container.removeEventListener('wheel', onWheel);
-        };
-    // Added missing dependencies to prevent stale closures
+        return () => container.removeEventListener('wheel', onWheel);
     }, [scale, offset, mapImage, visualStyle, gridMetadata]);
 
-    
-    // Formatting Pan Handlers
     const handleMouseDown = (e: MouseEvent) => {
         setIsDragging(true);
         setLastMousePos({ x: e.clientX, y: e.clientY });
@@ -217,28 +224,18 @@ export function MapCanvas({ mapName, onMapLoad, onMapClick, className, children,
 
     const handleMouseMove = (e: MouseEvent) => {
         if (!isDragging) return;
-        
         const deltaX = e.clientX - lastMousePos.x;
         const deltaY = e.clientY - lastMousePos.y;
         
-        const targetOffset = {
-            x: offset.x + deltaX,
-            y: offset.y + deltaY
-        };
-
-        const finalOffset = clampOffset(targetOffset, scale);
-        
-        setOffset(finalOffset);
+        const targetOffset = { x: offset.x + deltaX, y: offset.y + deltaY };
+        setOffset(clampOffset(targetOffset, scale));
         setLastMousePos({ x: e.clientX, y: e.clientY });
     };
 
     const handleMouseUp = () => setIsDragging(false);
 
-
-    // Click Handler (Coordinates)
     const handleClick = (e: MouseEvent) => {
         if (isDragging) return; 
-        
         if (!meta || !mapImage || !onMapClick) return;
 
         const rect = containerRef.current?.getBoundingClientRect();
@@ -250,36 +247,15 @@ export function MapCanvas({ mapName, onMapLoad, onMapClick, className, children,
         const canvasX = (mouseX - offset.x) / scale;
         const canvasY = (mouseY - offset.y) / scale;
         
-        // Bounds check
-        if (canvasX < 0 || canvasX > mapImage.width || canvasY < 0 || canvasY > mapImage.height) return;
+        const { width, height } = getSourceDimensions(mapImage);
+        if (canvasX < 0 || canvasX > width || canvasY < 0 || canvasY > height) return;
 
-        const world = pixelToWorld({x: canvasX, y: canvasY}, meta, mapImage.height);
+        const world = pixelToWorld({x: canvasX, y: canvasY}, meta, height);
         onMapClick(world);
     };
 
-    
-    // --- 6. Notify Parent ---
-    useEffect(() => {
-         const { width, height } = getMapDimensions();
-         if (width && height && onMapLoad) {
-             const metaToPass = meta || {
-                 image: 'abstract',
-                 resolution: gridMetadata?.resolution || 0.05,
-                 origin: [0,0,0],
-                 negate: false,
-                 occupied_thresh: 0.5,
-                 free_thresh: 0.5,
-                 mode: 'raw' as const
-             };
-            onMapLoad({ meta: metaToPass, width, height });
-        }
-    }, [mapImage, meta, visualStyle]); // Notify when ready
-
-
-    // --- 7. Render ---
-    const isLoading = visualStyle === 'default' && (isMetaLoading || isImageLoading);
-
-    // Canvas Rendering
+    // --- Render ---
+    // Draw Canvas
     useEffect(() => {
         const canvas = canvasRef.current;
         const ctx = canvas?.getContext('2d');
@@ -289,17 +265,14 @@ export function MapCanvas({ mapName, onMapLoad, onMapClick, className, children,
         canvas.width = width;
         canvas.height = height;
 
-        // Draw Logic
         if (visualStyle === 'abstract') {
             drawAbstractGrid(ctx, width, height, gridMetadata?.resolution || 0.05);
         } else if (mapImage) {
-            // Background
-            ctx.fillStyle = '#330000';
+            ctx.fillStyle = '#1A1D21'; // Darker bg
             ctx.fillRect(0, 0, width, height);
             ctx.drawImage(mapImage, 0, 0);
         }
-
-    }, [mapImage, visualStyle, gridMetadata]); // Re-draw on resource change
+    }, [mapImage, visualStyle, gridMetadata]);
 
     return (
         <div 
@@ -312,56 +285,42 @@ export function MapCanvas({ mapName, onMapLoad, onMapClick, className, children,
             onClick={handleClick}
             style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
         >
-            {isLoading && (
-                 <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/50 backdrop-blur-sm">
-                    <Loader2 className="w-8 h-8 text-accent-cyan animate-spin" />
-                 </div>
-            )}
-
             <div 
                 style={{
                     transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
                     transformOrigin: '0 0',
                     willChange: 'transform',
-                    backfaceVisibility: 'hidden'
                 }}
             >
                 <canvas ref={canvasRef} className="block" style={{ imageRendering: 'pixelated' }} />
-                
-                {/* Children Overlay (Graph, Aircraft) */}
                 <div className="absolute inset-0">
                     {children}
                 </div>
             </div>
-
-            {/* Debug HUD */}
-            <div className="absolute bottom-4 right-4 pointer-events-none bg-black/60 text-[10px] text-accent-cyan font-mono px-2 py-1 rounded border border-white/10">
-                ZOOM: {(scale * 100).toFixed(0)}%
-                <span className="mx-2">|</span>
-                POS: {offset.x.toFixed(0)}, {offset.y.toFixed(0)}
-            </div>
+            
+            {/* Debug HUD (Optional) */}
+             <div className="absolute bottom-4 right-4 pointer-events-none bg-black/60 text-[10px] text-accent-cyan font-mono px-2 py-1 rounded border border-white/10">
+                 ZOOM: {(scale * 100).toFixed(0)}%
+             </div>
         </div>
     );
 }
 
-// Helper: Draw Abstract Grid
 function drawAbstractGrid(ctx: CanvasRenderingContext2D, w: number, h: number, res: number) {
     ctx.clearRect(0, 0, w, h);
-    
-    // Grid logic
     const gridSizeMajor = 10 / res; 
     const gridSizeMinor = 1 / res;
-
+    
+    ctx.beginPath();
     ctx.lineWidth = 1;
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-    ctx.beginPath();
     for (let x=0; x<=w; x+=gridSizeMinor) { ctx.moveTo(x,0); ctx.lineTo(x,h); }
     for (let y=0; y<=h; y+=gridSizeMinor) { ctx.moveTo(0,y); ctx.lineTo(w,y); }
     ctx.stroke();
 
+    ctx.beginPath();
     ctx.lineWidth = 2;
     ctx.strokeStyle = 'rgba(0, 255, 255, 0.1)';
-    ctx.beginPath();
     for (let x=0; x<=w; x+=gridSizeMajor) { ctx.moveTo(x,0); ctx.lineTo(x,h); }
     for (let y=0; y<=h; y+=gridSizeMajor) { ctx.moveTo(0,y); ctx.lineTo(w,y); }
     ctx.stroke();

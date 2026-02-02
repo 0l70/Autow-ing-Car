@@ -3,8 +3,8 @@ import { MainLayout } from "@/shared/ui/layout/MainLayout";
 import { ApprovalQueue } from "@/features/dashboard/ApprovalQueue";
 import { ActivityTimeline } from "@/features/dashboard/ActivityTimeline";
 import { MissionInspector } from "@/features/dashboard/MissionInspector";
-import { MapCanvas } from "@/widgets/map-panel/MapCanvas";
-import { GraphInteractionLayer } from "@/features/map-editor/ui/GraphInteractionLayer";
+import { MapCanvas } from "@/widgets/map-panel/MapCanvas_deprecated";
+import { GraphEditorLayer } from "@/features/map-editor/ui/GraphInteractionLayer";
 import { AircraftLayer } from "@/features/map-visualizer/ui/AircraftLayer";
 import { useGraphStore } from "@/entities/map/model/store";
 import { MapMeta, Aircraft } from "@/entities/map/model/types";
@@ -12,24 +12,29 @@ import { MOCK_MAP_SIZE } from "@/entities/map/lib/mockData";
 import { useTelemetrySocket } from "@/features/map-visualizer/model/useTelemetrySocket";
 import { useMapSync } from "@/features/map-visualizer/model/useMapSync";
 import { useMapLoader } from "@/features/map-visualizer/model/useMapLoader";
+import { useMapData } from "@/features/map-visualizer/model/useMapData";
 
 export function ControllerPage() {
+    // --- 1. Map Data Loading (Hook) ---
+    // Single source of truth for map data
+    const { meta: mapMeta, mapImage } = useMapData('pilot_grid');
+    
+    // --- 2. Store & Local State ---
     const { mapWidth: storeMapWidth, mapHeight: storeMapHeight } = useGraphStore();
-    const [mapMeta, setMapMeta] = useState<MapMeta | null>(null);
-    const [mapHeight, setMapHeight] = useState(0);
+    const [mapHeight, setMapHeight] = useState(0); // Layout height from canvas
     const [selectedAircraftId, setSelectedAircraftId] = useState<string | null>(null);
     
     // --- DATA SOURCE CONTROL ---
     const USE_REAL_DATA = true;
     
-    // 1. Data Loading Hooks
-    useMapLoader(); // Load Static Map Data
-    useTelemetrySocket(undefined, USE_REAL_DATA); // Live Traffic (Global)
-    useMapSync(USE_REAL_DATA); // Sync Dynamic Map Elements
+    // 3. Logic Hooks
+    useMapLoader(); 
+    useTelemetrySocket(undefined, USE_REAL_DATA);
+    useMapSync(USE_REAL_DATA);
     
-    // 2. Handlers
-    const handleMapLoad = useCallback((info: { meta: MapMeta; width: number; height: number }) => {
-        setMapMeta(info.meta);
+    // 4. Handlers
+    const handleMapLoad = useCallback((info: { width: number; height: number }) => {
+        // Only care about layout dimensions here
         setMapHeight(info.height);
     }, []);
 
@@ -91,19 +96,24 @@ export function ControllerPage() {
 
                     {/* NEON GRID MAP SYSTEM */}
                     <MapCanvas
-                        mapName="virtual_grid"
-                        visualStyle="abstract"
+                        // Data Props
+                        mapImage={mapImage || null}
+                        meta={mapMeta || null} // Hook에서 받은 meta 전달 (비동기 로딩)
+                        
+                        // Config (Fallback)
+                        visualStyle="default"
                         gridMetadata={gridMetadata}
+                        
                         className="w-full h-full"
-                        onMapLoad={handleMapLoad}
+                        onMapLoad={handleMapLoad} // Only receives size now
                         onMapClick={(pos) => console.log("Dashboard Click:", pos)}
                     >
                         {/* 1. Topological Graph Layer (Nodes & Edges) */}
-                        <GraphInteractionLayer meta={mapMeta} mapHeight={mapHeight} />
+                        <GraphEditorLayer meta={mapMeta || null} mapHeight={mapHeight} />
 
                         {/* 2. Aircraft Overlay (Simulated) */}
                         <AircraftLayer
-                            meta={mapMeta}
+                            meta={mapMeta || null}
                             mapWidth={storeMapWidth || MOCK_MAP_SIZE.width}
                             mapHeight={storeMapHeight || MOCK_MAP_SIZE.height}
                             onAircraftClick={(ac) => {
