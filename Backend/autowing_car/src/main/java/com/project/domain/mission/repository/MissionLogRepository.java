@@ -4,7 +4,6 @@ import com.project.domain.mission.entity.MissionLog;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 import java.util.List;
-import java.util.Optional;
 
 @Repository
 public interface MissionLogRepository extends JpaRepository<MissionLog, Long> {

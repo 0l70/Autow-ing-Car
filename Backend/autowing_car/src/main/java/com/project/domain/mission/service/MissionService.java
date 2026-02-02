@@ -15,10 +15,14 @@ import com.project.domain.map.entity.Node;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import com.project.domain.user.entity.User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import java.security.Principal;
 import java.util.*;
 
 @Slf4j
@@ -71,7 +75,7 @@ public class MissionService {
         Flight flight = flightDBAdaptor.getFlightById(decision.getFlightId());
 
         if (!decision.isApproved()) {
-            missionWebSocketService.notifyPilotResult(flight.getPilot().getUsername(),
+            missionWebSocketService.notifyPilotResult(flight.getPilot().getEmail(),
                     MissionResponseDto.builder().status("REJECTED").message(decision.getRejectReason()).build());
             return;
         }
@@ -109,7 +113,9 @@ public class MissionService {
 
     private void notifyMissionUpdate(Mission mission) {
         MissionResponseDto response = MissionResponseDto.from(mission);
-        missionWebSocketService.notifyPilotResult(mission.getPilot().getUsername(), response);
+
+        User pilot = mission.getPilot();
+        missionWebSocketService.notifyPilotResult(pilot.getEmail(), response);
         missionWebSocketService.broadcastMissionUpdate(response);
     }
 

@@ -12,7 +12,6 @@ import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 
 import java.security.Principal;
-import java.time.LocalDateTime;
 
 /**
  * WebSocket (@MessageMapping) 예외 처리 핸들러

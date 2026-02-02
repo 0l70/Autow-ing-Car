@@ -25,7 +25,9 @@ repositories {
 }
 
 dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+
     // runtimeOnly 'com.h2database:h2'
 	implementation 'com.h2database:h2' 
 	// runtimeOnly 'org.postgresql:postgresql' // 운영 배포 시 주석 해제
@@ -37,21 +39,16 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-websocket'
 	implementation 'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5'
 	implementation 'org.springframework.integration:spring-integration-mqtt' 
-
+	implementation 'org.springframework.boot:spring-boot-starter-aop'
     // JWT
     implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5' 
 
-	// DOCS
-	// // Springwolf Core (AsyncAPI 생성기)
-    // implementation 'io.github.springwolf:springwolf-core:1.0.0'
-    
-    // // Springwolf UI (문서 보는 화면)
-    // implementation 'io.github.springwolf:springwolf-ui:1.0.0'
-    
-    // WebSocket(STOMP) 바인딩 지원
-    // implementation 'io.github.springwolf:springwolf-stomp-plugin:1.0.0'
+	// DOCS - AsyncAPI 문서 자동 생성 (Springwolf)
+	implementation 'io.github.springwolf:springwolf-core:1.20.0'
+    implementation 'io.github.springwolf:springwolf-stomp:1.20.0'
+    implementation 'io.github.springwolf:springwolf-ui:1.20.0'
 	
 	implementation 'org.springframework.integration:spring-integration-http'
 	implementation 'org.springframework.integration:spring-integration-redis'

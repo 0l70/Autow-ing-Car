@@ -12,6 +12,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+import com.project.domain.common.UserRole;
+
 @Configuration
 @EnableWebSecurity
 @RequiredArgsConstructor
@@ -34,8 +36,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**", "/h2-console/**", "/ws-server/**").permitAll() // 로그인, H2, WS
                                                                                                         // Handshake 허용
-                        .requestMatchers("/app/**", "/topic/**", "/user/**").permitAll() // STOMP 메시징 허용 (Interceptor가
-                                                                                         // 보안 담당)
+                        .requestMatchers("/app/**", "/topic/**", "/user/**").permitAll() // STOMP 메시징
+                        /* 허용(ROLE : ATC ,PILOT) */
+                        .requestMatchers("/springwolf/**").permitAll() // Springwolf UI 허용
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .headers(headers -> headers.frameOptions(frame -> frame.disable()))
