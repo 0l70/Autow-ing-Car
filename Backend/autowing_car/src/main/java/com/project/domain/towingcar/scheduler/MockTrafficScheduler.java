@@ -22,7 +22,7 @@ import java.util.Map;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(name = "app.mqtt.mock", havingValue = "false")
+@ConditionalOnProperty(name = "app.mqtt.mock", havingValue = "true")
 public class MockTrafficScheduler {
 
     private final MqttService mqttService;
@@ -35,11 +35,11 @@ public class MockTrafficScheduler {
     // [NEW] Flight Info Tick Counter
     private int flightInfoTick = 0;
 
-    // @Scheduled(fixedRate = 100) // 10Hz
+    @Scheduled(fixedRate = 1000) // 10Hz
     public void simulate() {
-        double centerX = 50.0;
-        double centerY = 50.0;
-        double radius = 15.0;
+        double centerX = 1000.0;
+        double centerY = 750.0;
+        double radius = 300.0;
 
         // Simulate multiple cars
         simulateCar("TC01", centerX, centerY, radius, 0);
@@ -125,8 +125,8 @@ public class MockTrafficScheduler {
 
         // [Override] Gate Position for Auto Connect
         if (forceGatePos) {
-            x = -50.0; // Gate 101 Position
-            y = 0.0;
+            x = 200.0; // Gate 101 Position (Inside Map)
+            y = 200.0;
             v = 0.0;
         }
 
@@ -162,21 +162,55 @@ public class MockTrafficScheduler {
 
         Map<String, Object> mockMapPayload = new HashMap<>();
         mockMapPayload.put("map_id", "MOCK_MAP_01");
-        mockMapPayload.put("width", 100);
-        mockMapPayload.put("height", 100);
+        mockMapPayload.put("width", 2000);
+        mockMapPayload.put("height", 1500);
 
         List<Map<String, Object>> nodes = new ArrayList<>();
-        nodes.add(Map.of("id", "1", "x", 0, "y", 0, "status", "active"));
-        nodes.add(Map.of("id", "2", "x", 100, "y", 0, "status", "active"));
-        nodes.add(Map.of("id", "3", "x", 100, "y", 100, "status", "active"));
-        nodes.add(Map.of("id", "4", "x", 0, "y", 100, "status", "active"));
+        // 1. RUNWAY (Central Horizontal)
+        nodes.add(
+                Map.of("id", "RWY_L", "x", 200, "y", 750, "status", "active", "label", "Runway 09", "type", "RUNWAY"));
+        nodes.add(
+                Map.of("id", "RWY_R", "x", 1800, "y", 750, "status", "active", "label", "Runway 27", "type", "RUNWAY"));
+
+        // 2. INTERSECTIONS (Taxiway Crossings)
+        nodes.add(Map.of("id", "INT_1", "x", 600, "y", 750, "status", "active", "label", "Taxiway A", "type",
+                "INTERSECTION"));
+        nodes.add(Map.of("id", "INT_2", "x", 1400, "y", 750, "status", "active", "label", "Taxiway B", "type",
+                "INTERSECTION"));
+
+        // 3. GATES (Top)
+        nodes.add(
+                Map.of("id", "GATE_1", "x", 600, "y", 200, "status", "occupied", "label", "Gate 101", "type", "GATE"));
+        nodes.add(Map.of("id", "GATE_2", "x", 1400, "y", 200, "status", "free", "label", "Gate 102", "type", "GATE"));
+
+        // 4. PARKING / CHARGERS (Bottom)
+        nodes.add(Map.of("id", "PARK_1", "x", 600, "y", 1300, "status", "active", "label", "Charger A", "type",
+                "CHARGER"));
+        nodes.add(Map.of("id", "PARK_2", "x", 1400, "y", 1300, "status", "active", "label", "Charger B", "type",
+                "CHARGER"));
+
         mockMapPayload.put("nodes", nodes);
 
+        // [NEW] EDGES (Connections)
+        List<Map<String, Object>> edges = new ArrayList<>();
+        // Runway Backbone
+        edges.add(Map.of("id", "e1", "from", "RWY_L", "to", "INT_1", "cost", 10.0));
+        edges.add(Map.of("id", "e2", "from", "INT_1", "to", "INT_2", "cost", 20.0));
+        edges.add(Map.of("id", "e3", "from", "INT_2", "to", "RWY_R", "cost", 10.0));
+
+        // Vertical Connections (Taxiways)
+        edges.add(Map.of("id", "e4", "from", "INT_1", "to", "GATE_1", "cost", 15.0));
+        edges.add(Map.of("id", "e5", "from", "INT_2", "to", "GATE_2", "cost", 15.0));
+        edges.add(Map.of("id", "e6", "from", "INT_1", "to", "PARK_1", "cost", 15.0));
+        edges.add(Map.of("id", "e7", "from", "INT_2", "to", "PARK_2", "cost", 15.0));
+
+        mockMapPayload.put("edges", edges);
+
         Map<String, Object> corners = new HashMap<>();
-        corners.put("TL", Map.of("x", 0, "y", 100));
-        corners.put("TR", Map.of("x", 100, "y", 100));
+        corners.put("TL", Map.of("x", 0, "y", 1500));
+        corners.put("TR", Map.of("x", 2000, "y", 1500));
         corners.put("BL", Map.of("x", 0, "y", 0));
-        corners.put("BR", Map.of("x", 100, "y", 0));
+        corners.put("BR", Map.of("x", 2000, "y", 0));
         mockMapPayload.put("corners", corners);
 
         mqttService.publish(MqttTopics.SUB_MAP_INFO, mockMapPayload);
