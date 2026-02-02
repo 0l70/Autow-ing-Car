@@ -7,6 +7,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import org.springframework.beans.factory.annotation.Value; // [NEW]
+
 import java.util.Map;
 
 @Slf4j
@@ -16,8 +18,16 @@ public class TowingCarMqttService {
 
     private final MqttService mqttService;
 
+    @Value("${app.mqtt.mock:false}")
+    private boolean isMockMode;
+
     // Type-safe sending method
     private void send(String carCode, CarCommand command, Object data) {
+        if (isMockMode) {
+            log.info("[MOCK MQTT] Topic={} Cmd={} Data={}", MqttTopics.cmd(carCode), command, data);
+            return;
+        }
+
         String topic = MqttTopics.cmd(carCode);
         Map<String, Object> payload = Map.of(
                 "cmd", command.getCmd(),

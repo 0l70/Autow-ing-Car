@@ -1,5 +1,5 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/shared/ui/Card";
-import { NAVIGATION_DATA } from "@/features/dashboard/MockData";
+// import { NAVIGATION_DATA } from "@/features/dashboard/MockData";
 import { MoveState } from "../model/types";
 import { Aircraft } from "@/entities/map/model/types";
 
@@ -20,11 +20,11 @@ export function TowingCarInfo({ moveState, aircraft }: TowingCarInfoProps) {
         if (deg < 0) deg += 360;
         headingDeg = Math.round(deg);
     } else {
-        headingDeg = NAVIGATION_DATA.heading;
+        headingDeg = 0; // Changed from NAVIGATION_DATA.heading
     }
 
     // Destination
-    const destination = aircraft?.currentMission ? `MISSION #${aircraft.currentMission}` : (aircraft ? "ON STANDBY" : NAVIGATION_DATA.destination);
+    const destination = aircraft?.currentMission ? `MISSION #${aircraft.currentMission}` : "STANDBY"; // Changed from NAVIGATION_DATA.destination
 
     return (
         <Card className="col-span-5 glass-panel flex flex-col">

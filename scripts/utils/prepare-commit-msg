@@ -32,16 +32,16 @@ fi
 
 # 5. 이모지 매핑 (여기서 이모지를 붙입니다!)
 case "$TYPE" in
-    "feat")     EMOJI="✨"; LABEL="Feat" ;;
-    "fix")      EMOJI="🐛"; LABEL="Fix" ;;
-    "docs")     EMOJI="📝"; LABEL="Docs" ;;
-    "style")    EMOJI="🎨"; LABEL="Style" ;;
-    "refactor") EMOJI="♻️";  LABEL="Refactor" ;;
-    "test")     EMOJI="✅"; LABEL="Test" ;;
-    "chore")    EMOJI="🔨"; LABEL="Chore" ;;
-    "design")   EMOJI="💄"; LABEL="Design" ;;
-    "hotfix")   EMOJI="🚑️"; LABEL="Hotfix" ;;
-    *)          EMOJI="✨"; LABEL="Feat" ;; # 기본값
+    "feat"|"feature")   EMOJI="✨"; LABEL="Feat" ;;
+    "fix"|"bug")        EMOJI="🐛"; LABEL="Fix" ;;
+    "docs"|"doc")       EMOJI="📝"; LABEL="Docs" ;;
+    "style")            EMOJI="🎨"; LABEL="Style" ;;
+    "refactor"|"refact") EMOJI="♻️";  LABEL="Refactor" ;;
+    "test")             EMOJI="✅"; LABEL="Test" ;;
+    "chore")            EMOJI="🔨"; LABEL="Chore" ;;
+    "design")           EMOJI="💄"; LABEL="Design" ;;
+    "hotfix")           EMOJI="🚑️"; LABEL="Hotfix" ;;
+    *)                  EMOJI="✨"; LABEL="Feat" ;; # 기본값
 esac
 
 # 6. 파트(Part) 정보 감지 (선택 사항)

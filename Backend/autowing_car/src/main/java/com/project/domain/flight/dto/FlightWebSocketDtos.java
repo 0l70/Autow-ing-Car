@@ -1,5 +1,7 @@
 package com.project.domain.flight.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import lombok.*;
 
 public class FlightWebSocketDtos {
@@ -10,6 +12,7 @@ public class FlightWebSocketDtos {
     @AllArgsConstructor
     public static class FlightInfoDto {
         private Long flightId;
+        @JsonProperty("flightNumber")
         private String flightNumber;
         private String pilotName;
         private String aircraftRegistrationNum; // 항공기 등록 번호 (예: HL7755)

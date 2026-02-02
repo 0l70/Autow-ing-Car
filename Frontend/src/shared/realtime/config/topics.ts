@@ -22,6 +22,11 @@ export const WS_TOPICS = {
     MISSION_UPDATES: '/topic/mission/updates',
 
     /**
+     * [수신] 관제사 요청 알림 (ATC)
+     */
+    CONTROLLER_REQUESTS: '/topic/controller/requests',
+
+    /**
      * [수신] 공용 시스템 응답 (Legacy)
      * 추후 개인별 응답(/user/queue/responses)으로 대체될 수 있습니다.
      */
@@ -31,7 +36,7 @@ export const WS_TOPICS = {
      * [수신] 개인별 응답 (Private)
      * 나에게만 오는 응답을 수신할 때 사용합니다.
      */
-    PRIVATE_RESPONSES: '/user/queue/responses',
+    PRIVATE_RESPONSES: '/user/queue/reply',
 
     /**
      * [수신] 기장 비행 스케줄 정보 (Private)
@@ -44,7 +49,7 @@ export const WS_TOPICS = {
      * 기장이 서버로 명령을 보낼 때 사용하는 경로입니다.
      */
     PILOT: {
-        CONNECT: '/app/car/connect',       // 연결 요청
+        CONNECT: '/app/car/dispatch',       // 차량 배정 및 연결 요청
         DISCONNECT: '/app/car/disconnect', // 해제 요청
         MOVE: '/app/car/move',             // 이동 명령 (Pushback 등)
         MODE: '/app/car/mode',             // 모드 변경 (Auto/Manual)

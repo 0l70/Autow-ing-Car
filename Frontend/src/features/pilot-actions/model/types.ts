@@ -1,5 +1,5 @@
 export type MoveState = 'stopped' | 'waiting' | 'approved' | 'pushback' | 'moving';
-export type ConnectionState = 'disconnected' | 'waiting' | 'connecting' | 'connected' | 'disconnecting' | 'failed';
+export type ConnectionState = 'waiting' | 'connecting' | 'connected' | 'idle';
 
 export interface PilotLog {
     id: number;

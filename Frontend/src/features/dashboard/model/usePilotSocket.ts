@@ -7,7 +7,7 @@ import { WS_TOPICS } from '@/shared/realtime/config/topics';
 import { z } from 'zod';
 
 // Basic validation schema
-const AircraftStatusSchema = z.enum(['IDLE', 'MOVING', 'DOCKING', 'HOLD', 'ERROR']);
+const AircraftStatusSchema = z.enum(['IDLE', 'MOVING_TO_LOAD', 'LOADING', 'TOWING', 'UNLOADING', 'MOVING_TO_IDLE', 'STOP', 'ERROR']);
 
 const TelemetrySchema = z.object({
     car_id: z.string().optional(),
@@ -70,7 +70,8 @@ export function usePilotSocket(targetCarId: string, enabled: boolean = true) {
 
     // 3. Data Processing Logic (Specific to Pilot - Update only my car)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleTelemetryMessage = useCallback((parseData: any) => {
+    const handleTelemetryMessage = useCallback((msg: any) => {
+        const parseData = msg.body || msg; // Unwrap Stomp Message Wrapper
         const result = TelemetrySchema.safeParse(parseData);
         if (!result.success) return;
         
