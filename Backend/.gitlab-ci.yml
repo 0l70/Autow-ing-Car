@@ -94,6 +94,7 @@ backend-deploy:
           --restart always \
           -p 8080:8080 \
           --env-file deploy.env \
+          -e SPRING_PROFILES_ACTIVE=local \
           $BACKEND_IMAGE &&
 
         rm deploy.env &&
