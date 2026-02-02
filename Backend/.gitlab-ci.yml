@@ -7,8 +7,8 @@ spec:
 ---
 variables:
   BACKEND_DIR: "Backend/autowing_car"
-  # ✅ [수정됨] Docker Hub 이미지 주소 형식으로 변경 (아이디/레포명:태그)
-  BACKEND_IMAGE: $DOCKER_USERNAME/autowing-backend:$CI_COMMIT_SHORT_SHA
+  # ✅ [수정됨] 등록하신 변수명(BACKEND_DOCKER_...)을 사용하도록 변경
+  BACKEND_IMAGE: $BACKEND_DOCKER_USERNAME/autowing-backend:$CI_COMMIT_SHORT_SHA
 
 # ---------------------------------------------------------------------------
 # [0. Test Stage]
@@ -27,7 +27,7 @@ backend-build-test:
     - ./gradlew clean build -x test
 
 # ---------------------------------------------------------------------------
-# [1. Package Stage] - Docker build & Push
+# [1. Package Stage] - Docker build
 # ---------------------------------------------------------------------------
 backend-docker:
   stage: package
@@ -39,10 +39,10 @@ backend-docker:
       changes:
         - Backend/**/*
   before_script:
-    # ✅ [수정됨] Docker Hub 로그인 (등록한 변수 사용)
+    # ✅ [수정됨] 등록하신 변수명(BACKEND_DOCKER_...) 사용
     - echo "$BACKEND_DOCKER_PASSWORD" | docker login -u "$BACKEND_DOCKER_USERNAME" --password-stdin
   script:
-    - echo "📦 [Backend] Docker build & Push to Docker Hub"
+    - echo "📦 [Backend] Docker build & Push"
     - cd $BACKEND_DIR
     - docker build --pull -t $BACKEND_IMAGE .
     - docker push $BACKEND_IMAGE
@@ -70,22 +70,19 @@ backend-deploy:
     - |
       echo "🚀 [Backend] Deploying..."
       ssh ubuntu@$EC2_IP "
-        # ✅ [수정됨] 서버에서도 Docker Hub 로그인 및 이미지 받기
+        # ✅ [수정됨] 서버에서도 등록하신 변수명 사용
         echo '$BACKEND_DOCKER_PASSWORD' | docker login -u '$BACKEND_DOCKER_USERNAME' --password-stdin &&
         docker pull $BACKEND_IMAGE &&
 
-        # 기존 컨테이너 정리
         docker stop backend-app || true &&
         docker rm backend-app || true &&
 
-        # 환경 변수 파일 생성
         echo 'MQTT_HOST=autowingcar.o-r.kr' > deploy.env &&
         echo 'MQTT_PORT=8883' >> deploy.env &&
         echo 'JWT_SECRET=$JWT_SECRET' >> deploy.env &&
         echo 'JWT_EXPIRATION=86400000' >> deploy.env &&
         echo \"BACKEND_IMAGE=$BACKEND_IMAGE\" >> deploy.env &&
 
-        # 컨테이너 실행
         docker run -d --name backend-app \
           --network app-network \
           --restart always \
@@ -93,7 +90,6 @@ backend-deploy:
           --env-file deploy.env \
           $BACKEND_IMAGE &&
 
-        # 정리
         rm deploy.env &&
         docker image prune -f
       "
