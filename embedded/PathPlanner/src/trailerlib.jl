@@ -21,7 +21,7 @@ const SCALE = 1.0  # 미터 단위 직접 사용
 const WB    = 0.145 * SCALE  # 축간 거리, 바퀴 사이의 거리 (Wheel base)
 const LF    = 0.24  * SCALE  # 뒷바퀴 중심 -> 차 맨 앞 (Front Length)
 const LB    = 0.03  * SCALE  # 뒷바퀴 중심 -> 차 맨 뒤 (Back Length)
-const W_CAR = 0.15  * SCALE  # 차폭 (Car Width) - 새로 추가됨
+const W_CAR = 0.30  * SCALE  # 차폭 (Car Width) - 새로 추가됨
 
 # [Trailer / Airplane]
 const LT      = 0.09 * SCALE   # 연결부(Hinge) -> 트레일러 축 (견인 길이)
@@ -29,7 +29,7 @@ const W_PLANE = 0.32 * SCALE   # 비행기 날개폭 (Airplane Width) - 기존 W
 const LTF     = 0.05 * SCALE   # 연결부 -> 비행기 앞부분 (여유공간 5cm 설정)
 const LTB     = 0.37 * SCALE   # 연결부 -> 비행기 꼬리
 
-const MAX_STEER = 0.7          # [rad] 최대 조향각
+const MAX_STEER = 0.5          # [rad] 최대 조향각
 
 # ---------------------------------------------------------
 # 2. 충돌 체크용 마진 및 버블 설정
