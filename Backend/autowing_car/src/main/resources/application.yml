@@ -1,4 +1,15 @@
 # --- application.yml (공통) ---
 spring:
+  config:
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:Backend/autowing_car/.env[.properties]
   profiles:
     active: local # 기본은 로컬 개발 모드
+
+  mqtt:
+    broker:
+      url: ssl://${MQTT_HOST}:${MQTT_PORT}
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION}

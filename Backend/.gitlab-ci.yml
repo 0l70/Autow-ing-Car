@@ -17,6 +17,7 @@ backend-build-test:
   stage: build
   image: eclipse-temurin:17-jdk-alpine
   rules:
+    # MR일 때만 실행 (기존 유지)
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"'
       changes:
         - Backend/**/*
@@ -27,7 +28,7 @@ backend-build-test:
     - ./gradlew clean build -x test
 
 # ---------------------------------------------------------------------------
-# [1. Package Stage] - Docker build (Gradle build 포함)
+# [1. Package Stage] - Docker build
 # ---------------------------------------------------------------------------
 backend-docker:
   stage: package
@@ -35,19 +36,20 @@ backend-docker:
   services:
     - docker:24.0.5-dind
   rules:
-    - if: '$CI_COMMIT_REF_NAME == "master"'
+    # ✅ [수정됨] master 또는 dev 브랜치일 때 실행
+    - if: '$CI_COMMIT_REF_NAME == "master" || $CI_COMMIT_REF_NAME == "dev"'
       changes:
         - Backend/**/*
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
   script:
-    - echo "📦 [Backend] Docker build (Gradle build inside Dockerfile)"
+    - echo "📦 [Backend] Docker build & Push"
     - cd $BACKEND_DIR
-    - docker build -t $BACKEND_IMAGE .
+    - docker build --pull -t $BACKEND_IMAGE .
     - docker push $BACKEND_IMAGE
 
 # ---------------------------------------------------------------------------
-# [2. Deploy Stage] - EC2 배포
+# [2. Deploy Stage] - EC2 배포 (환경 변수 자동 주입)
 # ---------------------------------------------------------------------------
 backend-deploy:
   stage: deploy
@@ -55,7 +57,8 @@ backend-deploy:
   needs:
     - backend-docker
   rules:
-    - if: '$CI_COMMIT_REF_NAME == "master"'
+    # ✅ [수정됨] master 또는 dev 브랜치일 때 실행
+    - if: '$CI_COMMIT_REF_NAME == "master" || $CI_COMMIT_REF_NAME == "dev"'
       changes:
         - Backend/**/*
   before_script:
@@ -69,24 +72,32 @@ backend-deploy:
     - |
       echo "🚀 [Backend] Deploying to Production Server..."
       ssh ubuntu@$EC2_IP "
+        # 1. 최신 이미지 받기 및 로그인
         docker login -u '$CI_REGISTRY_USER' -p '$CI_REGISTRY_PASSWORD' $CI_REGISTRY &&
         docker pull $BACKEND_IMAGE &&
+
+        # 2. 기존 컨테이너 중지 및 삭제 (에러 무시)
         docker stop backend-app || true &&
         docker rm backend-app || true &&
+
+        # 3. 환경 변수 파일(.env) 동적 생성
+        echo 'MQTT_HOST=autowingcar.o-r.kr' > deploy.env &&
+        echo 'MQTT_PORT=8883' >> deploy.env &&
+        echo 'JWT_SECRET=$JWT_SECRET' >> deploy.env &&
+        echo 'JWT_EXPIRATION=86400000' >> deploy.env &&
+        
+        # 이미지 정보 추가 (필요 시)
+        echo \"BACKEND_IMAGE=$BACKEND_IMAGE\" >> deploy.env &&
+
+        # 4. 새 컨테이너 실행
         docker run -d --name backend-app \
-          --network host \
+          --network app-network \
           --restart always \
-          -e SPRING_PROFILES_ACTIVE=local \
-          # ===============================
-          # DB 설정 (나중에 활성화)
-          # ===============================
-          # -e DB_URL='$DB_URL' \
-          # -e DB_USERNAME='$DB_USERNAME' \
-          # -e DB_PASSWORD='$DB_PASSWORD' \
-          
-          # ===============================
-          # 또는 서버에 있는 env 파일 사용
-          # ===============================
-          # --env-file /home/ubuntu/backend.env \
-          $BACKEND_IMAGE
+          -p 8080:8080 \
+          --env-file deploy.env \
+          $BACKEND_IMAGE &&
+
+        # 5. 정리
+        rm deploy.env &&
+        docker image prune -f
       "

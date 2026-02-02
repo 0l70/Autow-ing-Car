@@ -17,9 +17,3 @@ spring:
     redis:
       host: localhost
       port: 8379
-  mqtt:
-    broker:
-      url: tcp://localhost:8183
-    client:
-      id: spring-boot-client
-    topic: ssafy/test
