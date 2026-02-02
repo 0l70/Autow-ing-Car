@@ -1,0 +1,1 @@
+{"pairs_mode":"upper","ok_count":1,"nodes_file":"maps/edge01/node.json","oxoy_file":"maps/edge01/edge01_oxoy.json","xyreso":0.2,"items":[{"n":70,"cost":414.2528000698038,"ok":true,"file":"path_S01_to_G01_20260202_173003.json","goal_id":"G01","log_dir":"20260202_173007_hRl1","start_id":"S01"}],"frame_id":"map","count":1,"yawreso":0.2617993877991494}

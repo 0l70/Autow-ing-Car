@@ -28,8 +28,8 @@ const EXTEND_AREA = 1.0 #[m]
 const SKIP_COLLISION_CHECK = 1
 
 # 더 부드럽게 패널티 조정
-const SB_COST = 100.0
-const BACK_COST = 5.0
+const SB_COST = 0.0 # 기존 전진/후진 전환 패널티가 100이었으나, 굳이? 라고 생각해서 0으로 설정
+const BACK_COST = 0.0 # 후진 패널티 지금 0으로 설정
 const STEER_CHANGE_COST = 20.0
 const STEER_COST = 2.0
 const JACKKNIF_COST = 300.0
