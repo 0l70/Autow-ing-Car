@@ -37,7 +37,12 @@ export function usePilotDashboard() {
 
   // --- Handle Global/Private Messages ---
   useEffect(() => {
-    const unsubscribe = onMessage((msg) => {
+    const unsubscribe = onMessage((messageWrapper) => {
+      // Extract body from messageWrapper
+      const msg = messageWrapper?.body || messageWrapper;
+
+      console.log("[PilotDashboard] Message Received:", msg);
+
       // 1. Flight Info 메시지 처리
       const flightParsed = FlightInfoSchema.safeParse(msg);
       if (flightParsed.success) {
@@ -54,7 +59,32 @@ export function usePilotDashboard() {
         return;
       }
 
-      // 2. 서버 응답 메시지 처리 (커넥션 상태 등)
+      // 2. 미션 상태 업데이트 처리 (승인/시작)
+      if (msg.message === "Mission Updated" && msg.status) {
+        console.log("[PilotDashboard] Mission Status Update:", msg);
+
+        // RUNNING = 승인됨, 이동 시작
+        if (msg.status === "RUNNING") {
+          setMoveState("pushback");
+          addLog("success", `✓ PUSHBACK APPROVED`);
+          if (msg.destNode) {
+            addLog("info", `Moving to: ${msg.destNode}`);
+          }
+        }
+        // COMPLETED = 완료
+        else if (msg.status === "COMPLETED") {
+          setMoveState("stopped");
+          addLog("success", `✓ Mission Completed`);
+        }
+        // CANCELLED = 반려됨
+        else if (msg.status === "CANCELLED") {
+          setMoveState("stopped");
+          addLog("error", `✗ PUSHBACK REJECTED`);
+        }
+        return;
+      }
+
+      // 3. 서버 응답 메시지 처리 (커넥션 상태 등)
       if (msg.status && msg.message) {
         const type = msg.status === "SUCCESS" ? "success" : "error";
         addLog(type, `[${msg.status}] ${msg.message}`);

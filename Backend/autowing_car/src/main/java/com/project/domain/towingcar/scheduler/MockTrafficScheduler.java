@@ -22,7 +22,7 @@ import java.util.Map;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(name = "app.mqtt.mock", havingValue = "false")
+@ConditionalOnProperty(name = "app.mqtt.mock", havingValue = "true")
 public class MockTrafficScheduler {
 
     private final MqttService mqttService;
