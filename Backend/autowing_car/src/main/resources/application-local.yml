@@ -30,3 +30,19 @@ logging:
 jwt:
   secret: "c2lsdmVybGlnaHQtdGVzdC1zZWNyZXQtbmVvbi1sYXNlci1hdGMtY29udHJvbC1jZW50ZXItMTIzNDU2Nzg=" # Base64 encoded dummy key (at least 256 bits)
   expiration: 86400000 # 24hrs
+
+springwolf:
+  enabled: true
+  docket:
+    info:
+      title: Autowing Car Async API
+      version: 1.0.0
+      description: 차량 관제 실시간 통신 API
+    base-package: com.project
+    servers:
+      local:
+        protocol: ws
+        host: localhost:8080
+        description: Local WebSocket Server
+  use-fqn: false # 클래스명을 짧게 표시
+
