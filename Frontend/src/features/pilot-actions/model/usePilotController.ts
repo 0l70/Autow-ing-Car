@@ -446,13 +446,30 @@ export function usePilotController(initialCarId?: string) {
     () => {},
   );
 
-  // 4. Emergency Stop
+    // 4. Emergency Stop
   const handleEmergencyStop = useCallback(() => {
     setMoveState("stopped");
     setIsAutoMode(false);
-    addLog("error", "!!! EMERGENCY STOP TRIGGERED !!!");
+    
+    // [REVERT] Only allow E-Stop if there is an ACTIVE car (moving/connected)
+    // As per user request, we revert the test logic.
+    if (activeCarId) {
+        send(
+            "SEND",
+            { destination: "/app/car/emergency" },
+            JSON.stringify({
+                carId: activeCarId,
+            })
+        );
+        addLog("error", "!!! REQ: EMERGENCY STOP SENT !!!");
+    } else {
+        // Now this will only trigger if user manages to click the button while IDLE 
+        // (though button might be disabled, this safety check remains)
+        addLog("error", "!!! EMERGENCY STOP (Local Only - No Active Car) !!!");
+    }
+
     alert("EMERGENCY STOP! All Systems Halted.");
-  }, [addLog]);
+  }, [addLog, activeCarId, send]);
 
   // 5. Confirm Modal Handler
   const handleConfirm = useCallback(() => {
