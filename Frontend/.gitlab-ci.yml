@@ -49,7 +49,7 @@ frontend-docker-push:
     - docker:24.0.5-dind
   needs: ["frontend-build"]
   before_script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "$BACKEND_DOCKER_PASSWORD" | docker login -u "$BACKEND_DOCKER_USERNAME" --password-stdin
   script:
     - |
       echo "🚀 [Frontend] Starting Docker Build & Push..."
@@ -64,9 +64,10 @@ frontend-docker-push:
       echo "🏷️ Using Safe Tag: $SAFE_TAG"
 
       # Build & Push Image
-      docker build -t $CI_REGISTRY_IMAGE/frontend:$SAFE_TAG .
-      docker push $CI_REGISTRY_IMAGE/frontend:$SAFE_TAG
-      echo "🚀 Deployment Image [$SAFE_TAG] Pushed Successfully!"
+      IMAGE_NAME="$BACKEND_DOCKER_USERNAME/autowing-frontend:$SAFE_TAG"
+      docker build -t $IMAGE_NAME .
+      docker push $IMAGE_NAME
+      echo "🚀 Deployment Image [$IMAGE_NAME] Pushed Successfully!"
   rules:
     - if: '$CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH =~ /^hotfix\/.*/'
       changes:
@@ -90,14 +91,15 @@ frontend-deploy-ec2:
     - |
       # 브랜치명 태그 치환 (위와 동일)
       SAFE_TAG=$(echo $CI_COMMIT_REF_NAME | sed 's/\//_/g')
+      IMAGE_NAME="$BACKEND_DOCKER_USERNAME/autowing-frontend:$SAFE_TAG"
       echo "🚀 [Frontend] Deploying branch [$CI_COMMIT_REF_NAME] (Tag: $SAFE_TAG) to EC2..."
 
       ssh ubuntu@$EC2_IP "
-        # Login to GitLab Registry
-        echo '$CI_REGISTRY_PASSWORD' | docker login -u '$CI_REGISTRY_USER' --password-stdin $CI_REGISTRY &&
+        # Login to Docker Hub
+        echo '$BACKEND_DOCKER_PASSWORD' | docker login -u '$BACKEND_DOCKER_USERNAME' --password-stdin &&
         
         # Pull latest image for this branch
-        docker pull $CI_REGISTRY_IMAGE/frontend:$SAFE_TAG &&
+        docker pull $IMAGE_NAME &&
 
         # Stop and remove existing container
         docker stop frontend-app || true &&
@@ -105,10 +107,10 @@ frontend-deploy-ec2:
 
         # Run Frontend Container
         docker run -d --name frontend-app \
-          --network app-network \
+          --network app-net \
           --restart always \
-          -p 80:80 \
-          $CI_REGISTRY_IMAGE/frontend:$SAFE_TAG &&
+          -p 3000:3000 \
+          $IMAGE_NAME &&
 
         echo '✅ Frontend Deployment Complete!'
       "
