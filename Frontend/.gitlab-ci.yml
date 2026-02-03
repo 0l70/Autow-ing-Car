@@ -51,21 +51,22 @@ frontend-docker-push:
   before_script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
-    - echo "🐳 Starting Docker Build & Push..."
-    - cd $[[ inputs.project_dir ]]
+    - |
+      echo "🚀 [Frontend] Starting Docker Build & Push..."
+      cd $[[ inputs.project_dir ]]
 
-    # Generate .env file for Production
-    - echo "VITE_WS_BASE_URL=$VITE_WS_BASE_URL" > .env
-    - echo "VITE_API_BASE_URL=$VITE_API_BASE_URL" >> .env
+      # Generate .env file for Production
+      echo "VITE_WS_BASE_URL=$VITE_WS_BASE_URL" > .env
+      echo "VITE_API_BASE_URL=$VITE_API_BASE_URL" >> .env
 
-    # 브랜치명에서 슬래시(/)를 언더바(_)로 치환하여 안전한 태그 생성
-    - SAFE_TAG=$(echo $CI_COMMIT_REF_NAME | sed 's/\//_/g')
-    - echo "🏷️ Using Safe Tag: $SAFE_TAG"
+      # 브랜치명에서 슬래시(/)를 언더바(_)로 치환하여 안전한 태그 생성
+      SAFE_TAG=$(echo $CI_COMMIT_REF_NAME | sed 's/\//_/g')
+      echo "🏷️ Using Safe Tag: $SAFE_TAG"
 
-    # Build & Push Image
-    - docker build -t $CI_REGISTRY_IMAGE/frontend:$SAFE_TAG .
-    - docker push $CI_REGISTRY_IMAGE/frontend:$SAFE_TAG
-    - echo "🚀 Deployment Image [$SAFE_TAG] Pushed Successfully!"
+      # Build & Push Image
+      docker build -t $CI_REGISTRY_IMAGE/frontend:$SAFE_TAG .
+      docker push $CI_REGISTRY_IMAGE/frontend:$SAFE_TAG
+      echo "🚀 Deployment Image [$SAFE_TAG] Pushed Successfully!"
   rules:
     - if: '$CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH =~ /^hotfix\/.*/'
       changes:
