@@ -19,6 +19,14 @@ RUN pnpm install --frozen-lockfile
 
 # Build source
 COPY . .
+
+# .env 파일이 존재할 경우 ENV 변수를 덮어쓰므로 삭제하거나 무시해야 합니다.
+RUN rm -f .env
+
+# 빌드 시점에 환경변수가 제대로 들어왔는지 로그로 확인
+RUN echo "VITE_API_BASE_URL: $VITE_API_BASE_URL"
+RUN echo "VITE_WS_BASE_URL: $VITE_WS_BASE_URL"
+
 # 이제 이 단계에서 위에서 설정한 ENV 값들이 정적 파일에 삽입됩니다.
 RUN pnpm run build
 
