@@ -46,9 +46,13 @@ public class SecurityConfig {
                 .headers(headers -> headers.frameOptions(frame -> frame.disable()))
                 .cors(cors -> cors.configurationSource(request -> {
                     var corsConfiguration = new org.springframework.web.cors.CorsConfiguration();
-                    corsConfiguration.setAllowedOrigins(java.util.List.of("http://localhost:3000"));
+                    corsConfiguration.setAllowedOrigins(java.util.List.of(
+                            "http://localhost:3000",
+                            "https://autowingcar.o-r.kr",
+                            "https://autowingcar.o-r.kr:8443"));
                     corsConfiguration.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
                     corsConfiguration.setAllowedHeaders(java.util.List.of("*"));
+                    corsConfiguration.setAllowCredentials(true); // 인증 정보 포함 허용
                     return corsConfiguration;
                 }));
 
