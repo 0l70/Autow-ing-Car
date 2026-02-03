@@ -35,11 +35,13 @@ public class MockTrafficScheduler {
     // [NEW] Flight Info Tick Counter
     private int flightInfoTick = 0;
 
-    @Scheduled(fixedRate = 1000) // 10Hz
+    @Scheduled(fixedRate = 100) // 10Hz
     public void simulate() {
-        double centerX = 1000.0;
-        double centerY = 750.0;
-        double radius = 300.0;
+        // [Map Config] Aligned with S14P11A402 Map (Origin: -5.42, -3.68)
+        // Center of Lower Viewport (Pixel 163, 206) -> World (2.75, -0.23)
+        double centerX = 2.75;
+        double centerY = -0.23;
+        double radius = 1.5;
 
         // Simulate multiple cars
         simulateCar("TC01", centerX, centerY, radius, 0);
@@ -81,7 +83,7 @@ public class MockTrafficScheduler {
                 // Teleport to Gate to trigger Auto Connect in Service
                 forceGatePos = true;
                 if (count == 31)
-                    log.info("✅ [Mock] {} Arrived at Gate (MOVING -> AUTO CONNECT)", carId);
+                    log.info("✅ [Mock] {} Arrived at Gate", carId);
             }
             // modeToSend remains MOVING_TO_LOAD
         }
@@ -94,7 +96,7 @@ public class MockTrafficScheduler {
             if (count > 30) {
                 modeToSend = "TOWING";
                 if (count == 31)
-                    log.info("✅ [Mock] {} Connected (LOADING -> TOWING)", carId);
+                    log.info("✅ [Mock] {} Connected", carId);
             } else {
                 modeToSend = "LOADING";
             }
@@ -108,7 +110,7 @@ public class MockTrafficScheduler {
             if (count > 30) {
                 modeToSend = "IDLE";
                 if (count == 31)
-                    log.info("✅ [Mock] {} Disconnected (UNLOADING -> IDLE)", carId);
+                    log.info("✅ [Mock] {} Disconnected", carId);
             } else {
                 modeToSend = "UNLOADING";
             }
@@ -125,20 +127,20 @@ public class MockTrafficScheduler {
 
         // [Override] Gate Position for Auto Connect
         if (forceGatePos) {
-            x = 200.0; // Gate 101 Position (Inside Map)
-            y = 200.0;
+            x = 2.0; // Adjusted for visible area
+            y = 0.0;
             v = 0.0;
         }
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("carId", carId);
+        payload.put("code", carId); // Add 'code' for DTO compatibility
         payload.put("x", x);
         payload.put("y", y);
         payload.put("yaw", yaw);
         payload.put("v", v);
         payload.put("battery", 80 + (int) (Math.sin(time) * 10));
-        payload.put("mode", modeToSend); // Injected Status
-        payload.put("mode", modeToSend); // Injected Status
+        payload.put("mode", modeToSend);
         payload.put("status", modeToSend); // [FIX] Use valid Enum string instead of "job"
         payload.put("timestamp", LocalDateTime.now().toString());
 
@@ -163,8 +165,8 @@ public class MockTrafficScheduler {
 
         Map<String, Object> mockMapPayload = new HashMap<>();
         mockMapPayload.put("map_id", "MOCK_MAP_01");
-        // mockMapPayload.put("width", 2000); // [Test] Simulate Missing Width
-        // mockMapPayload.put("height", 1500); // [Test] Simulate Missing Height
+        mockMapPayload.put("width", 327); // [Map Fix] Match real map width
+        mockMapPayload.put("height", 275); // [Map Fix] Match real map height
 
         List<Map<String, Object>> nodes = new ArrayList<>();
         // 1. RUNWAY (Central Horizontal)
