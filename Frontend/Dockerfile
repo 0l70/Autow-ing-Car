@@ -3,12 +3,12 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 # GitLab에서 --build-arg로 넘겨줄 변수들을 정의합니다.
-ARG VITE_API_URL
-ARG VITE_ANOTHER_VAR
+ARG VITE_WS_BASE_URL
+ARG VITE_API_BASE_URL
 
 # 빌드 도구(Vite 등)가 인식할 수 있도록 환경변수로 설정합니다.
-ENV VITE_API_URL=$VITE_API_URL
-ENV VITE_ANOTHER_VAR=$VITE_ANOTHER_VAR
+ENV VITE_WS_BASE_URL=$VITE_WS_BASE_URL
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 # Install pnpm
 RUN npm install -g pnpm
