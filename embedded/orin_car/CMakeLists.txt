@@ -13,6 +13,26 @@ find_package(rclpy REQUIRED)
 
 install(PROGRAMS
   scripts/ackermann_driver.py
+  scripts/mqtt_nav_bridge_ssafy.py
+  scripts/mqtt_path_follower.py
+  scripts/docking_ai.py
+  scripts/docking_controller.py
+  scripts/marshaller_controller.py
+  scripts/gesture_ai.py
+  scripts/vision_manager.py
+  scripts/vision_manager_raw.py
+  scripts/mqtt_total_bridge.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(PROGRAMS
+  test_scripts/mqtt_total_control_test.py
+  test_scripts/docking_controller_test.py
+  test_scripts/marshaller_controller_test.py
+  test_scripts/driving_controller_test.py
+  test_scripts/ackermann_driver_test.py
+  test_scripts/docking_ai_test.py
+  test_scripts/gesture_ai_test.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -24,5 +44,6 @@ install(DIRECTORY
   urdf
   DESTINATION share/${PROJECT_NAME}
 )
+
 
 ament_package()

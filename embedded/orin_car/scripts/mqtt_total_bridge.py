@@ -4,6 +4,7 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from nav2_msgs.action import NavigateToPose
 from geometry_msgs.msg import PoseWithCovarianceStamped
+from std_msgs.msg import String  # [추가] 모드 전송을 위해 필요
 from action_msgs.msg import GoalStatus
 
 import json
@@ -54,17 +55,20 @@ def euler_from_quaternion(x, y, z, w):
     yaw_z = math.atan2(t3, t4)
     return yaw_z
 
-class MqttNavBridge(Node):
+class MqttTotalBridge(Node):
     def __init__(self):
-        super().__init__('mqtt_nav_bridge')
+        super().__init__('mqtt_total_bridge') # 노드 이름 변경
         
-        # [수정] 런치 파일에서 초기 위치를 받기 위한 파라미터 선언
+        # 런치 파일에서 초기 위치를 받기 위한 파라미터 선언
         self.declare_parameter('init_x', -1.111)
         self.declare_parameter('init_y', 0.201)
         self.declare_parameter('init_yaw', -1.57)
         
         # 퍼블리셔 생성
         self.initial_pose_pub = self.create_publisher(PoseWithCovarianceStamped, 'initialpose', 10)
+        
+        # [NEW] 시스템 모드 퍼블리셔 (Vision Manager에게 모드 전달)
+        self.mode_pub = self.create_publisher(String, '/system_mode', 10)
 
         # 1. Nav2 Action Client 설정
         self._action_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
@@ -74,7 +78,7 @@ class MqttNavBridge(Node):
         self.nav2_check_timer = self.create_timer(1.0, self.check_nav2_server_ready)
         self.get_logger().info("⏳ Waiting for Nav2 Server to come online...")
 
-        # [중요] 런치 파일 실행 후 Nav2가 켜질 때까지 충분히 대기 (10초) 후 초기화
+        # 런치 파일 실행 후 Nav2가 켜질 때까지 충분히 대기 (10초) 후 초기화
         self.get_logger().info("⏳ 10초 뒤에 런치 파일에서 설정한 위치로 초기화합니다...")
         self.timer_init = self.create_timer(10.0, self.set_initial_pose_once)
 
@@ -123,7 +127,6 @@ class MqttNavBridge(Node):
     def set_initial_pose_once(self):
         self.timer_init.cancel()
         
-        # [수정] 파라미터로 받은 좌표값 사용
         init_x = self.get_parameter('init_x').value
         init_y = self.get_parameter('init_y').value
         init_yaw = self.get_parameter('init_yaw').value
@@ -156,11 +159,19 @@ class MqttNavBridge(Node):
             cmd = data.get("cmd")
             path = data.get("path", []) 
             
-            self.get_logger().info(f"Received MQTT Command: {cmd}, Path: {path}")
+            self.get_logger().info(f"📩 Received MQTT Command: {cmd}")
+            
+            # 모드 메시지 준비
+            mode_msg = String()
 
+            # [COMMAND 1] 주행 시작 (START_MISSION)
             if cmd == "START_MISSION":
-                self.goal_queue = []
+                # 1. 모드 전환 -> NAV (Vision Manager가 카메라 끄고 대기)
+                mode_msg.data = "NAV"
+                self.mode_pub.publish(mode_msg)
                 
+                # 2. 주행 로직 수행
+                self.goal_queue = []
                 if not path:
                     self.get_logger().warn("Path is empty!")
                     return
@@ -178,14 +189,32 @@ class MqttNavBridge(Node):
                 if self.goal_queue:
                     self.process_next_goal()
 
+            # [COMMAND 2] 도킹 시작 (DOCKING_START)
+            elif cmd == "DOCKING_START":
+                # 모드 전환 -> DOCKING (Vision Manager가 후방 카메라 ON)
+                mode_msg.data = "DOCKING"
+                self.mode_pub.publish(mode_msg)
+                self.get_logger().info("🚀 Mode Switched to DOCKING")
+
+            # [COMMAND 3] 마샬러 시작 (MARSHALLER_START)
+            elif cmd == "MARSHALLER_START":
+                # 모드 전환 -> MARSHALLER (Vision Manager가 전면 카메라 ON)
+                mode_msg.data = "MARSHALLER"
+                self.mode_pub.publish(mode_msg)
+                self.get_logger().info("🚀 Mode Switched to MARSHALLER")
+
+            # [COMMAND 4] 정지 / 홈 (STOP or GO_HOME)
+            elif cmd == "STOP":
+                # 모드 전환 -> IDLE (카메라 끄기)
+                mode_msg.data = "IDLE"
+                self.mode_pub.publish(mode_msg)
+                self.robot_status = "IDLE"
+                self.get_logger().info("🛑 System STOP & IDLE Mode")
+                
             elif cmd == "GO_HOME":
-                # GO_HOME 시에도 필요하다면 초기 파라미터 위치로 갈 수 있음
-                # self.goal_queue = [ORIGIN_GOAL] 
+                # GO_HOME 시에도 필요하다면 초기 파라미터 위치로 이동 가능
                 pass
 
-            elif cmd == "PAUSE":
-                pass 
-                
         except Exception as e:
             self.get_logger().error(f"JSON Parse Error: {e}")
 
@@ -284,7 +313,7 @@ class MqttNavBridge(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = MqttNavBridge()
+    node = MqttTotalBridge()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
