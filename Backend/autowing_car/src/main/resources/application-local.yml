@@ -13,10 +13,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop # 껐다 켜면 초기화 (개발용)
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
-        format-sql: true
+        format-sql: false
   h2:
     console:
       enabled: true # http://localhost:8080/h2-console 접속 가능
@@ -25,10 +25,11 @@ spring:
       url: ssl://autowingcar.o-r.kr:8883
 logging:
   level:
-    org.springframework.web: DEBUG
-    com.project: DEBUG
-    org.springframework.session: DEBUG
-    org.springframework.security.web.session: DEBUG
+    org.springframework.web: INFO
+    com.project: INFO
+    com.project.infra.mqtt: INFO
+    org.springframework.session: INFO
+    org.springframework.security.web.session: INFO
 
 jwt:
   secret: "c2lsdmVybGlnaHQtdGVzdC1zZWNyZXQtbmVvbi1sYXNlci1hdGMtY29udHJvbC1jZW50ZXItMTIzNDU2Nzg=" # Base64 encoded dummy key (at least 256 bits)

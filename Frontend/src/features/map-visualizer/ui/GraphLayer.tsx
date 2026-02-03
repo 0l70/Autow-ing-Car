@@ -13,13 +13,14 @@ interface GraphLayerProps {
  */
 export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
     const { nodes, edges, selectedId } = useGraphStore();
+    console.log(`[GraphLayer] Nodes: ${nodes.length}, Edges: ${edges.length}, mapHeight: ${mapHeight}`);
 
     if (!meta || mapHeight === 0) return null;
 
     const getPixel = (world: WorldCoord) => worldToPixel(world, meta, mapHeight);
 
     return (
-        <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute inset-0 pointer-events-none z-30">
             {/* SVG Layer for Edges */}
             <svg className="absolute inset-0 w-full h-full overflow-visible">
                 {edges.map(edge => {
@@ -69,8 +70,8 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
                                       (node.type === 'GATE' || node.type === 'CHARGER') ? 'w-3.5 h-3.5' : 'w-2.5 h-2.5';
 
                     const activeClass = isSelected
-                        ? 'bg-accent-cyan scale-125 shadow-[0_0_10px_cyan] z-20 ring-1 ring-white' 
-                        : `${getNodeColor(node.type)}`;
+                        ? 'bg-accent-cyan scale-125 shadow-[0_0_10px_cyan] z-40 ring-1 ring-white' 
+                        : `${getNodeColor(node.type)} z-30`;
 
                     return (
                         <div

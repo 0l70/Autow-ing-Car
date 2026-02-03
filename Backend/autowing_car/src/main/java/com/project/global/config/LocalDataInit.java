@@ -52,44 +52,37 @@ public class LocalDataInit implements CommandLineRunner {
         Aircraft b737 = initAircraft("HL7777", "B737", 35.0, 39.0);
         Aircraft a320 = initAircraft("HL8888", "A320", 34.0, 37.0);
 
-        // 3. Map (3x3 Grid for Yen's Algorithm Test)
-        // Nodes: (0,0) ~ (2,2)
-        // N_x_y naming convention
-        Node[][] grid = new Node[3][3];
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                grid[i][j] = createNode("N_" + i + "_" + j, i * 50.0, j * 50.0);
-            }
-        }
-        nodeRepository.saveAll(flatten(grid));
+        // // Edges: Horizontal & Vertical (Bi-directional)
+        // for (int i = 0; i < 3; i++) {
+        // for (int j = 0; j < 3; j++) {
+        // // Horizontal (to Right)
+        // if (i < 2) {
+        // createAndSaveBiEdge(grid[i][j], grid[i + 1][j], 50.0 + i * 13 + j * 1);
+        // }
+        // // Vertical (to Bottom)
+        // if (j < 2) {
+        // createAndSaveBiEdge(grid[i][j], grid[i][j + 1], 50.0 + i * 12 + j * 2);
+        // }
+        // }
+        // }
 
-        // Edges: Horizontal & Vertical (Bi-directional)
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                // Horizontal (to Right)
-                if (i < 2) {
-                    createAndSaveBiEdge(grid[i][j], grid[i + 1][j], 50.0 + i * 13 + j * 1);
-                }
-                // Vertical (to Bottom)
-                if (j < 2) {
-                    createAndSaveBiEdge(grid[i][j], grid[i][j + 1], 50.0 + i * 12 + j * 2);
-                }
-            }
-        }
+        // // Special Nodes: GATE & RUNWAY
+        // Node gate = createNode("G101", -50.0, 0.0);
+        // Node runway = createNode("R101", 150.0, 100.0);
 
-        // Special Nodes: GATE & RUNWAY
-        Node gate = createNode("GATE_101", -50.0, 0.0);
-        Node runway = createNode("RUNWAY", 150.0, 100.0);
-        nodeRepository.save(gate);
-        nodeRepository.save(runway);
+        // [New] PathPlanner Nodes (edge01, edge02)
+        Node s01 = createNode("S01", -1.22, -0.13);
+        Node g01 = createNode("G01", 0.33, -0.28);
+        Node r02 = createNode("R02", 4.03, -0.08);
+        nodeRepository.saveAll(List.of(s01, g01, r02));
 
-        // Connect Special Nodes to Grid
-        createAndSaveBiEdge(gate, grid[0][0], 50.0); // Gate -> (0,0)
-        createAndSaveBiEdge(grid[2][2], runway, 80.0); // (2,2) -> Runway
+        // Connect PathPlanner Nodes
+        createAndSaveBiEdge(s01, g01, 1.56); // Distance for edge01
+        createAndSaveBiEdge(g01, r02, 3.70); // Distance for edge02
 
         // 4. Vehicles
-        TowingCar tc1 = createAndSaveCar("TC01", 0.0, 0.0, 100);
-        TowingCar tc2 = createAndSaveCar("TC02", 50.0, 50.0, 90);
+        TowingCar tc1 = createAndSaveCar("TC01", -1.22, -0.13, 100); // TC01 at S01
+        TowingCar tc2 = createAndSaveCar("TC02", 0.33, -0.28, 90); // TC02 at G01
 
         // 5. Flights
         createAndSaveFlight("KE001", pilot, tc1, b737);

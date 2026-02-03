@@ -5,8 +5,13 @@ import com.project.domain.flight.dto.FlightWebSocketDtos.FlightInfoDto;
 import com.project.domain.mission.dto.MissionWebSocketDtos.MissionResponseDto;
 import com.project.domain.towingcar.entity.TowingCar;
 import com.project.domain.towingcar.repository.TowingCarRepository; // [NEW] Direct Repository Access
+import com.project.domain.map.entity.Edge;
+import com.project.domain.map.entity.Node;
+import com.project.domain.map.repository.EdgeRepository;
+import com.project.domain.map.repository.NodeRepository;
 import com.project.domain.towingcar.service.TowingCarDBAdaptor;
 import com.project.domain.towingcar.service.TowingCarWebSocketService;
+import com.project.domain.map.service.MapWebSocketService;
 import com.project.infra.mqtt.constant.MqttTopics;
 import com.project.infra.mqtt.service.MqttService;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -30,7 +36,10 @@ public class MockTrafficScheduler {
     private final MqttService mqttService;
     private final TowingCarDBAdaptor towingCarDBAdaptor;
     private final TowingCarRepository towingCarRepository; // [NEW] Direct Repository Access
+    private final NodeRepository nodeRepository; // [NEW] Use DB for Map
+    private final EdgeRepository edgeRepository; // [NEW] Use DB for Map
     private final TowingCarWebSocketService towingCarWebSocketService;
+    private final MapWebSocketService mapWebSocketService;
 
     private double time = 0;
     private final Map<String, Integer> loadingCounters = new HashMap<>();
@@ -38,36 +47,38 @@ public class MockTrafficScheduler {
     // [NEW] Flight Info Tick Counter
     private int flightInfoTick = 0;
 
-    @Scheduled(fixedRate = 500) // 20Hz
+    @Scheduled(fixedRate = 1000) // 1Hz for quieter debugging
+    @Transactional(readOnly = true)
     public void simulate() {
-        // [Map Config] Aligned with S14P11A402 Map (Origin: -5.42, -3.68)
-        // Center of Lower Viewport (Pixel 163, 206) -> World (2.75, -0.23)
-        double centerX = 2.75;
-        double centerY = -0.23;
-        double radius = 1.5;
+        try {
+            // [Map Config] Aligned with S14P11A402 Map (Origin: -5.42, -3.68)
+            // Center of Lower Viewport (Pixel 163, 206) -> World (2.75, -0.23)
+            double centerX = 2.75;
+            double centerY = -0.23;
+            double radius = 1.5;
 
-        // [Simulate ALL DB Cars]
-        // Using Repository directly to avoid modifying DBAdaptor logic
-        List<TowingCar> allCars = towingCarRepository.findAll();
+            // [Simulate ALL DB Cars]
+            // Using Repository directly to avoid modifying DBAdaptor logic
+            List<TowingCar> allCars = towingCarRepository.findAll();
 
-        for (int i = 0; i < allCars.size(); i++) {
-            TowingCar car = allCars.get(i);
-            // Give each car a different phase/offset so they don't stack
-            double offset = i * (Math.PI / 4);
-            simulateCar(car, centerX, centerY, radius, offset);
-        }
+            for (int i = 0; i < allCars.size(); i++) {
+                TowingCar car = allCars.get(i);
+                // Give each car a different phase/offset so they don't stack
+                double offset = i * (Math.PI / 4);
+                simulateCar(car, centerX, centerY, radius, offset);
+            }
 
-        time += 0.05;
-        if (time > 10000)
-            time = 0;
+            time += 0.05;
+            if (time > 10000)
+                time = 0;
 
-        // [Map Fix] Send Mock Map Data ONCE to fix Frontend "Invalid Map Data" error
-        sendMockMap();
-
-        // [Flight Info Fix] Send Mock Flight Data periodically
-        flightInfoTick++;
-        if (flightInfoTick % 20 == 0) { // Every 2 seconds (100ms * 20)
-            sendMockFlightInfo();
+            // [Flight Info Fix] Send Mock Flight Data periodically
+            flightInfoTick++;
+            if (flightInfoTick % 20 == 0) { // Every 2 seconds (100ms * 20)
+                sendMockFlightInfo();
+            }
+        } catch (Exception e) {
+            log.error("❌ [MockTrafficScheduler] Error in simulate loop: {}", e.getMessage(), e);
         }
     }
 
@@ -132,12 +143,36 @@ public class MockTrafficScheduler {
             loadingCounters.remove(carId);
         }
 
-        // 3. Physics Simulation (Default Circle)
-        double t = time + offset;
-        double x = cx + r * Math.cos(t);
-        double y = cy + r * Math.sin(t);
-        double v = 1.5 + Math.random();
-        double yaw = (t * 180 / Math.PI + 90) % 360;
+        // 3. Physics Simulation (Patrol Path)
+        // Path: Start(3.08, 3.02) <-> End(0.28, -1.68)
+        double startX = 3.08;
+        double startY = 3.02;
+        double endX = 0.28;
+        double endY = -1.68;
+
+        // Oscillate t between 0 and 1
+        // time increases by 0.05 per tick.
+        // Cycle: 0 -> 1 -> 0
+        double speedFactor = 0.05; // Speed multiplier
+        double cycle = (time * speedFactor + offset) % 2.0;
+        double t = cycle > 1.0 ? 2.0 - cycle : cycle; // 0..1..0
+
+        // Lerp
+        double x = startX + (endX - startX) * t;
+        double y = startY + (endY - startY) * t;
+
+        // Calculate Yaw (Direction)
+        // dx, dy direction
+        double dx = endX - startX;
+        double dy = endY - startY;
+        double yawVal = Math.toDegrees(Math.atan2(dy, dx)); // -180 ~ 180
+        if (cycle > 1.0)
+            yawVal += 180; // Reverse direction on return
+
+        // Convert to 0-360 for consistent format if needed, but standard is usually
+        // fine
+        double yaw = (yawVal + 360) % 360;
+        double v = 5.0; // 5 m/s constant speed
 
         // [Override] Gate Position for Auto Connect (mock behavior)
         if (forceGatePos) {
@@ -173,64 +208,45 @@ public class MockTrafficScheduler {
 
     private void sendMockMap() {
         mapTickCounter++;
-        if (mapTickCounter % 50 != 0)
+        if (mapTickCounter % 2 != 0)
             return;
 
         Map<String, Object> mockMapPayload = new HashMap<>();
-        mockMapPayload.put("map_id", "MOCK_MAP_01");
-        mockMapPayload.put("width", 327); // [Map Fix] Match real map width
-        mockMapPayload.put("height", 275); // [Map Fix] Match real map height
+        mockMapPayload.put("map_id", "final_map");
+
+        // Fetch Real Map Data from DB
+        List<Node> dbNodes = nodeRepository.findAll();
+        List<Edge> dbEdges = edgeRepository.findAll();
 
         List<Map<String, Object>> nodes = new ArrayList<>();
-        // 1. RUNWAY (Central Horizontal)
-        nodes.add(
-                Map.of("id", "RWY_L", "x", 200, "y", 750, "status", "active", "label", "Runway 09", "type", "RUNWAY"));
-        nodes.add(
-                Map.of("id", "RWY_R", "x", 1800, "y", 750, "status", "active", "label", "Runway 27", "type", "RUNWAY"));
-
-        // 2. INTERSECTIONS (Taxiway Crossings)
-        nodes.add(Map.of("id", "INT_1", "x", 600, "y", 750, "status", "active", "label", "Taxiway A", "type",
-                "INTERSECTION"));
-        nodes.add(Map.of("id", "INT_2", "x", 1400, "y", 750, "status", "active", "label", "Taxiway B", "type",
-                "INTERSECTION"));
-
-        // 3. GATES (Top)
-        nodes.add(
-                Map.of("id", "GATE_1", "x", 600, "y", 200, "status", "occupied", "label", "Gate 101", "type", "GATE"));
-        nodes.add(Map.of("id", "GATE_2", "x", 1400, "y", 200, "status", "free", "label", "Gate 102", "type", "GATE"));
-
-        // 4. PARKING / CHARGERS (Bottom)
-        nodes.add(Map.of("id", "PARK_1", "x", 600, "y", 1300, "status", "active", "label", "Charger A", "type",
-                "CHARGER"));
-        nodes.add(Map.of("id", "PARK_2", "x", 1400, "y", 1300, "status", "active", "label", "Charger B", "type",
-                "CHARGER"));
+        for (Node n : dbNodes) {
+            Map<String, Object> nodeMap = new HashMap<>();
+            nodeMap.put("id", n.getNodeCode());
+            nodeMap.put("x", n.getPosX());
+            nodeMap.put("y", n.getPosY());
+            nodeMap.put("status", n.getStatus().name());
+            nodes.add(nodeMap);
+        }
 
         mockMapPayload.put("nodes", nodes);
 
-        // [NEW] EDGES (Connections)
         List<Map<String, Object>> edges = new ArrayList<>();
-        // Runway Backbone
-        edges.add(Map.of("id", "e1", "from", "RWY_L", "to", "INT_1", "cost", 10.0));
-        edges.add(Map.of("id", "e2", "from", "INT_1", "to", "INT_2", "cost", 20.0));
-        edges.add(Map.of("id", "e3", "from", "INT_2", "to", "RWY_R", "cost", 10.0));
-
-        // Vertical Connections (Taxiways)
-        edges.add(Map.of("id", "e4", "from", "INT_1", "to", "GATE_1", "cost", 15.0));
-        edges.add(Map.of("id", "e5", "from", "INT_2", "to", "GATE_2", "cost", 15.0));
-        edges.add(Map.of("id", "e6", "from", "INT_1", "to", "PARK_1", "cost", 15.0));
-        edges.add(Map.of("id", "e7", "from", "INT_2", "to", "PARK_2", "cost", 15.0));
+        for (Edge e : dbEdges) {
+            Map<String, Object> edgeMap = new HashMap<>();
+            edgeMap.put("id", e.getEdgeCode());
+            edgeMap.put("from", e.getSrcNode().getNodeCode());
+            edgeMap.put("to", e.getDstNode().getNodeCode());
+            edgeMap.put("cost", e.getDistance());
+            edges.add(edgeMap);
+        }
 
         mockMapPayload.put("edges", edges);
 
-        Map<String, Object> corners = new HashMap<>();
-        corners.put("TL", Map.of("x", 0, "y", 1500));
-        corners.put("TR", Map.of("x", 2000, "y", 1500));
-        corners.put("BL", Map.of("x", 0, "y", 0));
-        corners.put("BR", Map.of("x", 2000, "y", 0));
-        mockMapPayload.put("corners", corners);
-
         mqttService.publish(MqttTopics.SUB_MAP_INFO, mockMapPayload);
-        log.info("✅ [MockScheduler] Periodically Sent Mock Map Data: MOCK_MAP_01");
+        // [Debug Sync] Also broadcast directly via WebSocket to bypass MQTT bridge
+        // issues
+        mapWebSocketService.broadcastMapInfo(mockMapPayload);
+        log.info("✅ [MockScheduler] Periodically Sent DB Map Data ({})", dbNodes.size());
     }
 
     // [NEW] Mock Flight Info Sender

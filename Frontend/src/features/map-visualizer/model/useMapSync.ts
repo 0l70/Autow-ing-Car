@@ -33,10 +33,12 @@ export function useMapSync(enabled: boolean = true) {
     const client = context || fallbackClient;
     const { isConnected, send, onMessage } = client;
 
+    console.log(`[MapSync Hook] isConnected: ${isConnected}, enabled: ${enabled}`);
+
     // 5. Subscription Logic (Runs for BOTH Context and Fallback)
     useEffect(() => {
         if (isConnected && enabled) {
-            console.log("[MapSync] Connected. Subscribing to Map Info...");
+            console.log("[MapSync] 🛰️ Attempting Subscription to:", WS_TOPICS.MAP_INFO);
             send("SUBSCRIBE", {
                 id: "sub-map-info",
                 destination: WS_TOPICS.MAP_INFO
@@ -44,34 +46,20 @@ export function useMapSync(enabled: boolean = true) {
         }
     }, [isConnected, enabled, send]);
 
-    // 6. Message Processing Logic
+    // 6. Data Processing Helper
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleMapMessage = useCallback((msg: any) => {
-        // Filter by destination to avoid data leakage (especially telemetry)
-        if (msg.destination !== WS_TOPICS.MAP_INFO) return;
-
-        console.log("[MapSync] Received Map Payload", msg.body);
-        const result = MapInfoPayloadSchema.safeParse(msg.body);
-        
-        if (!result.success) {
-            console.error("[MapSync] Invalid Map Data Schema:", result.error);
-            return;
-        }
-
-        const data = result.data;
-        
-        // [New] Update Map Dimensions from Payload
+    const processMapData = useCallback((data: any) => {
+        // --- 1. Update Map Dimensions ---
         if (data.width && data.height) {
-             setMapDimensions(data.width, data.height);
-             // console.log(`[MapSync] Synced Map Size: ${data.width}x${data.height}`);
+            setMapDimensions(data.width, data.height);
         }
 
-        // Update Corners
+        // --- 2. Update Map Corners ---
         if (data.corners) {
             setCorners(data.corners);
         }
 
-        // Update Graph
+        // --- 3. Update Graph ---
         // [Fix] Adapter Pattern: Map "Wire Protocol" (from, to) to "Store Protocol" (fromId, toId)
         const adaptedEdges = (data.edges || []).map((e: any) => ({
             ...e,
@@ -80,8 +68,51 @@ export function useMapSync(enabled: boolean = true) {
         }));
 
         loadGraph(data.nodes as any, adaptedEdges as any);
-        
+        console.log(`[MapSync] ✅ Processed ${data.nodes.length} nodes`);
     }, [loadGraph, setCorners, setMapDimensions]);
+
+    // 7. Initial Map Fetch (HTTP)
+    useEffect(() => {
+        if (!enabled) return;
+
+        const fetchInitialMap = async () => {
+            try {
+                // Use relative path for production/proxy, fallback for local dev
+                const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+                const response = await fetch(`${baseUrl}/api/map/info`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                
+                const body = await response.json();
+                console.log("[MapSync] 📥 Initial Map Data Received via HTTP:", body);
+                
+                const result = MapInfoPayloadSchema.safeParse(body);
+                if (result.success) {
+                    processMapData(result.data);
+                } else {
+                    console.error("[MapSync] ❌ Initial Map Validation Failed:", result.error.format());
+                }
+            } catch (err) {
+                console.error("[MapSync] ❌ Initial Map Fetch Failed:", err);
+            }
+        };
+
+        fetchInitialMap();
+    }, [enabled, processMapData]);
+
+    // 8. Message Processing Logic (WebSocket)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handleMapMessage = useCallback((msg: any) => {
+        if (msg.destination !== WS_TOPICS.MAP_INFO) return;
+
+        console.log("[MapSync] 🎯 MATCH! Map Update Received via WS:", msg.body);
+        const result = MapInfoPayloadSchema.safeParse(msg.body);
+        
+        if (result.success) {
+            processMapData(result.data);
+        } else {
+            console.error("[MapSync] ❌ WS Map Validation Failed:", result.error.format());
+        }
+    }, [processMapData]);
 
     // 7. Subscribe to Messages
     useEffect(() => {

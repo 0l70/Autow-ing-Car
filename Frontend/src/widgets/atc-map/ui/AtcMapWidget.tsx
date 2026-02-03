@@ -29,13 +29,19 @@ export function AtcMapWidget({ className }: AtcMapWidgetProps) {
     const [loadedDims, setLoadedDims] = useState({ width: 0, height: 0 });
     
     // Grid Metadata
-    const gridMetadata = useMemo(() => ({
-        width: storeMapWidth || MOCK_MAP_SIZE.width,
-        height: storeMapHeight || MOCK_MAP_SIZE.height,
-        resolution: 0.05
-    }), [storeMapWidth, storeMapHeight]);
+    const gridMetadata = useMemo(() => {
+        // [Update] Always prefer resolution and origin from local YAML (meta)
+        const resolution = meta?.resolution || 0.05;
+        
+        return {
+            width: storeMapWidth || MOCK_MAP_SIZE.width,
+            height: storeMapHeight || MOCK_MAP_SIZE.height,
+            resolution
+        };
+    }, [storeMapWidth, storeMapHeight, meta]);
 
     // Dimensions to use
+    // If we have an image, use its real pixels. Otherwise use store/mock.
     const activeWidth = loadedDims.width || gridMetadata.width;
     const activeHeight = loadedDims.height || gridMetadata.height;
 
@@ -45,10 +51,11 @@ export function AtcMapWidget({ className }: AtcMapWidgetProps) {
         return {
             // Same Width as Pilot (163), but Full Height (275) to see everything
             // Pilot View was: x: 82, width: 163
-            x: 82,
-            y: 0,
-            width: 163,
-            height: 275
+            // Focused View for Node Patrol
+            x: 50,
+            y: 80,
+            width: 200,
+            height: 200
         };
     }, []);
 
@@ -78,11 +85,11 @@ export function AtcMapWidget({ className }: AtcMapWidgetProps) {
                     // Config
                     visualStyle="abstract" // [Update] Use 'abstract' style for grid visibility
                     gridMetadata={gridMetadata}
-                    pixelRatio={2} 
+                    pixelRatio={5} 
                     
                     // Viewport Control
                     initialViewBox={fullMapView}
-                    maxBounds={fullMapView}
+                    // maxBounds={fullMapView}
                     
                     // Grid Customization (Match Pilot Style but adjusted for Full Map scale)
                     // Pilot: 1.5m / 0.5m
@@ -110,7 +117,7 @@ export function AtcMapWidget({ className }: AtcMapWidgetProps) {
                         meta={meta || null}
                         mapWidth={activeWidth}
                         mapHeight={activeHeight}
-                        pixelRatio={2}
+                        pixelRatio={5}
                         onAircraftClick={handleAircraftClick}
                     />
                     

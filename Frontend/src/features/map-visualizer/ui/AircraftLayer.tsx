@@ -61,9 +61,9 @@ export function AircraftLayer({ meta, mapWidth, mapHeight, pixelRatio = 1, onAir
         if (!ctx) return;
 
         // [DEBUG] Check render context
-        console.log(`[AircraftLayer] Rendering... Meta: ${!!meta}, W: ${mapWidth}, H: ${mapHeight}, Count: ${animatedList.length}`);
+        // console.log(`[AircraftLayer] Rendering... Meta: ${!!meta}, W: ${mapWidth}, H: ${mapHeight}, Count: ${animatedList.length}`);
         if(animatedList.length > 0) {
-            console.log(`[AircraftLayer] First Car:`, animatedList[0]);
+            // console.log(`[AircraftLayer] First Car:`, animatedList[0]);
         }
         
         // [New] High-DPI Scaling
@@ -83,7 +83,7 @@ export function AircraftLayer({ meta, mapWidth, mapHeight, pixelRatio = 1, onAir
 
         animatedList.forEach(ac => {
             const pixel = worldToPixel(ac.position, meta, mapHeight);
-            console.log(`[AircraftLayer] Car ${ac.id}: World(${ac.position.x.toFixed(2)}, ${ac.position.y.toFixed(2)}) -> Pixel(${pixel.x.toFixed(0)}, ${pixel.y.toFixed(0)})`);
+            // console.log(`[AircraftLayer] Car ${ac.id}: World(${ac.position.x.toFixed(2)}, ${ac.position.y.toFixed(2)}) -> Pixel(${pixel.x.toFixed(0)}, ${pixel.y.toFixed(0)})`);
             
             ctx.save();
             ctx.translate(pixel.x, pixel.y);

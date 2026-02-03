@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import com.project.domain.common.MapStatus;
 import com.project.domain.map.component.GraphCache;
 import com.project.domain.map.component.UsageManager;
+import com.project.domain.map.dto.MapResponse;
 import com.project.domain.map.entity.Edge;
 import com.project.domain.map.entity.Node;
 import com.project.domain.mission.dto.MissionWebSocketDtos.PathOptionDto;
@@ -30,6 +31,7 @@ public class MapService {
 
     private final GraphCache graphCache;
     private final UsageManager usageManager;
+    private final MapDBAdaptor mapDBAdaptor;
 
     @AllArgsConstructor
     @Getter
@@ -223,6 +225,28 @@ public class MapService {
             current = edge.getSrcNode();
         }
         return path;
+    }
+
+    // [API] 전체 지도 정보 조회
+    public MapResponse getFullMap(String mapId) {
+        List<Node> dbNodes = mapDBAdaptor.findAllNodes();
+        List<Edge> dbEdges = mapDBAdaptor.findAllEdges();
+
+        return MapResponse.builder()
+                .mapId(mapId)
+                .nodes(dbNodes.stream().map(n -> MapResponse.NodeDto.builder()
+                        .id(n.getNodeCode())
+                        .x(n.getPosX())
+                        .y(n.getPosY())
+                        .status(n.getStatus().name())
+                        .build()).toList())
+                .edges(dbEdges.stream().map(e -> MapResponse.EdgeDto.builder()
+                        .id(e.getEdgeCode())
+                        .from(e.getSrcNode().getNodeCode())
+                        .to(e.getDstNode().getNodeCode())
+                        .cost(e.getDistance())
+                        .build()).toList())
+                .build();
     }
 
     // Heuristic: Euclidean Distance

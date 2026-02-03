@@ -41,6 +41,7 @@ public class MqttIncomingMessageParser {
             // e.g., "autowing_car/v1/map" -> "map"
             // e.g., "autowing_car/v1/ack" -> "ack"
             String routingKey = topic.substring(topic.lastIndexOf('/') + 1);
+            log.debug("[MQTT Parser] Topic: {}, RoutingKey: {}", topic, routingKey);
 
             // 2. Lookup Handler
             MqttTopicHandler handler = handlerMap.get(routingKey);
