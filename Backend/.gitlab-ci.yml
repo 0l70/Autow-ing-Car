@@ -94,7 +94,7 @@ backend-deploy:
         if ! docker ps -a | grep -q autowing-redis; then
           echo '🔴 Redis 컨테이너가 없습니다. 새로 생성합니다...'
           docker run -d --name autowing-redis \
-            --network app-network \
+            --network app-net \
             --restart always \
             -v autowing-redis-data:/data \
             redis:7-alpine redis-server --appendonly yes
@@ -104,7 +104,7 @@ backend-deploy:
 
         # Backend 컨테이너 실행(dev 환경 엔 local, master 환경엔 prod)
         docker run -d --name backend-app \
-          --network app-network \
+          --network app-net \
           --restart always \
           -p 8080:8080 \
           --env-file deploy.env \
