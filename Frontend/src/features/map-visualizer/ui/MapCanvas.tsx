@@ -14,6 +14,7 @@ interface MapCanvasProps {
     
     // Viewport Control (Optional)
     initialViewBox?: { x: number; y: number; width: number; height: number; } | undefined;
+    maxBounds?: { x: number; y: number; width: number; height: number; } | undefined;
     
     // Events
     onMapLoad?: ((info: { width: number; height: number }) => void) | undefined;
@@ -29,7 +30,7 @@ interface MapCanvasProps {
  */
 export function MapCanvas({ 
     mapImage, meta, visualStyle = 'default', gridMetadata, 
-    initialViewBox, onMapLoad, onMapClick, className, children 
+    initialViewBox, maxBounds, onMapLoad, onMapClick, className, children 
 }: MapCanvasProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -83,26 +84,71 @@ export function MapCanvas({
         const containerW = container.clientWidth;
         const containerH = container.clientHeight;
 
-        const scaledMapW = mapW * targetScale;
-        const scaledMapH = mapH * targetScale;
-
+        // If maxBounds is defined, restricting "Camera" inside bounds
+        // "Seeing" maxBounds means:
+        // Top-Left of ViewPort >= maxBounds.x
+        // Bottom-Right of ViewPort <= maxBounds.x + width
+        
+        // BUT, offset logic is: MapOrigin + offset = Screen(0,0)
+        // So offset determines where (0,0) of map is on screen.
+        // Map Point P on screen = P * scale + offset
+        
+        // Constraint: We want Visible Area (Screen Rect 0,0 to W,H) to be contained within MaxBounds?
+        // OR We want MaxBounds to be contained within Visible Area (Zoom Out Limit)?
+        // User said: "Cannot go OUTSIDE that area". Meaning the user can never see points outside maxBounds.
+        // Implies: The Viewer Viewport must always overlap with MaxBounds? 
+        // Or simpler: The visible viewport must NOT show anything outside maxBounds?
+        // Actually, "cannot go outside" usually means the VIEWPORT is CLAMPED to the BOUNDS.
+        // i.e., I cannot pan such that I see the "void" outside the bounds.
+        
+        // Let's implement standard "Contain" behavior for maxBounds.
+        // The visible screen rectangle (in map space) must be inside maxBounds? No, that's max zoom out limit.
+        // Usually: The Bounds Rectangle (in screen space) must cover the Screen Rectangle (if zoomed in).
+        // If zoomed out (Bounds < Screen), center it.
+        
+        const effectiveBounds = maxBounds || { x: 0, y: 0, width: mapW, height: mapH };
+        
+        const boundsLeft = effectiveBounds.x * targetScale + targetOffset.x;
+        const boundsTop = effectiveBounds.y * targetScale + targetOffset.y;
+        const boundsW = effectiveBounds.width * targetScale;
+        const boundsH = effectiveBounds.height * targetScale;
+        
         let newX = targetOffset.x;
         let newY = targetOffset.y;
 
         // X Axis
-        if (scaledMapW <= containerW) {
-            newX = (containerW - scaledMapW) / 2;
+        if (boundsW <= containerW) {
+            // If the bounds is smaller than screen, Center it (or align left?)
+            // Usually center.
+            const centeredLeft = (containerW - boundsW) / 2;
+            // newX must result in boundsLeft = centeredLeft
+            // centeredLeft = effectiveBounds.x * scale + newX
+            newX = centeredLeft - (effectiveBounds.x * targetScale);
         } else {
-            const minX = containerW - scaledMapW;
-            newX = Math.min(Math.max(newX, minX), 0);
+            // Bounds is larger than screen.
+            // Screen Left (0) >= Bounds Left
+            // Screen Right (containerW) <= Bounds Right (BoundsLeft + BoundsW)
+            
+            // 1. Screen Left >= Bounds Left
+            // 0 >= effectiveBounds.x * scale + newX  => newX <= -effectiveBounds.x * scale
+            const maxOffset = -effectiveBounds.x * targetScale;
+            
+            // 2. Screen Right <= Bounds Right
+            // containerW <= effectiveBounds.x * scale + newX + boundsW
+            // newX >= containerW - boundsW - effectiveBounds.x * scale
+            const minOffset = containerW - boundsW - (effectiveBounds.x * targetScale);
+            
+            newX = Math.min(Math.max(newX, minOffset), maxOffset);
         }
 
         // Y Axis
-        if (scaledMapH <= containerH) {
-            newY = (containerH - scaledMapH) / 2;
+        if (boundsH <= containerH) {
+            const centeredTop = (containerH - boundsH) / 2;
+            newY = centeredTop - (effectiveBounds.y * targetScale);
         } else {
-            const minY = containerH - scaledMapH;
-            newY = Math.min(Math.max(newY, minY), 0);
+            const maxOffset = -effectiveBounds.y * targetScale;
+            const minOffset = containerH - boundsH - (effectiveBounds.y * targetScale);
+            newY = Math.min(Math.max(newY, minOffset), maxOffset);
         }
 
         return { x: newX, y: newY };
@@ -118,45 +164,26 @@ export function MapCanvas({
         const containerH = container.clientHeight;
         if (containerW === 0) return;
 
-        // 1. 초기 뷰박스가 있으면 그것을 기준으로 맞춤
-        if (initialViewBox) {
-            // ViewBox Width/Height를 화면에 맞춤
-            const scaleX = containerW / initialViewBox.width;
-            const scaleY = containerH / initialViewBox.height;
-            const fitScale = Math.min(scaleX, scaleY); // 꽉 차게 하려면 max, 다 보이게 하려면 min
-
-            // Offset 계산: 뷰박스의 시작점(x,y)이 화면 (0,0)에 오도록 하고 스케일 적용
-            // Target: (0,0) of container should map to (ivb.x * scale, ivb.y * scale) relative to map origin?
-            // No.
-            // Map Origin (0,0) is drawing at `offset`.
-            // We want `initialViewBox.x` to be at Container(0).
-            // ContainerX = OffsetX + MapX * Scale
-            // 0 = OffsetX + ivb.x * Scale => OffsetX = -ivb.x * Scale
-            
-            // Center the ViewBox in Container if Aspect Ratio differs
-            const centeredOffsetX = (containerW - initialViewBox.width * fitScale) / 2;
-            const centeredOffsetY = (containerH - initialViewBox.height * fitScale) / 2;
-
-            setScale(fitScale);
-            setOffset({
-                x: -initialViewBox.x * fitScale + centeredOffsetX,
-                y: -initialViewBox.y * fitScale + centeredOffsetY
-            });
-            return;
-        }
-
-        // 2. 없으면 전체 맵 맞춤 (기존 로직)
-        const scaleX = (containerW - 40) / width;
-        const scaleY = (containerH - 40) / height;
-        const fitScale = Math.min(scaleX, scaleY, 5) * 0.9; 
-
-        const startOffset = { 
-            x: (containerW - width * fitScale) / 2, 
-            y: (containerH - height * fitScale) / 2 
-        };
+        // Priority 1: initialViewBox (Specific initial look)
+        // Priority 2: maxBounds (Fit to bounds)
+        // Priority 3: Full Map
         
+        const targetBox = initialViewBox || maxBounds || { x: 0, y: 0, width, height };
+
+        // ViewBox Width/Height를 화면에 맞춤
+        const scaleX = containerW / targetBox.width;
+        const scaleY = containerH / targetBox.height;
+        const fitScale = Math.min(scaleX, scaleY); // Fit inside
+
+        // Center logic
+        const centeredOffsetX = (containerW - targetBox.width * fitScale) / 2;
+        const centeredOffsetY = (containerH - targetBox.height * fitScale) / 2;
+
         setScale(fitScale);
-        setOffset(startOffset);
+        setOffset({
+            x: -targetBox.x * fitScale + centeredOffsetX,
+            y: -targetBox.y * fitScale + centeredOffsetY
+        });
     };
 
     // --- Init Effect ---
@@ -174,7 +201,7 @@ export function MapCanvas({
             return () => clearTimeout(timer);
         }
     // eslint-disable-next-line
-    }, [mapImage, visualStyle, gridMetadata?.width, initialViewBox]); // 의존성 추가
+    }, [mapImage, visualStyle, gridMetadata?.width, initialViewBox, maxBounds]); // 의존성 추가
 
     // --- Event Handlers ---
     useLayoutEffect(() => {
@@ -188,10 +215,16 @@ export function MapCanvas({
             const scaleMul = delta > 0 ? zoomFactor : (1 / zoomFactor);
             const newScaleRaw = scale * scaleMul;
             
-            // Min Scale: 컨테이너보다 작아지지 않게
-            const { width: mapW } = getMapDimensions();
+            // Min Scale: 컨테이너보다 작아지지 않게 (Respect Constraints)
+            // If maxBounds is set, minScale is fitting maxBounds to container.
+            const effectiveBounds = maxBounds || { width: getMapDimensions().width, height: getMapDimensions().height };
+            
             const containerW = container.clientWidth;
-            const minScale = Math.min(containerW / (mapW || 1), 1);
+            const containerH = container.clientHeight;
+            
+            const minScaleX = containerW / effectiveBounds.width;
+            const minScaleY = containerH / effectiveBounds.height;
+            const minScale = Math.min(minScaleX, minScaleY); // Fit entirely visible
             
             const newScale = Math.min(Math.max(newScaleRaw, minScale), 10);
 
@@ -206,16 +239,15 @@ export function MapCanvas({
             const newOffsetX = mouseX - (mapX * newScale);
             const newOffsetY = mouseY - (mapY * newScale);
             
-            // 뷰박스 제한이 있다면 여기서 clampOffset을 initialViewBox 기준으로 해야 하나,
-            // 일단 전체 맵 Clamp만 적용
             const finalOffset = clampOffset({x: newOffsetX, y: newOffsetY}, newScale);
 
             setScale(newScale);
             setOffset(finalOffset);
         };
         container.addEventListener('wheel', onWheel, { passive: false });
+        // Touch gestures? (Future improvement)
         return () => container.removeEventListener('wheel', onWheel);
-    }, [scale, offset, mapImage, visualStyle, gridMetadata]);
+    }, [scale, offset, mapImage, visualStyle, gridMetadata, maxBounds]);
 
     const handleMouseDown = (e: MouseEvent) => {
         setIsDragging(true);

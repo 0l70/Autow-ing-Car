@@ -38,16 +38,19 @@ export function PilotMapWidget({ className, onAircraftSelect }: PilotMapWidgetPr
     const activeWidth = loadedDims.width || gridMetadata.width;
     const activeHeight = loadedDims.height || gridMetadata.height;
 
-    // [New] Calculate Lower Half ViewBox
+    // [New] Calculate Lower Half ViewBox (Fixed Crop based on Analysis)
+    // Map Size: 327x275
+    // Crop: X(82~245), Y(137~275)
     const lowerHalfView = useMemo(() => {
-        if (!activeWidth || !activeHeight) return undefined;
+        // If meta not loaded yet, use default crop relative to MOCK size or wait
+        // But better to return the calculated values directly as they align with the physical map
         return {
-            x: 0,
-            y: activeHeight / 2,     // Y starts at middle
-            width: activeWidth,
-            height: activeHeight / 2 // Height is half
+            x: 82,
+            y: 137,
+            width: 163,
+            height: 138
         };
-    }, [activeWidth, activeHeight]);
+    }, []);
 
     const handleAircraftClick = (ac: Aircraft) => {
         if (onAircraftSelect) onAircraftSelect(ac);
@@ -73,6 +76,7 @@ export function PilotMapWidget({ className, onAircraftSelect }: PilotMapWidgetPr
                     
                     // [New] Viewport Control
                     initialViewBox={lowerHalfView}
+                    maxBounds={lowerHalfView} // Enforce boundaries
                     
                     className="w-full h-full"
                     onMapLoad={setLoadedDims}
