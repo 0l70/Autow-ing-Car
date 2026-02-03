@@ -18,6 +18,7 @@ interface AircraftLayerProps {
     mapWidth: number;
     mapHeight: number;
     pixelRatio?: number; // [New] High-DPI Support
+    data?: Aircraft[]; // [New] Optional external data source
     onAircraftClick?: (aircraft: Aircraft) => void;
 }
 

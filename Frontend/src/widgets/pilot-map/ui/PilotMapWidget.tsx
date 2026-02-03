@@ -19,7 +19,7 @@ interface PilotMapWidgetProps {
 export function PilotMapWidget({ className, onAircraftSelect }: PilotMapWidgetProps) {
     // --- Data Loading ---
     // 기존에는 MapCanvas 내부에서 로딩했으나, 이제는 Hook으로 분리되어 위젯이 데이터를 관리합니다.
-    const { meta, mapImage } = useMapData('pilot_grid');
+    const { meta, mapImage } = useMapData('final_map');
     
     // --- Store State ---
     const { mapWidth: storeMapWidth, mapHeight: storeMapHeight } = useGraphStore();
@@ -65,45 +65,45 @@ export function PilotMapWidget({ className, onAircraftSelect }: PilotMapWidgetPr
                 </CardTitle>
             </CardHeader>
             <div className="flex-1 relative bg-black/40 overflow-hidden">
-                <MapCanvas
-                    // Data
-                    mapImage={mapImage || null} // 로딩 중이면 null
-                    meta={meta || null}
-                    
-                    // Config
-                    visualStyle="abstract" // 파일럿 뷰는 추상화된 그리드 스타일 선호
-                    gridMetadata={gridMetadata}
-                    pixelRatio={4}// [New] 4x High Resolution (성능/화질 균형 최적값)
-                    
-                    // [New] Viewport Control
-                    initialViewBox={lowerHalfView}
-                    maxBounds={lowerHalfView} // Enforce boundaries
-                    
-                    // [New] Grid Customization
-                    gridOptions={{
-                        majorInterval: 1.5,  // 1.5m 간격 (주요 격자)
-                        minorInterval: 0.5,  // 0.5m 간격 (세부 격자)
-                        majorWidth: 0.3,     // 주요 격자 두께
-                        minorWidth: 0.1,     // 세부 격자 두께
-                        majorColor: 'rgba(0, 255, 255, 0.15)', // 시안색 (은은하게)
-                        minorColor: 'rgba(255, 255, 255, 0.2)'  // 흰색 (배경처럼)
-                    }}
-                    
-                    className="w-full h-full"
-                    onMapLoad={setLoadedDims}
-                    onMapClick={(pos) => console.log("Pilot Map Click:", pos)}
-                >
-                    {/* Render Layers */}
-                    <GraphLayer meta={meta || null} mapHeight={activeHeight} />
-                    
-                    <AircraftLayer
+                    <MapCanvas
+                        // Data
+                        mapImage={mapImage || null} // 로딩 중이면 null
                         meta={meta || null}
-                        mapWidth={activeWidth}
-                        mapHeight={activeHeight}
-                        pixelRatio={4} // Synchronize with MapCanvas
-                        onAircraftClick={handleAircraftClick}
-                    />
-                </MapCanvas>
+                        
+                        // Config
+                        visualStyle="abstract" // 파일럿 뷰는 추상화된 그리드 스타일 선호
+                        gridMetadata={gridMetadata}
+                        pixelRatio={2}// [Update] 2x High Resolution (Matched with ATC)
+                        
+                        // [New] Viewport Control
+                        initialViewBox={lowerHalfView}
+                        maxBounds={lowerHalfView} // Enforce boundaries
+                        
+                        // [New] Grid Customization
+                        gridOptions={{
+                            majorInterval: 1.5,  // 1.5m 간격 (주요 격자)
+                            minorInterval: 0.5,  // 0.5m 간격 (세부 격자)
+                            majorWidth: 0.3,     // 주요 격자 두께
+                            minorWidth: 0.1,     // 세부 격자 두께
+                            majorColor: 'rgba(0, 255, 255, 0.15)', // 시안색 (은은하게)
+                            minorColor: 'rgba(255, 255, 255, 0.2)'  // 흰색 (배경처럼)
+                        }}
+                        
+                        className="w-full h-full"
+                        onMapLoad={setLoadedDims}
+                        onMapClick={(pos) => console.log("Pilot Map Click:", pos)}
+                    >
+                        {/* Render Layers */}
+                        <GraphLayer meta={meta || null} mapHeight={activeHeight} />
+                        
+                        <AircraftLayer
+                            meta={meta || null}
+                            mapWidth={activeWidth}
+                            mapHeight={activeHeight}
+                            pixelRatio={2} // Synchronize with MapCanvas
+                            onAircraftClick={handleAircraftClick}
+                        />
+                    </MapCanvas>
             </div>
         </Card>
     );

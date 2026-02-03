@@ -2,7 +2,9 @@ package com.project.domain.towingcar.scheduler;
 
 import com.project.domain.common.CarStatus;
 import com.project.domain.flight.dto.FlightWebSocketDtos.FlightInfoDto;
+import com.project.domain.mission.dto.MissionWebSocketDtos.MissionResponseDto;
 import com.project.domain.towingcar.entity.TowingCar;
+import com.project.domain.towingcar.repository.TowingCarRepository; // [NEW] Direct Repository Access
 import com.project.domain.towingcar.service.TowingCarDBAdaptor;
 import com.project.domain.towingcar.service.TowingCarWebSocketService;
 import com.project.infra.mqtt.constant.MqttTopics;
@@ -27,6 +29,7 @@ public class MockTrafficScheduler {
 
     private final MqttService mqttService;
     private final TowingCarDBAdaptor towingCarDBAdaptor;
+    private final TowingCarRepository towingCarRepository; // [NEW] Direct Repository Access
     private final TowingCarWebSocketService towingCarWebSocketService;
 
     private double time = 0;
@@ -35,7 +38,7 @@ public class MockTrafficScheduler {
     // [NEW] Flight Info Tick Counter
     private int flightInfoTick = 0;
 
-    @Scheduled(fixedRate = 100) // 10Hz
+    @Scheduled(fixedRate = 500) // 20Hz
     public void simulate() {
         // [Map Config] Aligned with S14P11A402 Map (Origin: -5.42, -3.68)
         // Center of Lower Viewport (Pixel 163, 206) -> World (2.75, -0.23)
@@ -43,9 +46,16 @@ public class MockTrafficScheduler {
         double centerY = -0.23;
         double radius = 1.5;
 
-        // Simulate multiple cars
-        simulateCar("TC01", centerX, centerY, radius, 0);
-        // simulateCar("TC00", centerX + 10, centerY, radius, Math.PI); // Opposite side
+        // [Simulate ALL DB Cars]
+        // Using Repository directly to avoid modifying DBAdaptor logic
+        List<TowingCar> allCars = towingCarRepository.findAll();
+
+        for (int i = 0; i < allCars.size(); i++) {
+            TowingCar car = allCars.get(i);
+            // Give each car a different phase/offset so they don't stack
+            double offset = i * (Math.PI / 4);
+            simulateCar(car, centerX, centerY, radius, offset);
+        }
 
         time += 0.05;
         if (time > 10000)
@@ -61,17 +71,16 @@ public class MockTrafficScheduler {
         }
     }
 
-    private void simulateCar(String carId, double cx, double cy, double r, double offset) {
-        // 1. Get Real Status from DB
-        TowingCar car = towingCarDBAdaptor.getCarByCode(carId);
-        CarStatus currentStatus = (car != null) ? car.getCarStatus() : CarStatus.IDLE;
-        String modeToSend = "IDLE";
+    private void simulateCar(TowingCar car, double cx, double cy, double r, double offset) {
+        String carId = car.getCode();
+        // 1. Use Real Status & Battery from Object (No DB lookup needed)
+        CarStatus currentStatus = car.getCarStatus();
+        Integer battery = car.getBattery();
+
+        String modeToSend = currentStatus.name();
 
         // Physics Override for Teleport
         boolean forceGatePos = false;
-
-        // Default Status Mapping
-        modeToSend = currentStatus.name();
 
         // 2. Logic for MOVING_TO_LOAD -> Arrive at Gate (Trigger Auto Connect)
         if (currentStatus == CarStatus.MOVING_TO_LOAD) {
@@ -85,7 +94,6 @@ public class MockTrafficScheduler {
                 if (count == 31)
                     log.info("✅ [Mock] {} Arrived at Gate", carId);
             }
-            // modeToSend remains MOVING_TO_LOAD
         }
         // 3. Logic for LOADING -> TOWING (Connect)
         else if (currentStatus == CarStatus.LOADING) {
@@ -93,10 +101,16 @@ public class MockTrafficScheduler {
             count++;
             loadingCounters.put(carId, count);
 
-            if (count > 30) {
+            if (count > 3) {
                 modeToSend = "TOWING";
-                if (count == 31)
+                if (count == 31) {
                     log.info("✅ [Mock] {} Connected", carId);
+                    towingCarWebSocketService.notifyPilotResult("pilot@atc.com",
+                            MissionResponseDto.builder()
+                                    .status("SUCCESS")
+                                    .message("Connected Successfully")
+                                    .build());
+                }
             } else {
                 modeToSend = "LOADING";
             }
@@ -125,34 +139,33 @@ public class MockTrafficScheduler {
         double v = 1.5 + Math.random();
         double yaw = (t * 180 / Math.PI + 90) % 360;
 
-        // [Override] Gate Position for Auto Connect
+        // [Override] Gate Position for Auto Connect (mock behavior)
         if (forceGatePos) {
-            x = 2.0; // Adjusted for visible area
+            x = 2.0;
             y = 0.0;
             v = 0.0;
         }
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("carId", carId);
-        payload.put("code", carId); // Add 'code' for DTO compatibility
+        payload.put("code", carId);
+        payload.put("type", "TUG"); // [FIX] Explicit Type for Schema Validation
         payload.put("x", x);
         payload.put("y", y);
         payload.put("yaw", yaw);
         payload.put("v", v);
-        payload.put("battery", 80 + (int) (Math.sin(time) * 10));
+        payload.put("battery", battery);
         payload.put("mode", modeToSend);
-        payload.put("status", modeToSend); // [FIX] Use valid Enum string instead of "job"
+        payload.put("status", modeToSend);
         payload.put("timestamp", LocalDateTime.now().toString());
 
-        mqttService.publish(MqttTopics.SUB_MONITORING, payload);
+        // 3. [ATC & Pilot] Broadcast to /topic/car/{carCode}
+        // ATC subscribes to ALL (or specific range).
+        // Pilot subscribes to THEIR car.
+        // Backend simply broadcasts to the channel.
 
-        // [LOOPBACK] Directly send to WebSocket to ensure UI updates even if MQTT
-        // broker is unreachable or loopback fails
-        try {
-            towingCarWebSocketService.broadcastCarStatus(carId, payload);
-        } catch (Exception e) {
-            log.warn("Mock loopback failed: {}", e.getMessage());
-        }
+        mqttService.publish(MqttTopics.SUB_MONITORING, payload);
+        towingCarWebSocketService.broadcastCarStatus(carId, payload);
     }
 
     // Send map periodically (e.g. every 5 seconds = every 50 ticks at 10Hz)
