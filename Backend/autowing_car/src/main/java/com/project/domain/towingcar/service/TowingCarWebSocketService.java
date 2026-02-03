@@ -19,6 +19,12 @@ public class TowingCarWebSocketService {
         log.info("차량 상태 전송: {}", monitoringPayload);
     }
 
+    // [NEW] 지도 정보 브로드캐스트
+    public void broadcastMapInfo(Object mapPayload) {
+        webSocketService.broadcast(WebSocketTopics.TOPIC_MAP_INFO, mapPayload);
+        log.info("지도 정보 전송: {}", mapPayload);
+    }
+
     // 2. 항공편 채널 알림 (Topic: /topic/flight/{scheduleId})
     public void notifyFlightChannel(Long scheduleId, Object payload) {
         webSocketService.broadcast(WebSocketTopics.flightChannel(scheduleId), payload);

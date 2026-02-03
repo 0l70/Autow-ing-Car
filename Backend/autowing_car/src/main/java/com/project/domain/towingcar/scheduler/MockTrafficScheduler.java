@@ -13,7 +13,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -41,9 +40,13 @@ public class MockTrafficScheduler {
         double centerY = 750.0;
         double radius = 300.0;
 
-        // Simulate multiple cars
-        simulateCar("TC01", centerX, centerY, radius, 0);
-        // simulateCar("TC00", centerX + 10, centerY, radius, Math.PI); // Opposite side
+        // Simulate multiple cars (100 Cars)
+        for (int i = 1; i <= 100; i++) {
+            String carId = String.format("TC%03d", i); // TC001 ~ TC100
+            // Distribute them in a circle
+            double offset = (2 * Math.PI / 100) * i;
+            simulateCar(carId, centerX, centerY, radius, offset);
+        }
 
         time += 0.05;
         if (time > 10000)
@@ -139,8 +142,7 @@ public class MockTrafficScheduler {
         payload.put("battery", 80 + (int) (Math.sin(time) * 10));
         payload.put("mode", modeToSend); // Injected Status
         payload.put("mode", modeToSend); // Injected Status
-        payload.put("status", modeToSend); // [FIX] Use valid Enum string instead of "job"
-        payload.put("timestamp", LocalDateTime.now().toString());
+        payload.put("edgeTs", System.currentTimeMillis());
 
         mqttService.publish(MqttTopics.SUB_MONITORING, payload);
 
@@ -215,7 +217,14 @@ public class MockTrafficScheduler {
         mockMapPayload.put("corners", corners);
 
         mqttService.publish(MqttTopics.SUB_MAP_INFO, mockMapPayload);
-        log.info("✅ [MockScheduler] Periodically Sent Mock Map Data: MOCK_MAP_01");
+
+        // [LOOPBACK] Send to WebSocket for frontend map rendering
+        try {
+            towingCarWebSocketService.broadcastMapInfo(mockMapPayload);
+            log.info("✅ [MockScheduler] Loopback Map Data to WebSocket");
+        } catch (Exception e) {
+            log.warn("Map loopback failed: {}", e.getMessage());
+        }
     }
 
     // [NEW] Mock Flight Info Sender
@@ -239,7 +248,7 @@ public class MockTrafficScheduler {
                                           // Let's use TUG-004 to be safe or TC01.
                                           // Looking at existing mock data: TC01 used in physics.
                                           // Let's use TC01 to ensure map visualization works for "My Car".
-                .assignedCarId("TC01")
+                .assignedCarId("TC001")
                 .build();
 
         // Send to 'pilot@atc.com' user (The actual login ID)

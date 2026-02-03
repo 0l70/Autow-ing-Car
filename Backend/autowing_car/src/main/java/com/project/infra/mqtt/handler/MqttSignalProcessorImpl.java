@@ -34,6 +34,11 @@ public class MqttSignalProcessorImpl implements MqttSignalProcessor {
                 log.debug("Processing Signal: Car={}, Type={}", carCode, type);
 
                 if ("monitoring".equals(type)) {
+                    // C. Inject serverTs for latency measurement
+                    if (carData.getPayload() instanceof com.fasterxml.jackson.databind.node.ObjectNode objectNode) {
+                        objectNode.put("serverTs", System.currentTimeMillis());
+                    }
+
                     // A. DB 저장
                     towingCarService.processCarMonitoring(carCode, carData.getPayload());
 

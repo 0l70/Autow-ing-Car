@@ -87,11 +87,14 @@ public class LocalDataInit implements CommandLineRunner {
         createAndSaveBiEdge(gate, grid[0][0], 50.0); // Gate -> (0,0)
         createAndSaveBiEdge(grid[2][2], runway, 80.0); // (2,2) -> Runway
 
-        // 4. Vehicles
-        TowingCar tc1 = createAndSaveCar("TC01", 0.0, 0.0, 100);
-        TowingCar tc2 = createAndSaveCar("TC02", 50.0, 50.0, 90);
+        // 4. Vehicles (100 Cars for Internal Simulation)
+        for (int i = 1; i <= 100; i++) {
+            createAndSaveCar(String.format("TC%03d", i), Math.random() * 100, Math.random() * 100, 100);
+        }
 
         // 5. Flights
+        TowingCar tc1 = towingCarRepository.findByCode("TC001").orElse(null);
+        TowingCar tc2 = towingCarRepository.findByCode("TC002").orElse(null);
         createAndSaveFlight("KE001", pilot, tc1, b737);
         createAndSaveFlight("OZ101", pilot, tc2, a320);
 
