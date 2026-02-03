@@ -1,6 +1,8 @@
 package com.project.global.auth;
 
 import com.project.global.auth.dto.AuthDtos;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
@@ -23,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "인증/인가", description = "로그인, 로그아웃, Token 관리 API")
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -32,6 +35,7 @@ public class AuthController {
     // Spring이 관리하는 STOMP 사용자 저장소
     private final SimpUserRegistry userRegistry;
 
+    @Operation(summary = "로그인", description = "이메일/비밀번호로 로그인 - Access, Refresh, Socket Token 발급")
     @PostMapping("/login")
     public ResponseEntity<AuthDtos.TokenResponse> login(@RequestBody AuthDtos.LoginRequest request) {
         return ResponseEntity.ok(authService.login(request));
