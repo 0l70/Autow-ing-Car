@@ -8,13 +8,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import java.security.Key;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
 import java.util.stream.Collectors;
@@ -23,22 +20,36 @@ import java.util.stream.Collectors;
 @Component
 public class JwtTokenProvider {
 
+    private final CustomUserDetailsService userDetailsService;
+
     private final Key key;
-    private final long tokenValidityInMilliseconds;
+
+    // Token Types
     private final String TOKEN_TYPE_SOCKET = "SOCKET";
     private final String TOKEN_TYPE_ACCESS = "ACCESS";
+    private final String TOKEN_TYPE_REFRESH = "REFRESH";
+
+    // Token Validity Periods
+    private static final long ACCESS_TOKEN_VALIDITY = 900_000L; // 15분
+    private static final long REFRESH_TOKEN_VALIDITY = 604_800_000L; // 7일
+    private static final long SOCKET_TOKEN_VALIDITY = 60_000L; // 1분
 
     public JwtTokenProvider(
-            @Value("${jwt.secret}") String secret,
-            @Value("${jwt.expiration}") long tokenValidityInMilliseconds) {
+            CustomUserDetailsService userDetailsService,
+            @Value("${jwt.secret}") String secret) {
+        this.userDetailsService = userDetailsService;
         byte[] keyBytes = io.jsonwebtoken.io.Decoders.BASE64.decode(secret);
         this.key = Keys.hmacShaKeyFor(keyBytes);
-        this.tokenValidityInMilliseconds = tokenValidityInMilliseconds;
     }
 
-    // Access Token 생성
+    // Access Token 생성 (15분)
     public String createToken(Authentication authentication) {
-        return buildToken(authentication, this.tokenValidityInMilliseconds, TOKEN_TYPE_ACCESS);
+        return buildToken(authentication, ACCESS_TOKEN_VALIDITY, TOKEN_TYPE_ACCESS);
+    }
+
+    // Refresh Token 생성 (7일)
+    public String createRefreshToken(Authentication authentication) {
+        return buildToken(authentication, REFRESH_TOKEN_VALIDITY, TOKEN_TYPE_REFRESH);
     }
 
     /**
@@ -52,7 +63,7 @@ public class JwtTokenProvider {
      * @return
      */
     public String createSocketToken(Authentication authentication) {
-        return buildToken(authentication, 1000000, TOKEN_TYPE_SOCKET); // 10000ms = 10초
+        return buildToken(authentication, SOCKET_TOKEN_VALIDITY, TOKEN_TYPE_SOCKET);
     }
 
     private String buildToken(Authentication authentication, long duration, String type) {
@@ -61,7 +72,7 @@ public class JwtTokenProvider {
                 .collect(Collectors.joining(","));
 
         long now = (new Date()).getTime();
-        Date validity = new Date(now + 3600000); // 1시간 유효 (테스트용)
+        Date validity = new Date(now + duration); // duration 파라미터 사용
 
         return Jwts.builder()
                 .setSubject(authentication.getName()) // Employee Code 사용
@@ -92,7 +103,20 @@ public class JwtTokenProvider {
         }
     }
 
-    // 인증 정보 조회
+    /*
+     * Refresh 토큰인지 확인
+     */
+    public boolean isRefreshToken(String token) {
+        try {
+            String type = parseClaims(token).get("token_type", String.class);
+            return TOKEN_TYPE_REFRESH.equals(type);
+        } catch (Exception e) {
+            log.error("토큰 타입 확인 실패: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    // 인증 정보 조회 (Access Token용)
     public Authentication getAuthentication(String token) {
         Claims claims = parseClaims(token);
 
@@ -100,12 +124,17 @@ public class JwtTokenProvider {
             throw new InvalidJwtTokenException();
         }
 
-        Collection<? extends GrantedAuthority> authorities = Arrays.stream(claims.get("auth").toString().split(","))
-                .map(SimpleGrantedAuthority::new)
-                .collect(Collectors.toList());
+        // CustomUserDetailsService를 통해 실제 CustomUserDetails 로드
+        String userId = claims.getSubject();
+        UserDetails principal = userDetailsService.loadUserByUsername(userId);
 
-        UserDetails principal = new User(claims.getSubject(), "", authorities);
+        Collection<? extends GrantedAuthority> authorities = principal.getAuthorities();
         return new UsernamePasswordAuthenticationToken(principal, token, authorities);
+    }
+
+    // Refresh Token에서 사용자 ID 추출 (auth claim 불필요)
+    public String getUserIdFromToken(String token) {
+        return parseClaims(token).getSubject();
     }
 
     // 토큰 검증

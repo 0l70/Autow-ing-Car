@@ -39,6 +39,8 @@ public class SecurityConfig {
                         .requestMatchers("/app/**", "/topic/**", "/user/**").permitAll() // STOMP 메시징
                         /* 허용(ROLE : ATC ,PILOT) */
                         .requestMatchers("/springwolf/**").permitAll() // Springwolf UI 허용
+                        // Swagger UI 허용
+                        .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .headers(headers -> headers.frameOptions(frame -> frame.disable()))

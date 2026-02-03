@@ -1,6 +1,8 @@
 package com.project.global.auth;
 
 import com.project.global.auth.dto.AuthDtos;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
@@ -15,6 +17,7 @@ import java.util.stream.Collectors;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.simp.user.SimpUser;
 import org.springframework.messaging.simp.user.SimpUserRegistry;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "인증/인가", description = "로그인, 로그아웃, Token 관리 API")
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -31,6 +35,7 @@ public class AuthController {
     // Spring이 관리하는 STOMP 사용자 저장소
     private final SimpUserRegistry userRegistry;
 
+    @Operation(summary = "로그인", description = "이메일/비밀번호로 로그인 - Access, Refresh, Socket Token 발급")
     @PostMapping("/login")
     public ResponseEntity<AuthDtos.TokenResponse> login(@RequestBody AuthDtos.LoginRequest request) {
         return ResponseEntity.ok(authService.login(request));
@@ -38,28 +43,33 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(HttpServletRequest request, jakarta.servlet.http.HttpServletResponse response) {
-        // 1. SecurityContext 초기화 (현재 스레드의 인증 정보 제거)
+        // 1. 현재 인증 정보 가져오기 (SecurityContext에서)
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+
+        // 2. Redis에서 Refresh Token 삭제
+        if (auth != null && auth.isAuthenticated()) {
+            String userId = auth.getName();
+            authService.logout(userId);
+        }
+
+        // 3. SecurityContext 초기화 (현재 스레드의 인증 정보 제거)
         SecurityContextHolder.clearContext();
 
-        // 2. 세션 무효화 (만약 존재한다면)
+        // 4. 세션 무효화 (만약 존재한다면)
         HttpSession session = request.getSession(false);
         if (session != null) {
             session.invalidate();
         }
 
-        // 3. 쿠키 삭제 (JSESSIONID 등 안전하게 제거)
-        // jakarta.servlet.http.Cookie cookie = new
-        // jakarta.servlet.http.Cookie("JSESSIONID", null);
-        // cookie.setPath("/");
-        // cookie.setHttpOnly(true);
-        // cookie.setMaxAge(0); // 즉시 만료
-        // response.addCookie(cookie);
-
-        // 4. [Client Side Action Required]
-        // 서버에 Redis 같은 별도의 블랙리스트 저장소가 없으므로,
-        // 클라이언트에서 가지고 있는 Access Token과 Socket Token을 반드시 스스로 삭제해야 합니다.
-
         return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Refresh Token으로 Access Token 갱신
+     */
+    @PostMapping("/token/refresh")
+    public ResponseEntity<AuthDtos.TokenResponse> refreshToken(@RequestBody AuthDtos.RefreshRequest request) {
+        return ResponseEntity.ok(authService.refreshToken(request.getRefreshToken()));
     }
 
     /**
