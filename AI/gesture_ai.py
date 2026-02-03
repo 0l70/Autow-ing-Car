@@ -4,7 +4,7 @@ from ultralytics import YOLO
 
 class MarshallerAI:
     def __init__(self):
-        self.model = YOLO('yolov8n-pose.pt') 
+        self.model = YOLO('yolov8n-pose.engine', task='pose')
         
         # [상태 관리 변수]
         self.stage = 0 
