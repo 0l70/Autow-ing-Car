@@ -21,9 +21,17 @@ public class AuthDtos {
     @AllArgsConstructor
     public static class TokenResponse {
         private String accessToken;
+        private String refreshToken; // NEW: Refresh Token 추가
         private String socketToken;
         private String grantType;
         private UserRole role;
+    }
+
+    @Getter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RefreshRequest {
+        private String refreshToken;
     }
 
 }
