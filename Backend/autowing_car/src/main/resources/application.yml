@@ -9,8 +9,8 @@ spring:
 
   mqtt:
     broker:
-      # url: ssl://${MQTT_HOST}:${MQTT_PORT}
-      url: tcp://localhost:1883
+      url: ssl://${MQTT_HOST}:${MQTT_PORT}
+      # url: tcp://localhost:1883
 jwt:
   secret: ${JWT_SECRET}
   expiration: ${JWT_EXPIRATION}
