@@ -5,6 +5,10 @@ spec:
       default: "Frontend"
       description: "Frontend Project Directory"
 ---
+variables:
+  # 🔥 DinD 연결 에러 방지를 위한 필수 설정 (Backend 설정과 동일)
+  DOCKER_TLS_CERTDIR: ""
+
 stages:
   - build
   - deploy
@@ -40,21 +44,28 @@ frontend-build:
 # ---------------------------------------------------------------------------
 frontend-docker-push:
   stage: deploy
-  image: docker:latest
+  image: docker:24.0.5
   services:
-    - docker:dind
+    - docker:24.0.5-dind
   needs: ["frontend-build"]
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
     - echo "🐳 Starting Docker Build & Push..."
     - cd $[[ inputs.project_dir ]]
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    # Generate .env file for Production (Inject Backend Real IP)
+
+    # Generate .env file for Production
     - echo "VITE_WS_BASE_URL=$VITE_WS_BASE_URL" > .env
     - echo "VITE_API_BASE_URL=$VITE_API_BASE_URL" >> .env
-    # Build & Push Image with Branch Tag
-    - docker build -t $CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_REF_NAME .
-    - docker push $CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_REF_NAME
-    - echo "🚀 Deployment Image [$CI_COMMIT_REF_NAME] Pushed Successfully!"
+
+    # 브랜치명에서 슬래시(/)를 언더바(_)로 치환하여 안전한 태그 생성
+    - SAFE_TAG=$(echo $CI_COMMIT_REF_NAME | sed 's/\//_/g')
+    - echo "🏷️ Using Safe Tag: $SAFE_TAG"
+
+    # Build & Push Image
+    - docker build -t $CI_REGISTRY_IMAGE/frontend:$SAFE_TAG .
+    - docker push $CI_REGISTRY_IMAGE/frontend:$SAFE_TAG
+    - echo "🚀 Deployment Image [$SAFE_TAG] Pushed Successfully!"
   rules:
     - if: '$CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH =~ /^hotfix\/.*/'
       changes:
@@ -76,13 +87,16 @@ frontend-deploy-ec2:
     - echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
   script:
     - |
-      echo "🚀 [Frontend] Deploying branch [$CI_COMMIT_REF_NAME] to EC2..."
+      # 브랜치명 태그 치환 (위와 동일)
+      SAFE_TAG=$(echo $CI_COMMIT_REF_NAME | sed 's/\//_/g')
+      echo "🚀 [Frontend] Deploying branch [$CI_COMMIT_REF_NAME] (Tag: $SAFE_TAG) to EC2..."
+
       ssh ubuntu@$EC2_IP "
         # Login to GitLab Registry
         echo '$CI_REGISTRY_PASSWORD' | docker login -u '$CI_REGISTRY_USER' --password-stdin $CI_REGISTRY &&
         
         # Pull latest image for this branch
-        docker pull $CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_REF_NAME &&
+        docker pull $CI_REGISTRY_IMAGE/frontend:$SAFE_TAG &&
 
         # Stop and remove existing container
         docker stop frontend-app || true &&
@@ -93,7 +107,7 @@ frontend-deploy-ec2:
           --network app-network \
           --restart always \
           -p 80:80 \
-          $CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_REF_NAME &&
+          $CI_REGISTRY_IMAGE/frontend:$SAFE_TAG &&
 
         echo '✅ Frontend Deployment Complete!'
       "
