@@ -33,10 +33,9 @@ frontend-build:
         - Frontend/**/*
 
 # ---------------------------------------------------------------------------
-# 2. Docker Deploy (Runs ONLY on 'master' branch)
-#    - Purpose: Build Docker image and push to registry for deployment
+# 2. Docker Build & Push (Runs on 'master', 'dev', and 'hotfix/*' branches)
 # ---------------------------------------------------------------------------
-frontend-deploy:
+frontend-docker-push:
   stage: deploy
   image: docker:latest
   services:
@@ -45,21 +44,58 @@ frontend-deploy:
   script:
     - echo "🐳 Starting Docker Build & Push..."
     - cd $[[ inputs.project_dir ]]
-    # Login to GitLab Container Registry
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    # -----------------------------------------------------------------------
-    # [NEW] Generate .env file for Production (Inject Backend Real IP)
-    # -----------------------------------------------------------------------
+    # Generate .env file for Production (Inject Backend Real IP)
     - echo "VITE_WS_BASE_URL=$VITE_WS_BASE_URL" > .env
     - echo "VITE_API_BASE_URL=$VITE_API_BASE_URL" >> .env
-    - echo "Generated .env file with Base URLs"
-    # Build Image
-    - docker build -t $CI_REGISTRY_IMAGE/frontend:latest .
-    # Push Image
-    - docker push $CI_REGISTRY_IMAGE/frontend:latest
-    - echo "🚀 Deployment Image Pushed Successfully!"
+    # Build & Push Image with Branch Tag
+    - docker build -t $CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_REF_NAME .
+    - docker push $CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_REF_NAME
+    - echo "🚀 Deployment Image [$CI_COMMIT_REF_NAME] Pushed Successfully!"
   rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH =~ /^hotfix\/.*/'
+      changes:
+        - Frontend/**/*
+
+# ---------------------------------------------------------------------------
+# 3. SSH Deploy to EC2 (Runs ONLY on 'master' or 'dev')
+# ---------------------------------------------------------------------------
+frontend-deploy-ec2:
+  stage: deploy
+  image: alpine:latest
+  needs: ["frontend-docker-push"]
+  before_script:
+    - apk add --no-cache openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+  script:
+    - |
+      echo "🚀 [Frontend] Deploying branch [$CI_COMMIT_REF_NAME] to EC2..."
+      ssh ubuntu@$EC2_IP "
+        # Login to GitLab Registry
+        echo '$CI_REGISTRY_PASSWORD' | docker login -u '$CI_REGISTRY_USER' --password-stdin $CI_REGISTRY &&
+        
+        # Pull latest image for this branch
+        docker pull $CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_REF_NAME &&
+
+        # Stop and remove existing container
+        docker stop frontend-app || true &&
+        docker rm frontend-app || true &&
+
+        # Run Frontend Container
+        docker run -d --name frontend-app \
+          --network app-network \
+          --restart always \
+          -p 80:80 \
+          $CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_REF_NAME &&
+
+        echo '✅ Frontend Deployment Complete!'
+      "
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH =~ /^hotfix\/.*/'
       changes:
         - Frontend/**/*
       when: on_success
