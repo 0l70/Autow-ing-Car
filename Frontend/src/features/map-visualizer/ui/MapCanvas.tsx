@@ -3,6 +3,15 @@ import { Loader2 } from "lucide-react";
 import { type MapMeta, type WorldCoord } from "@/entities/map/model/types";
 import { pixelToWorld } from "@/entities/map/lib/coordinate";
 
+export interface GridOptions {
+    majorInterval?: number; // meters (default: 10)
+    minorInterval?: number; // meters (default: 1)
+    majorColor?: string;
+    minorColor?: string;
+    majorWidth?: number;
+    minorWidth?: number;
+}
+
 interface MapCanvasProps {
     // Data (Optional: if not provided, just renders grid)
     mapImage: CanvasImageSource | null;
@@ -11,6 +20,8 @@ interface MapCanvasProps {
     // Config
     visualStyle?: 'default' | 'abstract' | undefined;
     gridMetadata?: { width: number; height: number; resolution: number; } | undefined; 
+    gridOptions?: GridOptions | undefined; 
+    pixelRatio?: number | undefined; // [New] High-DPI Scaling Factor (Default: 1)
     
     // Viewport Control (Optional)
     initialViewBox?: { x: number; y: number; width: number; height: number; } | undefined;
@@ -30,7 +41,7 @@ interface MapCanvasProps {
  */
 export function MapCanvas({ 
     mapImage, meta, visualStyle = 'default', gridMetadata, 
-    initialViewBox, maxBounds, onMapLoad, onMapClick, className, children 
+    initialViewBox, maxBounds, gridOptions, pixelRatio = 1, onMapLoad, onMapClick, className, children 
 }: MapCanvasProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -85,27 +96,6 @@ export function MapCanvas({
         const containerH = container.clientHeight;
 
         // If maxBounds is defined, restricting "Camera" inside bounds
-        // "Seeing" maxBounds means:
-        // Top-Left of ViewPort >= maxBounds.x
-        // Bottom-Right of ViewPort <= maxBounds.x + width
-        
-        // BUT, offset logic is: MapOrigin + offset = Screen(0,0)
-        // So offset determines where (0,0) of map is on screen.
-        // Map Point P on screen = P * scale + offset
-        
-        // Constraint: We want Visible Area (Screen Rect 0,0 to W,H) to be contained within MaxBounds?
-        // OR We want MaxBounds to be contained within Visible Area (Zoom Out Limit)?
-        // User said: "Cannot go OUTSIDE that area". Meaning the user can never see points outside maxBounds.
-        // Implies: The Viewer Viewport must always overlap with MaxBounds? 
-        // Or simpler: The visible viewport must NOT show anything outside maxBounds?
-        // Actually, "cannot go outside" usually means the VIEWPORT is CLAMPED to the BOUNDS.
-        // i.e., I cannot pan such that I see the "void" outside the bounds.
-        
-        // Let's implement standard "Contain" behavior for maxBounds.
-        // The visible screen rectangle (in map space) must be inside maxBounds? No, that's max zoom out limit.
-        // Usually: The Bounds Rectangle (in screen space) must cover the Screen Rectangle (if zoomed in).
-        // If zoomed out (Bounds < Screen), center it.
-        
         const effectiveBounds = maxBounds || { x: 0, y: 0, width: mapW, height: mapH };
         
         const boundsLeft = effectiveBounds.x * targetScale + targetOffset.x;
@@ -118,26 +108,13 @@ export function MapCanvas({
 
         // X Axis
         if (boundsW <= containerW) {
-            // If the bounds is smaller than screen, Center it (or align left?)
-            // Usually center.
+            // Center logic
             const centeredLeft = (containerW - boundsW) / 2;
-            // newX must result in boundsLeft = centeredLeft
-            // centeredLeft = effectiveBounds.x * scale + newX
             newX = centeredLeft - (effectiveBounds.x * targetScale);
         } else {
-            // Bounds is larger than screen.
-            // Screen Left (0) >= Bounds Left
-            // Screen Right (containerW) <= Bounds Right (BoundsLeft + BoundsW)
-            
-            // 1. Screen Left >= Bounds Left
-            // 0 >= effectiveBounds.x * scale + newX  => newX <= -effectiveBounds.x * scale
+            // Pan limits
             const maxOffset = -effectiveBounds.x * targetScale;
-            
-            // 2. Screen Right <= Bounds Right
-            // containerW <= effectiveBounds.x * scale + newX + boundsW
-            // newX >= containerW - boundsW - effectiveBounds.x * scale
             const minOffset = containerW - boundsW - (effectiveBounds.x * targetScale);
-            
             newX = Math.min(Math.max(newX, minOffset), maxOffset);
         }
 
@@ -164,10 +141,6 @@ export function MapCanvas({
         const containerH = container.clientHeight;
         if (containerW === 0) return;
 
-        // Priority 1: initialViewBox (Specific initial look)
-        // Priority 2: maxBounds (Fit to bounds)
-        // Priority 3: Full Map
-        
         const targetBox = initialViewBox || maxBounds || { x: 0, y: 0, width, height };
 
         // ViewBox Width/Height를 화면에 맞춤
@@ -201,7 +174,7 @@ export function MapCanvas({
             return () => clearTimeout(timer);
         }
     // eslint-disable-next-line
-    }, [mapImage, visualStyle, gridMetadata?.width, initialViewBox, maxBounds]); // 의존성 추가
+    }, [mapImage, visualStyle, gridMetadata?.width, initialViewBox, maxBounds]); 
 
     // --- Event Handlers ---
     useLayoutEffect(() => {
@@ -215,8 +188,6 @@ export function MapCanvas({
             const scaleMul = delta > 0 ? zoomFactor : (1 / zoomFactor);
             const newScaleRaw = scale * scaleMul;
             
-            // Min Scale: 컨테이너보다 작아지지 않게 (Respect Constraints)
-            // If maxBounds is set, minScale is fitting maxBounds to container.
             const effectiveBounds = maxBounds || { width: getMapDimensions().width, height: getMapDimensions().height };
             
             const containerW = container.clientWidth;
@@ -245,7 +216,6 @@ export function MapCanvas({
             setOffset(finalOffset);
         };
         container.addEventListener('wheel', onWheel, { passive: false });
-        // Touch gestures? (Future improvement)
         return () => container.removeEventListener('wheel', onWheel);
     }, [scale, offset, mapImage, visualStyle, gridMetadata, maxBounds]);
 
@@ -294,17 +264,23 @@ export function MapCanvas({
         if (!canvas || !ctx) return;
 
         const { width, height } = getMapDimensions();
-        canvas.width = width;
-        canvas.height = height;
+        
+        // [New] Apply Pixel Ratio (Super Sampling)
+        canvas.width = width * pixelRatio;
+        canvas.height = height * pixelRatio;
+        
+        // Reset Transform & Apply Scale
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset
+        ctx.scale(pixelRatio, pixelRatio);
 
         if (visualStyle === 'abstract') {
-            drawAbstractGrid(ctx, width, height, gridMetadata?.resolution || 0.05);
+            drawAbstractGrid(ctx, width, height, gridMetadata?.resolution || 0.05, gridOptions);
         } else if (mapImage) {
             ctx.fillStyle = '#1A1D21'; // Darker bg
             ctx.fillRect(0, 0, width, height);
             ctx.drawImage(mapImage, 0, 0);
         }
-    }, [mapImage, visualStyle, gridMetadata]);
+    }, [mapImage, visualStyle, gridMetadata, gridOptions, pixelRatio]);
 
     return (
         <div 
@@ -324,7 +300,15 @@ export function MapCanvas({
                     willChange: 'transform',
                 }}
             >
-                <canvas ref={canvasRef} className="block" style={{ imageRendering: 'pixelated' }} />
+                <canvas 
+                    ref={canvasRef} 
+                    className="block" 
+                    style={{ 
+                        imageRendering: 'pixelated',
+                        width: getMapDimensions().width,
+                        height: getMapDimensions().height
+                    }} 
+                />
                 <div className="absolute inset-0">
                     {children}
                 </div>
@@ -338,21 +322,34 @@ export function MapCanvas({
     );
 }
 
-function drawAbstractGrid(ctx: CanvasRenderingContext2D, w: number, h: number, res: number) {
+function drawAbstractGrid(
+    ctx: CanvasRenderingContext2D, 
+    w: number, 
+    h: number, 
+    res: number, 
+    options?: GridOptions
+) {
     ctx.clearRect(0, 0, w, h);
-    const gridSizeMajor = 10 / res; 
-    const gridSizeMinor = 1 / res;
     
+    // Default Values
+    const majorMeters = options?.majorInterval ?? 10;
+    const minorMeters = options?.minorInterval ?? 1;
+    
+    const gridSizeMajor = majorMeters / res; 
+    const gridSizeMinor = minorMeters / res;
+    
+    // Minor Grid
     ctx.beginPath();
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+    ctx.lineWidth = options?.minorWidth ?? 1;
+    ctx.strokeStyle = options?.minorColor ?? 'rgba(255, 255, 255, 0.05)';
     for (let x=0; x<=w; x+=gridSizeMinor) { ctx.moveTo(x,0); ctx.lineTo(x,h); }
     for (let y=0; y<=h; y+=gridSizeMinor) { ctx.moveTo(0,y); ctx.lineTo(w,y); }
     ctx.stroke();
 
+    // Major Grid
     ctx.beginPath();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = 'rgba(0, 255, 255, 0.1)';
+    ctx.lineWidth = options?.majorWidth ?? 2;
+    ctx.strokeStyle = options?.majorColor ?? 'rgba(0, 255, 255, 0.1)';
     for (let x=0; x<=w; x+=gridSizeMajor) { ctx.moveTo(x,0); ctx.lineTo(x,h); }
     for (let y=0; y<=h; y+=gridSizeMajor) { ctx.moveTo(0,y); ctx.lineTo(w,y); }
     ctx.stroke();

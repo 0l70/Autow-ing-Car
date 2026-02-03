@@ -65,8 +65,8 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   edges: [],
   mapMeta: null,
   corners: null,
-  mapWidth: 2000, // Default fallback
-  mapHeight: 1500, // Default fallback
+  mapWidth: 327, // Default fallback
+  mapHeight: 275, // Default fallback
   selectedId: null,
   hoveredId: null,
   interactionMode: 'SELECT',

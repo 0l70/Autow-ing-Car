@@ -14,8 +14,8 @@ export const MOCK_MAP_META: MapMeta = {
 
 // Virtual Map Size for Grid Rendering
 export const MOCK_MAP_SIZE = {
-    width: 2000,
-    height: 1500
+    width: 327,
+    height: 275
 };
 
 // Generate some futuristic Looking Nodes

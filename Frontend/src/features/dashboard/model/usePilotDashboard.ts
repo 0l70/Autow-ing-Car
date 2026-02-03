@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useLongPress } from "use-long-press";
+import useLongPress from "@/shared/lib/useLongPress";
 import { usePilotSocket } from "./usePilotSocket";
 import { useSystemLogs } from "./useSystemLogs";
 import { FlightInfo, FlightInfoSchema } from "./dashboardTypes";
 import { WS_TOPICS } from "@/shared/realtime/config/topics";
 
 // TODO: derivation or constants for Car ID
-const MY_CAR_ID = "CAR_102";
+const MY_CAR_ID = "TC01";
 
 export type MoveState = "stopped" | "pushback" | "towing";
 export type ConnectionState =

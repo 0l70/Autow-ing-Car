@@ -27,7 +27,7 @@ const preventDefault = (event: React.SyntheticEvent | Event) => {
  */
 export default function useLongPress(
     onLongPress: (event: React.SyntheticEvent | Event) => void,
-    onClick: (event: React.SyntheticEvent | Event) => void,
+    onClick?: (event: React.SyntheticEvent | Event) => void,
     { shouldPreventDefault = true, delay = 1000 }: Options = {}
 ) {
     const [longPressTriggered, setLongPressTriggered] = useState(false);
@@ -57,7 +57,7 @@ export default function useLongPress(
             // 타이머 취소
             timeout.current && clearTimeout(timeout.current);
             // 롱프레스가 발생하지 않았고, 클릭 트리거가 true인 경우 클릭 핸들러 실행
-            if (shouldTriggerClick && !longPressTriggered) {
+            if (shouldTriggerClick && !longPressTriggered && onClick) {
                 onClick(event);
             }
             setLongPressTriggered(false);

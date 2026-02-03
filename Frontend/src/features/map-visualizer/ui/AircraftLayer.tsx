@@ -17,6 +17,7 @@ interface AircraftLayerProps {
     meta: MapMeta | null;
     mapWidth: number;
     mapHeight: number;
+    pixelRatio?: number; // [New] High-DPI Support
     onAircraftClick?: (aircraft: Aircraft) => void;
 }
 
@@ -25,7 +26,7 @@ const CLICK_RADIUS_SQ = 400; // 20px * 20px
 const ANIMATION_DURATION_MS = 300;
 const LABEL_OFFSET_Y = 35;
 
-export function AircraftLayer({ meta, mapWidth, mapHeight, onAircraftClick }: AircraftLayerProps) {
+export function AircraftLayer({ meta, mapWidth, mapHeight, pixelRatio = 1, onAircraftClick }: AircraftLayerProps) {
     const aircraftList = useGraphStore((state) => state.aircrafts);
     
     // Apply Smooth Animation (Interpolation)
@@ -37,12 +38,13 @@ export function AircraftLayer({ meta, mapWidth, mapHeight, onAircraftClick }: Ai
         if (!onAircraftClick || !canvasRef.current || !meta) return;
         
         const rect = canvasRef.current.getBoundingClientRect();
-        const mouseX = (e.clientX - rect.left) * (canvasRef.current.width / rect.width);
-        const mouseY = (e.clientY - rect.top) * (canvasRef.current.height / rect.height);
+        // Mouse coordinates relative to logical size (CSS size)
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
 
         for (const ac of animatedList) {
              const pixel = worldToPixel(ac.position, meta, mapHeight);
-             // Distance squared (radius check)
+             // Distance squared (radius check) in logical pixels
              const distSq = (mouseX - pixel.x) ** 2 + (mouseY - pixel.y) ** 2;
              if (distSq < CLICK_RADIUS_SQ) { 
                  onAircraftClick(ac);
@@ -57,30 +59,37 @@ export function AircraftLayer({ meta, mapWidth, mapHeight, onAircraftClick }: Ai
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // [DEBUG] Check render context
+        console.log(`[AircraftLayer] Rendering... Meta: ${!!meta}, W: ${mapWidth}, H: ${mapHeight}, Count: ${animatedList.length}`);
+        if(animatedList.length > 0) {
+            console.log(`[AircraftLayer] First Car:`, animatedList[0]);
+        }
+        
+        // [New] High-DPI Scaling
+        canvas.width = mapWidth * pixelRatio;
+        canvas.height = mapHeight * pixelRatio;
+        
+        // Scale Context to match logical coordinates
+        ctx.scale(pixelRatio, pixelRatio);
+
+        // Clear in logical coordinates (0 to width, 0 to height)
+        // Note: clearRect affects the underlying pixels. 
+        // If we scaled, 0,0,w,h covers 0,0,w*ratio,h*ratio ?
+        // Context scale transforms drawing operations. 
+        // clearRect(x,y,w,h) clears the rectangle [x,y,w,h] in the *current coordinate system*.
+        // So clearing (0,0,mapWidth,mapHeight) is correct because we scaled up.
+        ctx.clearRect(0, 0, mapWidth, mapHeight);
 
         animatedList.forEach(ac => {
             const pixel = worldToPixel(ac.position, meta, mapHeight);
+            console.log(`[AircraftLayer] Car ${ac.id}: World(${ac.position.x.toFixed(2)}, ${ac.position.y.toFixed(2)}) -> Pixel(${pixel.x.toFixed(0)}, ${pixel.y.toFixed(0)})`);
             
             ctx.save();
             ctx.translate(pixel.x, pixel.y);
             
             // Rotation Correction: 
-            // World Coordinate System: +Y is UP, +Angle is CCW (Standard Math).
-            // Canvas Coordinate System: +Y is DOWN.
-            // When rendering World to Canvas, Y is flipped.
-            // This flips the coordinate space handedness. 
-            // A positive rotation (CCW) in World becomes a positive rotation (CW) in Canvas IF we just map numbers?
-            // Wait. Canvas Y is inverted relative to World Y.
-            // X is same.
-            // Rotation is defined as rotation from X axis towards Y axis usually?
-            // In World: X (Right) -> Y (Up) is CCW.
-            // In Canvas: X (Right) -> Y (Down) is CW.
-            // If an object is rotated +90 deg in World (pointing Up),
-            // We want it to point Up in Canvas (which is -Y).
-            // In Canvas, -Y is -90 deg (270).
-            // So +90 World -> -90 Canvas.
-            // So we Negate the angle.
+            // -ac.position.r is generally correct for converting Math Angle (CCW) to Canvas (CW Y-down)
+            // Assuming ac.position.r comes in Radians.
             ctx.rotate(-ac.position.r); 
 
             // Draw Body
@@ -103,34 +112,41 @@ export function AircraftLayer({ meta, mapWidth, mapHeight, onAircraftClick }: Ai
             
             ctx.beginPath();
             // Triangle pointing East (0 deg)
-            ctx.moveTo(35, 0);   // Nose
-            ctx.lineTo(-25, 20); // Left Wing
-            ctx.lineTo(-15, 0);  // Tail Indent
-            ctx.lineTo(-25, -20);// Right Wing
+            // Reduced size by 1/4 (20 -> 5)
+            ctx.moveTo(5, 0);      // Nose (Front)
+            ctx.lineTo(-3.75, 3);  // Left Wing (12 -> 3)
+            ctx.lineTo(-2, 0);     // Tail Indent (-8 -> -2)
+            ctx.lineTo(-3.75, -3); // Right Wing (-12 -> -3)
             ctx.closePath();
             ctx.fill();
             
             ctx.shadowBlur = 0; // Reset
             ctx.restore();
             
-            // Label
+            // Label (Non-rotated)
             ctx.save();
             ctx.translate(pixel.x, pixel.y);
             ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-            ctx.font = 'bold 12px monospace';
+            ctx.font = 'bold 10px monospace'; // Smaller font for high-res look
             ctx.textAlign = 'center';
             // Offset label below aircraft
-            ctx.fillText(labelText, 0, 35);
+            ctx.fillText(labelText, 0, 30);
             ctx.restore();
         });
 
-    }, [animatedList, meta, mapWidth, mapHeight]);
+    }, [animatedList, meta, mapWidth, mapHeight, pixelRatio]);
 
     return (
         <canvas 
             ref={canvasRef}
-            width={mapWidth}
-            height={mapHeight}
+            // Logical size for layout
+            style={{ width: mapWidth, height: mapHeight }}
+            // Physical size set in useEffect (but we can default or omit here since useEffect overrides)
+            // But React might complain if we don't set width/height attributes initially? 
+            // Actually, best to let useEffect manage the internal size buffer.
+            // But simple way is:
+            width={mapWidth * pixelRatio} 
+            height={mapHeight * pixelRatio}
             className="absolute inset-0 z-20 cursor-pointer pointer-events-auto"
             onClick={handleClick}
         />
