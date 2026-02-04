@@ -12,7 +12,7 @@ import { MOCK_MAP_SIZE } from "@/entities/map/lib/mockData";
 export function ControllerPage() {
     // --- 1. Map Data Loading (Hook) ---
     // Single source of truth for map data
-    const { meta: mapMeta, mapImage } = useMapData('final_map');
+    const { meta: mapMeta, mapImage } = useMapData();
     
     // --- 2. Store & Local State ---
     const { mapWidth: storeMapWidth, mapHeight: storeMapHeight } = useGraphStore();

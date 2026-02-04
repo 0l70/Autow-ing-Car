@@ -13,18 +13,30 @@ import com.project.domain.towingcar.entity.TowingCar;
 import com.project.domain.map.repository.EdgeRepository; // Repository 필요
 import com.project.domain.map.repository.NodeRepository; // Repository 필요
 import com.project.domain.towingcar.repository.TowingCarRepository; // Repository 필요
+import com.project.domain.map.entity.MapInfo;
+import com.project.domain.map.repository.MapInfoRepository;
 import com.project.domain.user.entity.User;
 import com.project.domain.user.repository.UserRepository;
 import com.project.global.util.RdpSimplifier;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -43,15 +55,22 @@ public class LocalDataInit implements CommandLineRunner {
 
     private final NodeRepository nodeRepository;
     private final EdgeRepository edgeRepository;
+    private final MapInfoRepository mapInfoRepository;
     private final TowingCarRepository towingCarRepository;
     private final FlightRepository flightRepository;
     private final UserRepository userRepository;
     private final AircraftRepository aircraftRepository;
     private final ObjectMapper objectMapper;
 
+    @Value("${app.map.path-planner-root}")
+    private String mapBasePath;
+
     @Override
     public void run(String... args) {
         log.info("############ Local Data Initialization Start ############");
+
+        // 0. 맵 메타데이터 초기화
+        initMapInfo();
 
         // 1. 사용자 초기화 (P001: 기장, A001: 관제사)
         User pilot = initUser("P001", "Maverick", "pilot@atc.com", "1234", UserRole.PILOT);
@@ -61,35 +80,23 @@ public class LocalDataInit implements CommandLineRunner {
         Aircraft b737 = initAircraft("HL7777", "B737", 35.0, 39.0);
         Aircraft a320 = initAircraft("HL8888", "A320", 34.0, 37.0);
 
-        // // Edges: Horizontal & Vertical (Bi-directional)
-        // for (int i = 0; i < 3; i++) {
-        // for (int j = 0; j < 3; j++) {
-        // // Horizontal (to Right)
-        // if (i < 2) {
-        // createAndSaveBiEdge(grid[i][j], grid[i + 1][j], 50.0 + i * 13 + j * 1);
-        // }
-        // // Vertical (to Bottom)
-        // if (j < 2) {
-        // createAndSaveBiEdge(grid[i][j], grid[i][j + 1], 50.0 + i * 12 + j * 2);
-        // }
-        // }
-        // }
-
-        // // Special Nodes: GATE & RUNWAY
-        // Node gate = createNode("G101", -50.0, 0.0);
-        // Node runway = createNode("R101", 150.0, 100.0);
-
         // 3. 지도 데이터 초기화 (PathPlanner 기반 노드 및 간선 생성)
         Node s01 = createNode("S01", -1.22, -0.13); // 시작 노드
         Node g01 = createNode("G01", 0.33, -0.28); // 중간 게이트 노드
         Node r02 = createNode("R02", 4.03, -0.08); // 활주로 인근 노드
+
         nodeRepository.saveAll(List.of(s01, g01, r02));
 
+        // resolvePath 메서드를 사용하여 해당 디렉토리의 최신 파일 검색
+        String path01 = resolvePath(mapBasePath + "/edge01/paths", "path_S01_to_G01");
+        String path02 = resolvePath(mapBasePath + "/edge02/paths", "path_S02_to_G02");
+
         // 경로 좌표 JSON 파일을 읽어 간선(Edge)의 보조점(Waypoints)으로 저장
-        importPathCoordinates("edge01",
-                "../../embedded/PathPlanner/maps/edge01/paths/path_S01_to_G01_20260202_173003.json", s01, g01, 1.56);
-        importPathCoordinates("edge02",
-                "../../embedded/PathPlanner/maps/edge02/paths/path_S02_to_G02_20260202_180927.json", g01, r02, 3.70);
+        // path가 비어있으면 건너뜀
+        if (!path01.isEmpty())
+            importPathCoordinates("edge01", path01, s01, g01, 1.56);
+        if (!path02.isEmpty())
+            importPathCoordinates("edge02", path02, g01, r02, 3.70);
 
         // 4. 차량(Towing Car) 초기화
         TowingCar tc1 = createAndSaveCar("TC01", -1.22, -0.13, 100);
@@ -127,15 +134,21 @@ public class LocalDataInit implements CommandLineRunner {
                 .status(MapStatus.AVAILABLE).restrictionInfo("NONE").build();
     }
 
+    // 미사용 함수
     private void createAndSaveBiEdge(Node n1, Node n2, double dist) {
         createAndSaveEdge("E_" + n1.getNodeCode() + "_to_" + n2.getNodeCode(), n1, n2, dist);
         createAndSaveEdge("E_" + n2.getNodeCode() + "_to_" + n1.getNodeCode(), n2, n1, dist);
     }
 
     private void createAndSaveEdge(String code, Node src, Node dst, double distance) {
+        // Calculate travel time
+        Double tTime = (distance > 0 && 30 > 0) ? (distance / 30.0) : 0.0;
+
         Edge edge = Edge.builder()
                 .edgeCode(code).srcNode(src).dstNode(dst)
-                .distance(distance).status(MapStatus.AVAILABLE).maxSpeed(30).restrictionInfo("NONE").build();
+                .distance(distance).status(MapStatus.AVAILABLE).maxSpeed(30).restrictionInfo("NONE")
+                .travelTime(tTime)
+                .build();
         edgeRepository.save(edge);
     }
 
@@ -208,14 +221,104 @@ public class LocalDataInit implements CommandLineRunner {
     }
 
     private void saveEdgeWithWaypoints(String code, Node src, Node dst, double distance, String waypoints) {
+        // Calculate travel time (Distance / MaxSpeed)
+        // Default maxSpeed = 30 (assume consistent units, e.g. m/s or km/h)
+        Double tTime = (distance > 0 && 30 > 0) ? (distance / 30.0) : 0.0;
+
         Edge edge = Edge.builder()
                 .edgeCode(code).srcNode(src).dstNode(dst)
                 .distance(distance).status(MapStatus.AVAILABLE).maxSpeed(30).restrictionInfo("NONE")
                 .waypoints(waypoints)
+                .travelTime(tTime)
                 .build();
         edgeRepository.save(edge);
     }
 
+    private void initMapInfo() {
+        if (mapInfoRepository.count() > 0)
+            return;
+
+        String yamlPath = mapBasePath + "/my_map.yaml";
+        String mapDir = mapBasePath + "/";
+
+        try {
+            Map<String, String> yamlData = parseYaml(yamlPath);
+            String imageName = yamlData.get("image");
+            double resolution = Double.parseDouble(yamlData.get("resolution"));
+
+            // origin: [-5.42, -3.68, 0]
+            String originStr = yamlData.get("origin").replace("[", "").replace("]", "");
+            String[] originParts = originStr.split(",");
+            double originX = Double.parseDouble(originParts[0].trim());
+            double originY = Double.parseDouble(originParts[1].trim());
+
+            // PGM 가로/세로 크기 추출
+            int[] dims = parsePgmHeader(mapDir + imageName);
+
+            mapInfoRepository.save(Objects.requireNonNull(MapInfo.builder()
+                    .mapCode("TEST_MAP_01")
+                    .width(dims[0])
+                    .height(dims[1])
+                    .resolution(resolution)
+                    .originX(originX)
+                    .originY(originY)
+                    .maxSpeed(10.0)
+                    .imagePath(imageName)
+                    .basicMap(true)
+                    .build()));
+
+            log.info("[LocalDataInit] Successfully initialized MapInfo from {}", yamlPath);
+        } catch (Exception e) {
+            log.error("[LocalDataInit] Failed to load map metadata from {}: {}", yamlPath, e.getMessage());
+            // Fallback (기존 하드코딩 값)
+            mapInfoRepository.save(Objects.requireNonNull(MapInfo.builder()
+                    .mapCode("TEST_MAP_01")
+                    .width(2000).height(1500).resolution(0.05)
+                    .originX(-5.42).originY(-3.68).maxSpeed(10.0)
+                    .imagePath("my_map.pgm").basicMap(true).build()));
+        }
+    }
+
+    private Map<String, String> parseYaml(String path) throws IOException {
+        Map<String, String> result = new HashMap<>();
+        try (BufferedReader reader = new BufferedReader(new FileReader(path))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.trim().isEmpty() || line.startsWith("#"))
+                    continue;
+                int decoIdx = line.indexOf(':');
+                if (decoIdx > 0) {
+                    String key = line.substring(0, decoIdx).trim();
+                    String value = line.substring(decoIdx + 1).trim();
+                    result.put(key, value);
+                }
+            }
+        }
+        return result;
+    }
+
+    private int[] parsePgmHeader(String path) throws IOException {
+        try (BufferedReader reader = new BufferedReader(new FileReader(path))) {
+            String line = reader.readLine(); // P5 or P2
+            if (line == null)
+                throw new IOException("Invalid PGM file");
+
+            while ((line = reader.readLine()) != null) {
+                line = line.trim();
+                if (line.startsWith("#") || line.isEmpty())
+                    continue;
+
+                // 가로 세로 추출 (e.g., "2000 1500")
+                String[] parts = line.split("\\s+");
+                if (parts.length >= 2) {
+                    return new int[] { Integer.parseInt(parts[0]), Integer.parseInt(parts[1]) };
+                }
+            }
+        }
+        throw new IOException("Could not find width/height in PGM header");
+    }
+
+    // 미사용 함수
     private List<Node> flatten(Node[][] grid) {
         List<Node> list = new java.util.ArrayList<>();
         for (Node[] row : grid) {
@@ -223,5 +326,26 @@ public class LocalDataInit implements CommandLineRunner {
                 list.add(n);
         }
         return list;
+    }
+
+    /**
+     * 특정 디렉토리에서 접두어로 시작하는 가장 최신 JSON 파일을 찾습니다.
+     */
+    private String resolvePath(String dirPath, String prefix) {
+        java.io.File dir = new java.io.File(dirPath);
+        if (!dir.exists() || !dir.isDirectory()) {
+            log.warn("[LocalDataInit] Directory not found: {}", dirPath);
+            return "";
+        }
+
+        java.io.File[] files = dir.listFiles((d, name) -> name.startsWith(prefix) && name.endsWith(".json"));
+        if (files == null || files.length == 0) {
+            log.warn("[LocalDataInit] No files found for prefix {} in {}", prefix, dirPath);
+            return "";
+        }
+
+        // 수정한 날짜 기준 내림차순 정렬 후 가장 최신 파일 반환
+        java.util.Arrays.sort(files, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
+        return files[0].getAbsolutePath();
     }
 }

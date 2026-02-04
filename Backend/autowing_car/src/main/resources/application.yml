@@ -18,3 +18,5 @@ jwt:
 app:
   mqtt:
     mock: false
+  map:
+    path-planner-root: ../../embedded/PathPlanner/maps

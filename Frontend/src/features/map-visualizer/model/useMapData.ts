@@ -1,45 +1,82 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import yaml from "js-yaml";
 import { MapMeta } from "@/entities/map/model/types";
 import { MapMetaSchema } from "@/entities/map/model/schema";
 import { loadPGM } from "@/entities/map/lib/pgmParser";
+import { useGraphStore } from "@/entities/map/model/store";
 
 /**
- * 훅: 지도 데이터 로딩 (Meta + Image)
- * @param mapName 로드할 맵 이름 (파일명, 확장자 제외)
+ * 훅: 지도 데이터 로딩 (Backend API 기반)
  */
-export function useMapData(mapName: string) {
-    // 1. 메타데이터 Fetch
-    const { data: meta, isLoading: isMetaLoading, error: metaError } = useQuery({
-        queryKey: ['map', mapName, 'meta'],
-        queryFn: async () => {
-             const res = await fetch(`/maps/${mapName}.yaml`);
-             if (!res.ok) throw new Error('Failed to load map metadata');
-             const text = await res.text();
-             const parsed = yaml.load(text);
-             return MapMetaSchema.parse(parsed); 
-        },
-        staleTime: Infinity, // 맵 데이터는 잘 안바뀜
-    });
+export function useMapData() {
+    const { loadGraph, setMapMeta, setMapDimensions } = useGraphStore();
 
-    // 2. 이미지 Fetch (Meta가 있어야 함)
-    const { data: mapImage, isLoading: isImageLoading, error: imageError } = useQuery({
-        queryKey: ['map', mapName, 'image'],
+    // 1. 백엔드에서 모든 지도 정보(메타 + 노드 + 엣지) Fetch
+    const { data: mapInfo, isLoading: isInfoLoading, error: infoError } = useQuery({
+        queryKey: ['map', 'info'],
         queryFn: async () => {
-            if (!meta) return null;
-            // TODO: 실제로는 meta.image 파일명을 써야 하지만 경로 문제로 단순화
-            const imagePath = `/maps/${meta.image}`; 
-            return loadPGM(imagePath);
+             const res = await fetch(`/api/map/info`);
+             if (!res.ok) throw new Error('Failed to load map data from server');
+             return res.json();
         },
-        enabled: !!meta,
         staleTime: Infinity,
     });
 
+    // 2. 이미지 Fetch (mapInfo가 있어야 함)
+    const { data: mapImage, isLoading: isImageLoading, error: imageError } = useQuery({
+        queryKey: ['map', 'image', mapInfo?.imagePath],
+        queryFn: async () => {
+            if (!mapInfo || !mapInfo.imagePath) return null;
+            const imagePath = `/maps/${mapInfo.imagePath}`; 
+            return loadPGM(imagePath);
+        },
+        enabled: !!mapInfo,
+        staleTime: Infinity,
+    });
+
+    // 3. 데이터를 Store에 동기화
+    useEffect(() => {
+        if (mapInfo) {
+            // Transform backend response to MapMeta format
+            const meta = MapMetaSchema.parse({
+                image: mapInfo.imagePath,
+                resolution: mapInfo.resolution,
+                origin: [mapInfo.originX || 0, mapInfo.originY || 0, 0]
+            });
+            
+            setMapMeta(meta);
+            setMapDimensions(mapInfo.width, mapInfo.height);
+
+            // DTO -> GraphEntity 변환 (fromId/toId 매핑)
+            const graphNodes = mapInfo.nodes.map((n: any) => ({
+                id: n.id,
+                x: n.x,
+                y: n.y,
+                type: 'WAYPOINT', // Default
+                status: n.status
+            }));
+
+            const graphEdges = mapInfo.edges.map((e: any) => ({
+                id: e.id,
+                fromId: e.from,
+                toId: e.to,
+                cost: e.cost,
+                waypoints: e.waypoints
+            }));
+
+            loadGraph(graphNodes, graphEdges);
+            console.log(`[useMapData] Map metadata and graph loaded into store.`);
+        }
+    }, [mapInfo, setMapMeta, setMapDimensions, loadGraph]);
+
     return {
-        meta,
+        meta: mapInfo ? MapMetaSchema.parse({
+            image: mapInfo.imagePath,
+            resolution: mapInfo.resolution,
+            origin: [mapInfo.originX || 0, mapInfo.originY || 0, 0]
+        }) : null,
         mapImage,
-        isLoading: isMetaLoading || isImageLoading,
-        error: metaError || imageError
+        isLoading: isInfoLoading || isImageLoading,
+        error: infoError || imageError
     };
 }
