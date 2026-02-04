@@ -14,7 +14,7 @@ import { AircraftStatus, Aircraft } from "@/entities/map/model/types";
 
 export function usePilotController(initialCarId?: string) {
   // const { accessToken } = useAuthStore(); // [NEW] - Removed because apiClient handles it
-  const ingestAircraft = useAircraftStore(state => state.ingest);
+  const ingestAircraft = useAircraftStore((state) => state.ingest);
 
   // --- State ---
   const [logs, setLogs] = useState<PilotLog[]>([]);
@@ -22,6 +22,9 @@ export function usePilotController(initialCarId?: string) {
   const [connState, setConnState] = useState<ConnectionState>("idle");
   const [isAutoMode, setIsAutoMode] = useState(false);
   const [flightInfo, setFlightInfo] = useState<FlightInfo | null>(null);
+  const [fetchedCarId, setFetchedCarId] = useState<string | undefined>(
+    undefined,
+  );
   const lastLoadedFlightId = useRef<number | null>(null);
   const hasFetchedStatus = useRef(false); // [NEW] Prevent double fetch
 
@@ -38,9 +41,13 @@ export function usePilotController(initialCarId?: string) {
     assignedCar.status !== "IDLE" &&
     assignedCar.status !== "UNLOADING"
       ? assignedCar.id
-      : initialCarId &&
-          aircrafts.find((a) => a.id === initialCarId && a.status !== "IDLE")
-        ? initialCarId
+      : (initialCarId || fetchedCarId) &&
+          aircrafts.find(
+            (a) =>
+              (a.id === initialCarId || a.id === fetchedCarId) &&
+              a.status !== "IDLE",
+          )
+        ? initialCarId || fetchedCarId
         : undefined;
 
   // --- Initial State Sync (REST API) ---
@@ -55,6 +62,7 @@ export function usePilotController(initialCarId?: string) {
 
         if (statusData.code && statusData.status !== "NONE") {
           const status = statusData.status as AircraftStatus;
+          setFetchedCarId(statusData.code); // [NEW] Store car ID from API
           ingestAircraft({
             id: statusData.code,
             callsign: statusData.code,
@@ -69,6 +77,14 @@ export function usePilotController(initialCarId?: string) {
             speed: statusData.velocity,
             isLoaded: status === "TOWING" || status === "UNLOADING",
           } as Aircraft);
+
+          // [FIX] Map fetched status to connState immediately to prevent "Connect Tug" flicker
+          if (status === "TOWING") {
+            setConnState("connected");
+          } else if (status === "LOADING" || status === "MOVING_TO_LOAD") {
+            setConnState("connecting");
+          }
+
           hasFetchedStatus.current = true;
         }
       } catch (err) {
@@ -79,59 +95,8 @@ export function usePilotController(initialCarId?: string) {
     syncStatus();
   }, [ingestAircraft]);
 
-  useEffect(() => {
-    if (!activeCarId) return;
-
-    const safeSync = async () => {
-      try {
-        const statusData = await pilotApi.getTowingCarStatus();
-        // Ensure we are syncing the correct car
-        if (statusData.code === activeCarId && statusData.status !== "NONE") {
-          console.log(
-            "[SafeSync] Resyncing status for assigned car:",
-            activeCarId,
-          );
-          const status = statusData.status as AircraftStatus;
-
-          // Update Aircraft in Store
-          ingestAircraft({
-            id: statusData.code,
-            callsign: statusData.code,
-            type: "TUG",
-            status: status,
-            position: {
-              x: statusData.posX,
-              y: statusData.posY,
-              r: statusData.heading,
-            },
-            battery: statusData.battery,
-            speed: statusData.velocity,
-            isLoaded: status === "TOWING" || status === "UNLOADING",
-          } as Aircraft);
-
-          // [FIX] Sync connState based on car status
-          if (status === "TOWING") {
-            console.log("[SafeSync] Setting connState: connected");
-            setConnState("connected");
-          } else if (status === "LOADING" || status === "MOVING_TO_LOAD") {
-            // Both dispatching and docking count as "Connecting..." phase for the button
-            console.log("[SafeSync] Setting connState: connecting");
-            setConnState("connecting");
-          } else if (
-            status === "IDLE" ||
-            status === "MOVING_TO_IDLE" ||
-            status === "UNLOADING"
-          ) {
-            console.log("[SafeSync] Setting connState: idle");
-            setConnState("idle");
-          }
-        }
-      } catch (err) {
-        console.warn("[SafeSync] Failed:", err);
-      }
-    };
-    safeSync();
-  }, [activeCarId, ingestAircraft]);
+  // [REMOVED] Redundant SafeSync that causes UI state flicker by overriding WebSocket data with stale REST API data.
+  // We now rely purely on WebSocket (Telemetry + Reply) for real-time updates after initial load.
 
   // --- Modal State ---
   const [confirmModal, setConfirmModal] = useState<{
@@ -149,7 +114,8 @@ export function usePilotController(initialCarId?: string) {
 
   // --- WebSocket ---
   // [FIX] Always subscribe to assigned car even if it's IDLE (so we can catch status changes)
-  const socketCarId = flightInfo?.assignedCarId || initialCarId;
+  // Fallback to fetchedCarId or initialCarId initially on refresh.
+  const socketCarId = flightInfo?.assignedCarId || fetchedCarId || initialCarId;
   const { send, onMessage, isConnected } = usePilotSocket(socketCarId);
 
   // --- Logger ---
@@ -447,26 +413,26 @@ export function usePilotController(initialCarId?: string) {
     () => {},
   );
 
-    // 4. Emergency Stop
+  // 4. Emergency Stop
   const handleEmergencyStop = useCallback(() => {
     setMoveState("stopped");
     setIsAutoMode(false);
-    
+
     // [REVERT] Only allow E-Stop if there is an ACTIVE car (moving/connected)
     // As per user request, we revert the test logic.
     if (activeCarId) {
-        send(
-            "SEND",
-            { destination: "/app/car/emergency" },
-            JSON.stringify({
-                carId: activeCarId,
-            })
-        );
-        addLog("error", "!!! REQ: EMERGENCY STOP SENT !!!");
+      send(
+        "SEND",
+        { destination: "/app/car/emergency" },
+        JSON.stringify({
+          carId: activeCarId,
+        }),
+      );
+      addLog("error", "!!! REQ: EMERGENCY STOP SENT !!!");
     } else {
-        // Now this will only trigger if user manages to click the button while IDLE 
-        // (though button might be disabled, this safety check remains)
-        addLog("error", "!!! EMERGENCY STOP (Local Only - No Active Car) !!!");
+      // Now this will only trigger if user manages to click the button while IDLE
+      // (though button might be disabled, this safety check remains)
+      addLog("error", "!!! EMERGENCY STOP (Local Only - No Active Car) !!!");
     }
 
     alert("EMERGENCY STOP! All Systems Halted.");

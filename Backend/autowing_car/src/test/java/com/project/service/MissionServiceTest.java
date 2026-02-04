@@ -8,21 +8,14 @@ import com.project.domain.mission.entity.Mission;
 import com.project.domain.mission.service.MissionDBAdaptor;
 import com.project.domain.mission.service.MissionService;
 import com.project.domain.mission.service.MissionWebSocketService;
-
-import com.project.domain.towingcar.service.TowingCarDBAdaptor;
-import com.project.domain.towingcar.service.TowingCarMqttService; // NEW
+import com.project.domain.towingcar.service.TowingCarMqttService;
 import com.project.domain.user.entity.User;
-
 import com.project.domain.user.service.UserDBAdaptor;
-import com.project.global.config.LocalDataInit;
-
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.test.context.TestPropertySource;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.List;
 import java.util.Map;
@@ -32,33 +25,21 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest
-@TestPropertySource(properties = {
-                "jwt.secret=testSecretKeyForUnitTestingMustBeLongEnoughToSatisfyHS256RequirementsSinceItRequiresAtLeast256Bits",
-                "jwt.expiration=3600000",
-                "MQTT_HOST=localhost",
-                "MQTT_PORT=1883",
-                "REDIS_HOST=localhost",
-                "REDIS_PORT=6379"
-})
 class MissionServiceTest {
 
-        @Autowired
-        private LocalDataInit localDataInit;
         @Autowired
         private MissionService missionService;
 
         @Autowired
         private MissionDBAdaptor missionDBAdaptor;
         @Autowired
-        private TowingCarDBAdaptor towingCarDBAdaptor;
-        @Autowired
         private FlightDBAdaptor flightDBAdaptor;
         @Autowired
         private UserDBAdaptor userDBAdaptor;
 
-        @MockBean
+        @MockitoBean
         private MissionWebSocketService missionWebSocketService;
-        @MockBean
+        @MockitoBean
         private TowingCarMqttService towingCarMqttService;
 
         @Autowired
@@ -98,11 +79,11 @@ class MissionServiceTest {
                 ATCDecisionDto decision = new ATCDecisionDto();
                 decision.setFlightId(flight.getId());
                 decision.setApproved(true);
-                decision.setDestNode("RUNWAY");
-                decision.setSelectedEdgeIds(List.of("E_GATE_101_to_N_0_0"));
+                decision.setDestNode("G01");
+                decision.setSelectedEdgeIds(List.of("E_S01_to_G01"));
 
                 // when
-                 missionService.approveMission(controller.getEmail(), decision);
+                missionService.approveMission(controller.getEmail(), decision);
 
                 // then
                 transactionTemplate.execute(status -> {

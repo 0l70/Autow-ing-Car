@@ -214,7 +214,7 @@ public class TowingCarService {
         // Node baseNode = mapService.findNearestNode(car.getLastPosX(),
         // car.getLastPosY()); // 임시
 
-        Node baseNode = mapDBAdaptor.getNodeByCode("base_node");
+        Node baseNode = mapDBAdaptor.getNodeByCode("S01");
         if (baseNode == null) {
             baseNode = mapService.findNearestNode(0, 0); // Default Origin
         }
@@ -278,7 +278,7 @@ public class TowingCarService {
             log.info("🎉 [Monitoring] Car {} reported TOWING complete!", carCode);
             Flight flight = flightDBAdaptor.getFlightByAssignedCar(assignedCar);
             if (flight != null) {
-                notifyTowingComplete(flight.getPilot().getEmail());
+                notifyTowingComplete(assignedCar, flight.getPilot().getEmail());
             }
         }
 
@@ -286,6 +286,9 @@ public class TowingCarService {
                 ? missionDBAdaptor.getMissionById(assignedCar.getCurrentMissionId())
                 : null;
         saveDrivingLog(assignedCar, mission);
+
+        // [Final Step] 통합 브로드캐스트 (DTO 기반으로 Pilot + ATCs에게 전송)
+        towingCarWebSocketService.broadcastCarStatus(carCode, towingCarMapper.toDTO(assignedCar));
     }
 
     private void checkAndTriggerAutoActions(TowingCar assignedCar, double x, double y, CarStatus status) {
@@ -383,7 +386,6 @@ public class TowingCarService {
      * 연결 완료 알림
      */
     private void notifyCarConnected(TowingCar car, String pilotId) {
-        towingCarWebSocketService.broadcastCarStatus(car.getCode(), towingCarMapper.toDTO(car));
         towingCarWebSocketService.notifyPilotResult(pilotId,
                 MissionResponseDto.builder()
                         .status("SUCCESS")
@@ -395,7 +397,6 @@ public class TowingCarService {
      * 연결 해제 알림
      */
     private void notifyCarDisconnected(TowingCar car, String pilotId) {
-        towingCarWebSocketService.broadcastCarStatus(car.getCode(), towingCarMapper.toDTO(car));
         towingCarWebSocketService.notifyPilotResult(pilotId,
                 MissionResponseDto.builder()
                         .status("SUCCESS")
@@ -409,7 +410,7 @@ public class TowingCarService {
     private void notifyModeSwitched(String pilotId, String mode) {
         towingCarWebSocketService.notifyPilotResult(pilotId,
                 MissionResponseDto.builder()
-                        .status("SUCCESS")
+                        .status("mode_switched")
                         .message("Mode Switched to: " + mode)
                         .build());
     }
@@ -421,7 +422,7 @@ public class TowingCarService {
         // 1. Pilot에게 알림
         towingCarWebSocketService.notifyPilotResult(pilotId,
                 MissionResponseDto.builder()
-                        .status("SUCCESS")
+                        .status("emergency_stop")
                         .message("EMERGENCY STOP EXECUTED")
                         .build());
 
@@ -430,7 +431,7 @@ public class TowingCarService {
         AdminAlertDto alert = AdminAlertDto.builder()
                 .type(NotificationType.EMERGENCY_STOP) // [FIX] Use Enum
                 .message("Pilot triggered EMERGENCY STOP for Car " + carCode)
-                .severity("CRITICAL")
+                .severity("emergency_stop")
                 .flightNumber("N/A") // 필요 시 Flight 조회하여 채움
                 .timestamp(System.currentTimeMillis())
                 .build();
@@ -441,7 +442,7 @@ public class TowingCarService {
     /**
      * 토잉 완료(연결 완료) 알림
      */
-    private void notifyTowingComplete(String pilotId) {
+    private void notifyTowingComplete(TowingCar car, String pilotId) {
         towingCarWebSocketService.notifyPilotResult(pilotId,
                 MissionResponseDto.builder()
                         .status("SUCCESS")

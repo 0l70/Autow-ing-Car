@@ -19,14 +19,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.boot.test.mock.mockito.MockBean;
-// import org.springframework.transaction.annotation.Transactional; // [Test] Removed for TxUtil testing
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import com.project.domain.map.entity.Node;
 import com.project.domain.map.repository.NodeRepository;
 import org.junit.jupiter.api.BeforeEach;
-import com.project.domain.common.CarStatus;
-import com.project.domain.common.MapStatus;
 
 import java.util.Map;
 
@@ -57,7 +54,7 @@ class TowingCarServiceTest {
         @Autowired
         private TowingCarDBAdaptor towingCarDBAdaptor;
 
-        @MockBean
+        @MockitoBean
         private TowingCarMqttService towingCarMqttService;
 
         @Autowired
@@ -69,9 +66,9 @@ class TowingCarServiceTest {
         @BeforeEach
         void setUp() {
                 transactionTemplate.execute(status -> {
-                        if (nodeRepository.findByNodeCode("base_node").isEmpty()) {
+                        if (nodeRepository.findByNodeCode("S01").isEmpty()) {
                                 Node baseNode = Node.builder()
-                                                .nodeCode("base_node")
+                                                .nodeCode("S01")
                                                 .posX(0.0)
                                                 .posY(0.0)
                                                 .status(MapStatus.AVAILABLE)
