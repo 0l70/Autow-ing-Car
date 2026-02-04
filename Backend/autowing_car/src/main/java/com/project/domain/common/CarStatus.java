@@ -13,5 +13,13 @@ public enum CarStatus {
    UNLOADING, // 도킹 해재 중
    MOVING_TO_IDLE, // 베이스로 돌아감
    STOP, // 정지
-   ERROR // 에러
+   ERROR; // 에러
+
+   public static CarStatus from(String status) {
+      try {
+         return CarStatus.valueOf(status.toUpperCase());
+      } catch (Exception e) {
+         return CarStatus.IDLE;
+      }
+   }
 }
