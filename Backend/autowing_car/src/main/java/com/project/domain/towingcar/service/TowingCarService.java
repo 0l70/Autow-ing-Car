@@ -304,7 +304,7 @@ public class TowingCarService {
                 .towingCarId(car.getId())
                 .missionId(mission != null ? mission.getId() : null)
                 .carStatus(car.getCarStatus())
-                .missionStatus(mission != null ? mission.getStatus() : MissionStatus.WAITING)
+                .missionStatus(mission != null ? mission.getStatus() : MissionStatus.RUNNING)
                 .posX(car.getLastPosX()).posY(car.getLastPosY())
                 .heading(car.getLastHeading()).velocity(car.getLastVelocity()).battery(car.getBattery())
                 .build();
