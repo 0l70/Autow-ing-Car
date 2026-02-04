@@ -174,7 +174,9 @@ export function MapCanvas({
             return () => clearTimeout(timer);
         }
     // eslint-disable-next-line
-    }, [mapImage, visualStyle, gridMetadata?.width, initialViewBox, maxBounds]); 
+    }, [mapImage, visualStyle, gridMetadata?.width, gridMetadata?.height, 
+        initialViewBox?.x, initialViewBox?.y, initialViewBox?.width, initialViewBox?.height,
+        maxBounds?.x, maxBounds?.y, maxBounds?.width, maxBounds?.height]); 
 
     // --- Event Handlers ---
     useLayoutEffect(() => {
