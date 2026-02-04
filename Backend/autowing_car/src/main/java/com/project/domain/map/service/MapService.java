@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Set;
 
+import com.project.domain.map.repository.MapInfoRepository;
 import org.springframework.stereotype.Service;
 
 import com.project.domain.common.MapStatus;
@@ -18,6 +19,7 @@ import com.project.domain.map.component.GraphCache;
 import com.project.domain.map.component.UsageManager;
 import com.project.domain.map.dto.MapResponse;
 import com.project.domain.map.entity.Edge;
+import com.project.domain.map.entity.MapInfo;
 import com.project.domain.map.entity.Node;
 import com.project.domain.mission.dto.MissionWebSocketDtos.PathOptionDto;
 import com.project.domain.flight.entity.Flight;
@@ -44,6 +46,7 @@ public class MapService {
     private final UsageManager usageManager;
     private final MapDBAdaptor mapDBAdaptor;
     private final FlightDBAdaptor flightDBAdaptor;
+    private final MapInfoRepository mapInfoRepository;
     private final ObjectMapper objectMapper;
 
     @AllArgsConstructor
@@ -250,7 +253,7 @@ public class MapService {
     }
 
     private double calculatePathCost(List<Edge> path) {
-        return path.stream().mapToDouble(Edge::getDistance).sum();
+        return path.stream().mapToDouble(Edge::getTravelTime).sum();
     }
 
     /**
@@ -292,7 +295,7 @@ public class MapService {
                 if (usageManager.isEdgeLocked(edge.getId()) || usageManager.isNodeLocked(neighbor.getId()))
                     continue;
 
-                double newG = gScore.getOrDefault(currentNode.getId(), Double.MAX_VALUE) + edge.getDistance();
+                double newG = gScore.getOrDefault(currentNode.getId(), Double.MAX_VALUE) + edge.getTravelTime();
                 if (newG < gScore.getOrDefault(neighbor.getId(), Double.MAX_VALUE)) {
                     cameFrom.put(neighbor.getId(), edge);
                     gScore.put(neighbor.getId(), newG);
@@ -331,9 +334,17 @@ public class MapService {
     public MapResponse getFullMap(String mapId) {
         List<Node> dbNodes = mapDBAdaptor.findAllNodes();
         List<Edge> dbEdges = mapDBAdaptor.findAllEdges();
+        MapInfo info = mapInfoRepository.findByBasicMapTrue().orElse(null);
 
         return MapResponse.builder()
                 .mapId(mapId)
+                .width(info != null ? info.getWidth() : null)
+                .height(info != null ? info.getHeight() : null)
+                .resolution(info != null ? info.getResolution() : null)
+                .originX(info != null ? info.getOriginX() : null)
+                .originY(info != null ? info.getOriginY() : null)
+                .imagePath(info != null ? info.getImagePath() : null)
+                .maxSpeed(info != null ? info.getMaxSpeed() : null)
                 .nodes(dbNodes.stream().map(n -> MapResponse.NodeDto.builder()
                         .id(n.getNodeCode())
                         .x(n.getPosX())
@@ -362,10 +373,17 @@ public class MapService {
                 .build();
     }
 
-    // Heuristic: Euclidean Distance
+    // Heuristic: Estimated Travel Time (Distance / Max Speed)
     private double heuristic(Node a, Node b) {
         double dx = a.getPosX() - b.getPosX();
         double dy = a.getPosY() - b.getPosY();
-        return Math.sqrt(dx * dx + dy * dy);
+        double distance = Math.sqrt(dx * dx + dy * dy);
+
+        // MapInfo에서 최대 속도 가져오기 (기본값: 10.0)
+        double maxSpeed = mapInfoRepository.findByBasicMapTrue()
+                .map(info -> info.getMaxSpeed())
+                .orElse(10.0);
+
+        return distance / maxSpeed;
     }
 }

@@ -20,7 +20,7 @@ interface AtcMapWidgetProps {
 
 export function AtcMapWidget({ className }: AtcMapWidgetProps) {
     // --- Data Loading ---
-    const { meta, mapImage } = useMapData('final_map'); // Use a distinct key or same if shared
+    const { meta, mapImage } = useMapData(); // Use a distinct key or same if shared
     
     // --- Store State ---
     const { mapWidth: storeMapWidth, mapHeight: storeMapHeight } = useGraphStore();

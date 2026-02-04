@@ -9,6 +9,13 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @Builder
 public class MapResponse {
     private String mapId;
+    private Integer width;
+    private Integer height;
+    private Double resolution;
+    private Double originX;
+    private Double originY;
+    private String imagePath;
+    private Double maxSpeed;
     private List<NodeDto> nodes;
     private List<EdgeDto> edges;
 
