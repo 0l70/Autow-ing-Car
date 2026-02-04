@@ -127,7 +127,8 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         fromId,
         toId,
         bidirectional: true,
-        cost: Number(dist.toFixed(2))
+        cost: Number(dist.toFixed(2)),
+        waypoints: []
     };
 
     set((state) => ({ edges: [...state.edges, newEdge] }));
