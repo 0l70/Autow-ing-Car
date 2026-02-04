@@ -19,7 +19,7 @@ interface PilotMapWidgetProps {
 export function PilotMapWidget({ className, onAircraftSelect }: PilotMapWidgetProps) {
     // --- Data Loading ---
     // 기존에는 MapCanvas 내부에서 로딩했으나, 이제는 Hook으로 분리되어 위젯이 데이터를 관리합니다.
-    const { meta, mapImage } = useMapData('final_map');
+    const { meta, mapImage } = useMapData();
     
     // --- Store State ---
     const { mapWidth: storeMapWidth, mapHeight: storeMapHeight } = useGraphStore();
