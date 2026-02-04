@@ -7,11 +7,15 @@ spec:
 ---
 variables:
   BACKEND_DIR: "Backend/autowing_car"
-  BACKEND_IMAGE: $CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHORT_SHA
+  # ✅ [수정됨] 등록하신 변수명 사용
+  BACKEND_IMAGE: $BACKEND_DOCKER_USERNAME/autowing-backend:$CI_COMMIT_SHORT_SHA
+
+  # 🔥 [핵심 해결책] 이 줄이 없으면 2375 포트 연결 에러가 납니다!
+  # TLS(HTTPS) 인증서 생성을 끄고, 일반 HTTP(2375) 통신을 강제합니다.
   DOCKER_TLS_CERTDIR: ""
 
 # ---------------------------------------------------------------------------
-# [0. Test Stage] - Build Test (MR to dev)
+# [0. Test Stage]
 # ---------------------------------------------------------------------------
 backend-build-test:
   stage: build
@@ -21,29 +25,30 @@ backend-build-test:
       changes:
         - Backend/**/*
   script:
-    - echo "🏗️ [Backend] Build Test for Merge Request"
+    - echo "🏗️ [Backend] Build Test"
     - cd $BACKEND_DIR
     - chmod +x ./gradlew
     - ./gradlew clean build -x test
 
 # ---------------------------------------------------------------------------
-# [1. Package Stage] - Docker build (Gradle build 포함)
+# [1. Package Stage] - Docker build
 # ---------------------------------------------------------------------------
 backend-docker:
   stage: package
   image: docker:24.0.5
   services:
+    # dind 서비스가 실행될 때 DOCKER_TLS_CERTDIR: "" 설정을 보고 2375 포트를 엽니다.
     - docker:24.0.5-dind
   rules:
-    - if: '$CI_COMMIT_REF_NAME == "master"'
+    - if: '$CI_COMMIT_REF_NAME == "master" || $CI_COMMIT_REF_NAME == "dev"'
       changes:
         - Backend/**/*
   before_script:
-    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
+    - echo "$BACKEND_DOCKER_PASSWORD" | docker login -u "$BACKEND_DOCKER_USERNAME" --password-stdin
   script:
-    - echo "📦 [Backend] Docker build (Gradle build inside Dockerfile)"
+    - echo "📦 [Backend] Docker build & Push"
     - cd $BACKEND_DIR
-    - docker build -t $BACKEND_IMAGE .
+    - docker build --pull -t $BACKEND_IMAGE .
     - docker push $BACKEND_IMAGE
 
 # ---------------------------------------------------------------------------
@@ -55,7 +60,7 @@ backend-deploy:
   needs:
     - backend-docker
   rules:
-    - if: '$CI_COMMIT_REF_NAME == "master"'
+    - if: '$CI_COMMIT_REF_NAME == "master" || $CI_COMMIT_REF_NAME == "dev"'
       changes:
         - Backend/**/*
   before_script:
@@ -67,26 +72,45 @@ backend-deploy:
     - echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
   script:
     - |
-      echo "🚀 [Backend] Deploying to Production Server..."
+      echo "🚀 [Backend] Deploying..."
       ssh ubuntu@$EC2_IP "
-        docker login -u '$CI_REGISTRY_USER' -p '$CI_REGISTRY_PASSWORD' $CI_REGISTRY &&
+        # 서버에서도 Docker Hub 로그인
+        echo '$BACKEND_DOCKER_PASSWORD' | docker login -u '$BACKEND_DOCKER_USERNAME' --password-stdin &&
         docker pull $BACKEND_IMAGE &&
+
         docker stop backend-app || true &&
         docker rm backend-app || true &&
+
+        # 환경 변수 주입
+        echo 'MQTT_HOST=autowingcar.o-r.kr' > deploy.env &&
+        echo 'MQTT_PORT=8883' >> deploy.env &&
+        echo 'JWT_SECRET=$JWT_SECRET' >> deploy.env &&
+        echo 'JWT_EXPIRATION=86400000' >> deploy.env &&
+        echo 'REDIS_HOST=autowing-redis' >> deploy.env &&
+        echo 'REDIS_PORT=6379' >> deploy.env &&
+        echo \"BACKEND_IMAGE=$BACKEND_IMAGE\" >> deploy.env &&
+
+        # Redis 컨테이너 설정 (최초 1회만, 이미 있으면 skip)
+        if ! docker ps -a | grep -q autowing-redis; then
+          echo '🔴 Redis 컨테이너가 없습니다. 새로 생성합니다...'
+          docker run -d --name autowing-redis \
+            --network app-net \
+            --restart always \
+            -v autowing-redis-data:/data \
+            redis:7-alpine redis-server --appendonly yes
+        else
+          echo '✅ Redis 컨테이너가 이미 실행 중입니다. 유지합니다.'
+        fi &&
+
+        # Backend 컨테이너 실행(dev 환경 엔 local, master 환경엔 prod)
         docker run -d --name backend-app \
-          --network host \
+          --network app-net \
           --restart always \
-          -e SPRING_PROFILES_ACTIVE=local \
-          # ===============================
-          # DB 설정 (나중에 활성화)
-          # ===============================
-          # -e DB_URL='$DB_URL' \
-          # -e DB_USERNAME='$DB_USERNAME' \
-          # -e DB_PASSWORD='$DB_PASSWORD' \
-          
-          # ===============================
-          # 또는 서버에 있는 env 파일 사용
-          # ===============================
-          # --env-file /home/ubuntu/backend.env \
-          $BACKEND_IMAGE
+          -p 8080:8080 \
+          --env-file deploy.env \
+          -e SPRING_PROFILES_ACTIVE=$CI_COMMIT_REF_NAME \
+          $BACKEND_IMAGE &&
+
+        rm deploy.env &&
+        docker image prune -f
       "

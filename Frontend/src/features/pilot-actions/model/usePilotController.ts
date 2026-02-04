@@ -9,12 +9,11 @@ import {
 
 import { useFlightWelcome } from "./useFlightWelcome";
 import { useGraphStore } from "@/entities/map/model/store";
-import { useAuthStore } from "@/features/auth/model/useAuthStore"; // [NEW]
 import { pilotApi } from "../api/pilotApi"; // [NEW]
 import { AircraftStatus } from "@/entities/map/model/types"; // [NEW]
 
 export function usePilotController(initialCarId?: string) {
-  const { accessToken } = useAuthStore(); // [NEW]
+  // const { accessToken } = useAuthStore(); // [NEW] - Removed because apiClient handles it
   const { updateAircraft } = useGraphStore(); // [NEW]
 
   // --- State ---
@@ -46,12 +45,12 @@ export function usePilotController(initialCarId?: string) {
 
   // --- Initial State Sync (REST API) ---
   useEffect(() => {
-    if (!accessToken || hasFetchedStatus.current) return;
+    if (hasFetchedStatus.current) return;
 
     const syncStatus = async () => {
       try {
-        // Fetch Current Status from Backend
-        const statusData = await pilotApi.getTowingCarStatus(accessToken);
+        // Fetch Current Status from Backend (Token handled by apiClient)
+        const statusData = await pilotApi.getTowingCarStatus();
         console.log("[StateSync] Fetched Initial Status:", statusData);
 
         if (statusData.code && statusData.status !== "NONE") {
@@ -78,15 +77,14 @@ export function usePilotController(initialCarId?: string) {
     };
 
     syncStatus();
-  }, [accessToken, updateAircraft]);
+  }, [updateAircraft]);
 
-  // [New] Safe Sync on Assignment (Race Condition Fix)
   useEffect(() => {
-    if (!activeCarId || !accessToken) return;
+    if (!activeCarId) return;
 
     const safeSync = async () => {
       try {
-        const statusData = await pilotApi.getTowingCarStatus(accessToken);
+        const statusData = await pilotApi.getTowingCarStatus();
         // Ensure we are syncing the correct car
         if (statusData.code === activeCarId && statusData.status !== "NONE") {
           console.log(
@@ -133,7 +131,7 @@ export function usePilotController(initialCarId?: string) {
       }
     };
     safeSync();
-  }, [activeCarId, accessToken, updateAircraft]);
+  }, [activeCarId, updateAircraft]);
 
   // --- Modal State ---
   const [confirmModal, setConfirmModal] = useState<{
@@ -152,7 +150,7 @@ export function usePilotController(initialCarId?: string) {
   // --- WebSocket ---
   // [FIX] Always subscribe to assigned car even if it's IDLE (so we can catch status changes)
   const socketCarId = flightInfo?.assignedCarId || initialCarId;
-  const { request, send, onMessage, isConnected } = usePilotSocket(socketCarId);
+  const { send, onMessage, isConnected } = usePilotSocket(socketCarId);
 
   // --- Logger ---
   const addLog = useCallback(

@@ -4,14 +4,20 @@
 FROM gradle:8.5.0-jdk17 AS builder
 WORKDIR /app
 
-# 캐시 최적화
+# ---- 캐시 최적화용 최소 파일 먼저 복사 ----
 COPY gradle gradle
 COPY gradlew build.gradle settings.gradle ./
-RUN chmod +x gradlew
+
+# 실행 권한 부여 (★★★ 핵심 ★★★)
+RUN chmod +x ./gradlew
+
+# 의존성만 먼저 다운로드 (캐시용)
 RUN ./gradlew dependencies || true
 
-# 소스 복사 & 빌드
+# ---- 전체 소스 복사 후 빌드 ----
 COPY . .
+
+RUN chmod +x ./gradlew
 RUN ./gradlew clean build -x test
 
 # =========================
@@ -24,5 +30,4 @@ COPY --from=builder /app/build/libs/*.jar app.jar
 
 EXPOSE 8080
 
-# 환경변수 안전하게 적용
 ENTRYPOINT ["sh", "-c", "java -jar -Dspring.profiles.active=${SPRING_PROFILES_ACTIVE} app.jar"]

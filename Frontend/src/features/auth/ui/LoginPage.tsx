@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { useAuthStore } from '../model/useAuthStore';
+import { useAuthStore, UserRole } from '../model/useAuthStore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/Card';
 import { Input } from '@/shared/ui/Input';
 import { Button } from '@/shared/ui/Button';
+import { apiClient } from '@/shared/api/apiClient';
 
 export function LoginPage() {
     const [email, setEmail] = useState('');
@@ -18,20 +19,18 @@ export function LoginPage() {
         setLoading(true);
 
         try {
-            const VITE_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
-            const response = await fetch(`${VITE_API_BASE_URL}/api/auth/login`, {
+            const data = await apiClient.request<{
+                accessToken: string;
+                refreshToken: string;
+                socketToken: string;
+                role: UserRole;
+            }>('/api/auth/login', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password }),
             });
 
-            if (!response.ok) {
-                throw new Error('로그인 실패. 이메일과 비밀번호를 확인하세요.');
-            }
-
-            const data = await response.json();
-            // AuthDtos.TokenResponse: { accessToken, role, grantType }
-            login(data.accessToken, data.socketToken, data.role, email);
+            // AuthDtos.TokenResponse: { accessToken, refreshToken, socketToken, role, email }
+            login(data.accessToken, data.refreshToken, data.socketToken, data.role, email);
             
             // App will re-render and route to Dashboard
         } catch (err: any) {
@@ -90,7 +89,7 @@ export function LoginPage() {
                             variant="outline"
                             className="w-full border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800"
                             onClick={() => {
-                                login('mock-access-token', 'mock-socket-token', 'ATC', 'admin@test.com');
+                                login('mock-access-token', 'mock-refresh-token', 'mock-socket-token', 'ATC', 'admin@test.com');
                             }}
                         >
                             Mock Login (ATC)
@@ -100,7 +99,7 @@ export function LoginPage() {
                             variant="outline"
                             className="w-full border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800 mt-2"
                             onClick={() => {
-                                login('mock-access-token-pilot', 'mock-socket-token-pilot', 'PILOT', 'pilot@atc.com');
+                                login('mock-access-token-pilot', 'mock-refresh-token-pilot', 'mock-socket-token-pilot', 'PILOT', 'pilot@atc.com');
                             }}
                         >
                             Mock Login (PILOT)
