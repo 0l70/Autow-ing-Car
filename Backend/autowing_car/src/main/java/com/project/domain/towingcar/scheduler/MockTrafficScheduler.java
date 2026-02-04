@@ -27,6 +27,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 테스트용 가상 트래픽 시뮬레이터
+ * DB에 등록된 모든 차량의 위치를 주기적으로 계산하고, 비행 정보와 지도를 웹소켓/MQTT로 방송합니다.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -47,6 +51,7 @@ public class MockTrafficScheduler {
     // [NEW] Flight Info Tick Counter
     private int flightInfoTick = 0;
 
+    // 시뮬레이션 메인 루프 (1초마다 실행)
     @Scheduled(fixedRate = 1000) // 1Hz for quieter debugging
     @Transactional(readOnly = true)
     public void simulate() {
@@ -206,6 +211,10 @@ public class MockTrafficScheduler {
     // Send map periodically (e.g. every 5 seconds = every 50 ticks at 10Hz)
     private int mapTickCounter = 0;
 
+    /**
+     * 주기적으로 지도 데이터(노드, 간선)를 방송합니다.
+     * (현재는 초기 HTTP 로딩을 주로 사용하지만, 실시간 변경 대응을 위해 유지)
+     */
     private void sendMockMap() {
         mapTickCounter++;
         if (mapTickCounter % 2 != 0)

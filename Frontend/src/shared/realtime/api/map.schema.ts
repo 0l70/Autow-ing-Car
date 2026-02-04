@@ -24,6 +24,10 @@ export const MapEdgeSchema = z.object({
     id: z.string(),
     from: z.string(),
     to: z.string(),
+    waypoints: z.array(z.object({
+        x: z.number(),
+        y: z.number()
+    })).nullable().optional().default([]),
 });
 
 export const MapCornersSchema = z.object({

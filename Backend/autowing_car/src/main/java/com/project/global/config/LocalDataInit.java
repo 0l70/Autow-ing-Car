@@ -15,6 +15,9 @@ import com.project.domain.map.repository.NodeRepository; // Repository 필요
 import com.project.domain.towingcar.repository.TowingCarRepository; // Repository 필요
 import com.project.domain.user.entity.User;
 import com.project.domain.user.repository.UserRepository;
+import com.project.global.util.RdpSimplifier;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,8 +27,13 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 프로젝트 로컬 환경을 위한 초기 데이터 설정을 담당하는 클래스
+ * 사용자, 항공기, 지도 노드/간선, 차량, 비행 스케줄 등을 초기화합니다.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -39,16 +47,17 @@ public class LocalDataInit implements CommandLineRunner {
     private final FlightRepository flightRepository;
     private final UserRepository userRepository;
     private final AircraftRepository aircraftRepository;
+    private final ObjectMapper objectMapper;
 
     @Override
     public void run(String... args) {
         log.info("############ Local Data Initialization Start ############");
 
-        // 1. Users
+        // 1. 사용자 초기화 (P001: 기장, A001: 관제사)
         User pilot = initUser("P001", "Maverick", "pilot@atc.com", "1234", UserRole.PILOT);
         User atc = initUser("A001", "TowerControl", "atc@atc.com", "1234", UserRole.ATC);
 
-        // 2. Aircrafts
+        // 2. 항공기 초기화 (B737, A320)
         Aircraft b737 = initAircraft("HL7777", "B737", 35.0, 39.0);
         Aircraft a320 = initAircraft("HL8888", "A320", 34.0, 37.0);
 
@@ -70,21 +79,23 @@ public class LocalDataInit implements CommandLineRunner {
         // Node gate = createNode("G101", -50.0, 0.0);
         // Node runway = createNode("R101", 150.0, 100.0);
 
-        // [New] PathPlanner Nodes (edge01, edge02)
-        Node s01 = createNode("S01", -1.22, -0.13);
-        Node g01 = createNode("G01", 0.33, -0.28);
-        Node r02 = createNode("R02", 4.03, -0.08);
+        // 3. 지도 데이터 초기화 (PathPlanner 기반 노드 및 간선 생성)
+        Node s01 = createNode("S01", -1.22, -0.13); // 시작 노드
+        Node g01 = createNode("G01", 0.33, -0.28); // 중간 게이트 노드
+        Node r02 = createNode("R02", 4.03, -0.08); // 활주로 인근 노드
         nodeRepository.saveAll(List.of(s01, g01, r02));
 
-        // Connect PathPlanner Nodes
-        createAndSaveBiEdge(s01, g01, 1.56); // Distance for edge01
-        createAndSaveBiEdge(g01, r02, 3.70); // Distance for edge02
+        // 경로 좌표 JSON 파일을 읽어 간선(Edge)의 보조점(Waypoints)으로 저장
+        importPathCoordinates("edge01",
+                "../../embedded/PathPlanner/maps/edge01/paths/path_S01_to_G01_20260202_173003.json", s01, g01, 1.56);
+        importPathCoordinates("edge02",
+                "../../embedded/PathPlanner/maps/edge02/paths/path_S02_to_G02_20260202_180927.json", g01, r02, 3.70);
 
-        // 4. Vehicles
-        TowingCar tc1 = createAndSaveCar("TC01", -1.22, -0.13, 100); // TC01 at S01
-        TowingCar tc2 = createAndSaveCar("TC02", 0.33, -0.28, 90); // TC02 at G01
+        // 4. 차량(Towing Car) 초기화
+        TowingCar tc1 = createAndSaveCar("TC01", -1.22, -0.13, 100);
+        TowingCar tc2 = createAndSaveCar("TC02", 0.33, -0.28, 90);
 
-        // 5. Flights
+        // 5. 비행 정보 및 스케줄 초기화
         createAndSaveFlight("KE001", pilot, tc1, b737);
         createAndSaveFlight("OZ101", pilot, tc2, a320);
 
@@ -148,6 +159,61 @@ public class LocalDataInit implements CommandLineRunner {
                 .scheduledTime(LocalDateTime.now().plusHours(2))
                 .build();
         flightRepository.save(flight);
+    }
+
+    /**
+     * PathPlanner에서 생성한 경로 좌표 파일(x, y 배열)을 읽어 간선 보조점으로 저장합니다.
+     */
+    private void importPathCoordinates(String prefix, String filePath, Node startNode, Node endNode, double distance) {
+        try {
+            java.io.File file = new java.io.File(filePath);
+            log.info("[LocalDataInit] Looking for path file at: {}", file.getAbsolutePath());
+            if (!file.exists()) {
+                log.warn("[LocalDataInit] Path file not found: {}", file.getAbsolutePath());
+                return;
+            }
+
+            JsonNode root = objectMapper.readTree(file);
+            JsonNode xArray = root.get("x");
+            JsonNode yArray = root.get("y");
+
+            List<RdpSimplifier.Point> rawPoints = new ArrayList<>();
+            for (int i = 0; i < xArray.size(); i++) {
+                rawPoints.add(new RdpSimplifier.Point(xArray.get(i).asDouble(), yArray.get(i).asDouble()));
+            }
+
+            log.info("[LocalDataInit] Loaded {} raw path points for {}", rawPoints.size(), prefix);
+
+            // RDP 알고리즘으로 좌표 단순화 (70개 → 20~30개)
+            List<RdpSimplifier.Point> simplified = RdpSimplifier.simplify(rawPoints, 0.1);
+            log.info("[LocalDataInit] Simplified {} -> {} points for {}", rawPoints.size(), simplified.size(), prefix);
+
+            // Convert simplified points to JSON
+            String waypointsJson = objectMapper.writeValueAsString(simplified);
+
+            // Create Bi-directional Edges with waypoints
+            saveEdgeWithWaypoints("E_" + startNode.getNodeCode() + "_to_" + endNode.getNodeCode(), startNode, endNode,
+                    distance, waypointsJson);
+
+            // For reverse edge, reverse the waypoints list
+            List<RdpSimplifier.Point> reversed = new ArrayList<>(simplified);
+            java.util.Collections.reverse(reversed);
+            String reversedWaypointsJson = objectMapper.writeValueAsString(reversed);
+            saveEdgeWithWaypoints("E_" + endNode.getNodeCode() + "_to_" + startNode.getNodeCode(), endNode, startNode,
+                    distance, reversedWaypointsJson);
+
+        } catch (Exception e) {
+            log.error("[LocalDataInit] Failed to import path {}: {}", prefix, e.getMessage());
+        }
+    }
+
+    private void saveEdgeWithWaypoints(String code, Node src, Node dst, double distance, String waypoints) {
+        Edge edge = Edge.builder()
+                .edgeCode(code).srcNode(src).dstNode(dst)
+                .distance(distance).status(MapStatus.AVAILABLE).maxSpeed(30).restrictionInfo("NONE")
+                .waypoints(waypoints)
+                .build();
+        edgeRepository.save(edge);
     }
 
     private List<Node> flatten(Node[][] grid) {

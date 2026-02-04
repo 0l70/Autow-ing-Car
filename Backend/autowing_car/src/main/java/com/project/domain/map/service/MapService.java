@@ -21,10 +21,16 @@ import com.project.domain.map.entity.Edge;
 import com.project.domain.map.entity.Node;
 import com.project.domain.mission.dto.MissionWebSocketDtos.PathOptionDto;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
+/**
+ * 지도 및 경로 탐색 관련 비즈니스 로직을 담당하는 서비스 클래스
+ * A*, Yen's 알고리즘 등을 사용하여 최적 경로를 계산합니다.
+ */
 @Service
 @RequiredArgsConstructor
 public class MapService {
@@ -32,6 +38,7 @@ public class MapService {
     private final GraphCache graphCache;
     private final UsageManager usageManager;
     private final MapDBAdaptor mapDBAdaptor;
+    private final ObjectMapper objectMapper;
 
     @AllArgsConstructor
     @Getter
@@ -227,7 +234,12 @@ public class MapService {
         return path;
     }
 
-    // [API] 전체 지도 정보 조회
+    /**
+     * HTTP API 요청에 따라 전체 지도 데이터(노드, 간선)를 반환합니다.
+     * 
+     * @param mapId 지도를 식별하는 ID
+     * @return 지도의 전체 구성을 담은 MapResponse DTO
+     */
     public MapResponse getFullMap(String mapId) {
         List<Node> dbNodes = mapDBAdaptor.findAllNodes();
         List<Edge> dbEdges = mapDBAdaptor.findAllEdges();
@@ -240,12 +252,25 @@ public class MapService {
                         .y(n.getPosY())
                         .status(n.getStatus().name())
                         .build()).toList())
-                .edges(dbEdges.stream().map(e -> MapResponse.EdgeDto.builder()
-                        .id(e.getEdgeCode())
-                        .from(e.getSrcNode().getNodeCode())
-                        .to(e.getDstNode().getNodeCode())
-                        .cost(e.getDistance())
-                        .build()).toList())
+                .edges(dbEdges.stream().map(e -> {
+                    List<MapResponse.PointDto> waypoints = new java.util.ArrayList<>();
+                    if (e.getWaypoints() != null && !e.getWaypoints().isEmpty()) {
+                        try {
+                            waypoints = objectMapper.readValue(e.getWaypoints(),
+                                    new TypeReference<List<MapResponse.PointDto>>() {
+                                    });
+                        } catch (Exception ex) {
+                            // ignore or log
+                        }
+                    }
+                    return MapResponse.EdgeDto.builder()
+                            .id(e.getEdgeCode())
+                            .from(e.getSrcNode().getNodeCode())
+                            .to(e.getDstNode().getNodeCode())
+                            .cost(e.getDistance())
+                            .waypoints(waypoints)
+                            .build();
+                }).toList())
                 .build();
     }
 

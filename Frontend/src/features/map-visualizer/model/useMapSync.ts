@@ -6,6 +6,10 @@ import { WS_TOPICS } from '@/shared/realtime/config/topics';
 import { MapInfoPayloadSchema } from '@/shared/realtime/api/map.schema';
 import { useAuthStore } from '@/features/auth/model/useAuthStore';
 
+/**
+ * 지도의 동기화를 관리하는 커스텀 훅
+ * 초기에 HTTP를 통해 전체 지도를 불러오고, 이후 WebSocket을 통해 실시간 업데이트를 수신합니다.
+ */
 export function useMapSync(enabled: boolean = true) {
     const { loadGraph, setCorners, setMapDimensions } = useGraphStore();
     const { socketToken } = useAuthStore();
@@ -64,14 +68,16 @@ export function useMapSync(enabled: boolean = true) {
         const adaptedEdges = (data.edges || []).map((e: any) => ({
             ...e,
             fromId: e.from,
-            toId: e.to
+            toId: e.to,
+            waypoints: e.waypoints || []
         }));
 
         loadGraph(data.nodes as any, adaptedEdges as any);
         console.log(`[MapSync] ✅ Processed ${data.nodes.length} nodes`);
     }, [loadGraph, setCorners, setMapDimensions]);
 
-    // 7. Initial Map Fetch (HTTP)
+    // 7. 초기 지도 데이터 페치 (HTTP)
+    // 화면 로드 시 한 번만 실행되어 전체 노드/간선 데이터를 가져옵니다.
     useEffect(() => {
         if (!enabled) return;
 
