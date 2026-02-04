@@ -27,7 +27,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     // JWT 검증을 스킵할 경로들
     private static final List<String> WHITELIST = Arrays.asList(
-            "/api/auth/**",
+            "/api/auth/login",
+            "/api/auth/token/refresh",
+            "/api/auth/token/websocket",
             "/h2-console/**",
             "/ws-server/**",
             "/swagger-ui.html",
@@ -39,7 +41,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
         boolean shouldSkip = WHITELIST.stream().anyMatch(pattern -> pathMatcher.match(pattern, path));
-        log.debug("shouldNotFilter: path={}, shouldSkip={}", path, shouldSkip);
         return shouldSkip;
     }
 
