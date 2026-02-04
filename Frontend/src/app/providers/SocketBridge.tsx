@@ -26,7 +26,7 @@ export function SocketBridge() {
     const socket = useSocket();
     const ingestAircraft = useAircraftStore(state => state.ingest);
     const ingestMission = useMissionStore(state => state.ingest);
-    const { loadGraph, setCorners, setMapDimensions } = useGraphStore();
+    const { loadGraph, setCorners, setMapDimensions, setMapMeta } = useGraphStore();
 
     const handleMessage = useCallback((msg: any) => {
         const { destination, body } = msg;
@@ -109,6 +109,18 @@ export function SocketBridge() {
                 if (result.success) {
                     const data = result.data;
                     if (data.width && data.height) setMapDimensions(data.width, data.height);
+                    
+                    // [Fix] Also set MapMeta so GraphLayer can render
+                    setMapMeta({
+                        image: data.imagePath || "my_map.pgm",
+                        resolution: data.resolution || 0.05,
+                        origin: [data.originX || 0, data.originY || 0, 0],
+                        mode: 'trinary',
+                        negate: false,
+                        occupied_thresh: 0.65,
+                        free_thresh: 0.25
+                    });
+
                     if (data.corners) setCorners(data.corners);
                     const adaptedEdges = (data.edges || []).map((e: any) => ({
                         ...e,

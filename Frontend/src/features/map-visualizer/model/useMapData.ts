@@ -52,7 +52,14 @@ export function useMapData() {
                 id: n.id,
                 x: n.x,
                 y: n.y,
-                type: 'WAYPOINT', // Default
+                type: (() => {
+                    const code = n.id.toUpperCase();
+                    if (code.startsWith('R') || code.startsWith('S')) return 'RUNWAY';
+                    if (code.startsWith('G')) return 'GATE';
+                    if (code.startsWith('C') || code.startsWith('P')) return 'CHARGER';
+                    if (code.startsWith('I')) return 'INTERSECTION';
+                    return 'WAYPOINT';
+                })(),
                 status: n.status
             }));
 
@@ -77,6 +84,7 @@ export function useMapData() {
         }) : null,
         mapImage,
         isLoading: isInfoLoading || isImageLoading,
-        error: infoError || imageError
+        error: infoError || imageError,
+        dimensions: mapInfo ? { width: mapInfo.width, height: mapInfo.height } : null
     };
 }

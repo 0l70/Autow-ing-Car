@@ -20,10 +20,10 @@ interface AtcMapWidgetProps {
 
 export function AtcMapWidget({ className }: AtcMapWidgetProps) {
     // --- Data Loading ---
-    const { meta, mapImage } = useMapData(); // Use a distinct key or same if shared
+    const { meta, mapImage, dimensions } = useMapData(); // Use a distinct key or same if shared
     
     // --- Store State ---
-    const { mapWidth: storeMapWidth, mapHeight: storeMapHeight } = useGraphStore();
+    const { mapWidth: storeMapWidth, mapHeight: storeMapHeight, mapMeta: storeMeta } = useGraphStore();
 
     // Map Load Handler
     const [loadedDims, setLoadedDims] = useState({ width: 0, height: 0 });
@@ -31,33 +31,35 @@ export function AtcMapWidget({ className }: AtcMapWidgetProps) {
     // Grid Metadata
     const gridMetadata = useMemo(() => {
         // [Update] Always prefer resolution and origin from local YAML (meta)
-        const resolution = meta?.resolution || 0.05;
+        const effectiveMeta = meta || storeMeta;
+        const resolution = effectiveMeta?.resolution || 0.05;
         
+        // [Fix] Prioritize Backend Dimensions (from useMapData/mapInfo) -> Store -> Schema -> Mock
+        const logicalWidth = dimensions?.width || storeMapWidth || MOCK_MAP_SIZE.width;
+        const logicalHeight = dimensions?.height || storeMapHeight || MOCK_MAP_SIZE.height;
+
         return {
-            width: storeMapWidth || MOCK_MAP_SIZE.width,
-            height: storeMapHeight || MOCK_MAP_SIZE.height,
+            width: logicalWidth,
+            height: logicalHeight,
             resolution
         };
-    }, [storeMapWidth, storeMapHeight, meta]);
+    }, [storeMapWidth, storeMapHeight, meta, dimensions]);
 
     // Dimensions to use
     // If we have an image, use its real pixels. Otherwise use store/mock.
     const activeWidth = loadedDims.width || gridMetadata.width;
     const activeHeight = loadedDims.height || gridMetadata.height;
 
-    // ATC View: Full Map by default
-    // Map Size: 327x275
+    // ATC View: Full Map by default (Dynamic)
+    // Map Size: Based on loaded metadata
     const fullMapView = useMemo(() => {
         return {
-            // Same Width as Pilot (163), but Full Height (275) to see everything
-            // Pilot View was: x: 82, width: 163
-            // Focused View for Node Patrol
-            x: 50,
-            y: 80,
-            width: 200,
-            height: 200
+            x: 0,
+            y: 0,
+            width: gridMetadata.width,
+            height: gridMetadata.height
         };
-    }, []);
+    }, [gridMetadata]);
 
     const handleAircraftClick = (ac: Aircraft) => {
         console.log("ATC Selected Aircraft:", ac.id);
@@ -109,12 +111,12 @@ export function AtcMapWidget({ className }: AtcMapWidgetProps) {
                 >
                     {/* Render Layers */}
                     <GraphLayer 
-                        meta={meta || null} 
+                        meta={meta || storeMeta || null} 
                         mapHeight={activeHeight} 
                     />
                     
                     <AircraftLayer
-                        meta={meta || null}
+                        meta={meta || storeMeta || null}
                         mapWidth={activeWidth}
                         mapHeight={activeHeight}
                         pixelRatio={5}
