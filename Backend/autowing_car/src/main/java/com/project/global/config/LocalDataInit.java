@@ -140,7 +140,7 @@ public class LocalDataInit implements CommandLineRunner {
                 .edgeCode(code).srcNode(src).dstNode(dst)
                 .distance(distance)
                 .maxSpeed(speed != null ? speed.intValue() : 11)
-                .travelTime(speed != null ? speed * distance : 0.0) // 가중치 로직: MAXSPEED * 좌표개수
+                .travelTime(speed != null ? speed * distance : 11 * distance) // 가중치 로직: MAXSPEED * 좌표개수
                 .waypoints(waypoints)
                 .status(MapStatus.AVAILABLE)
                 .restrictionInfo("NONE")
