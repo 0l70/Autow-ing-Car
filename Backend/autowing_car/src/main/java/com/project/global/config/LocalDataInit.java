@@ -35,6 +35,7 @@ import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.time.LocalDate;
@@ -69,12 +70,12 @@ public class LocalDataInit implements CommandLineRunner {
     public void run(String... args) {
         log.info("############ Local Data Initialization Start ############");
 
-        // 0. 맵 메타데이터 초기화
+        // 0. 맵 메타데이터 초기화 (가장 먼저 실행하여 maxSpeed 확보)
         initMapInfo();
 
         // 1. 사용자 초기화 (P001: 기장, A001: 관제사)
         User pilot = initUser("P001", "Maverick", "pilot@atc.com", "1234", UserRole.PILOT);
-        User atc = initUser("A001", "TowerControl", "atc@atc.com", "1234", UserRole.ATC);
+        initUser("A001", "TowerControl", "atc@atc.com", "1234", UserRole.ATC);
 
         // 2. 항공기 초기화 (B737, A320)
         Aircraft b737 = initAircraft("HL7777", "B737", 35.0, 39.0);
@@ -87,16 +88,16 @@ public class LocalDataInit implements CommandLineRunner {
 
         nodeRepository.saveAll(List.of(s01, g01, r02));
 
-        // resolvePath 메서드를 사용하여 해당 디렉토리의 최신 파일 검색
+        // Use resolvePath to find the latest JSON files
         String path01 = resolvePath(mapBasePath + "/edge01/paths", "path_S01_to_G01");
         String path02 = resolvePath(mapBasePath + "/edge02/paths", "path_S02_to_G02");
 
         // 경로 좌표 JSON 파일을 읽어 간선(Edge)의 보조점(Waypoints)으로 저장
         // path가 비어있으면 건너뜀
         if (!path01.isEmpty())
-            importPathCoordinates("edge01", path01, s01, g01, 1.56);
+            importPathCoordinates("edge01", path01, s01, g01, 10.0);
         if (!path02.isEmpty())
-            importPathCoordinates("edge02", path02, g01, r02, 3.70);
+            importPathCoordinates("edge02", path02, g01, r02, 11.0);
 
         // 4. 차량(Towing Car) 초기화
         TowingCar tc1 = createAndSaveCar("TC01", -1.22, -0.13, 100);
@@ -134,20 +135,15 @@ public class LocalDataInit implements CommandLineRunner {
                 .status(MapStatus.AVAILABLE).restrictionInfo("NONE").build();
     }
 
-    // 미사용 함수
-    private void createAndSaveBiEdge(Node n1, Node n2, double dist) {
-        createAndSaveEdge("E_" + n1.getNodeCode() + "_to_" + n2.getNodeCode(), n1, n2, dist);
-        createAndSaveEdge("E_" + n2.getNodeCode() + "_to_" + n1.getNodeCode(), n2, n1, dist);
-    }
-
-    private void createAndSaveEdge(String code, Node src, Node dst, double distance) {
-        // Calculate travel time
-        Double tTime = (distance > 0 && 30 > 0) ? (distance / 30.0) : 0.0;
-
+    private void saveEdge(String code, Node src, Node dst, double distance, String waypoints, Double speed) {
         Edge edge = Edge.builder()
                 .edgeCode(code).srcNode(src).dstNode(dst)
-                .distance(distance).status(MapStatus.AVAILABLE).maxSpeed(30).restrictionInfo("NONE")
-                .travelTime(tTime)
+                .distance(distance)
+                .maxSpeed(speed != null ? speed.intValue() : 11)
+                .travelTime(speed != null ? speed * distance : 0.0) // 가중치 로직: MAXSPEED * 좌표개수
+                .waypoints(waypoints)
+                .status(MapStatus.AVAILABLE)
+                .restrictionInfo("NONE")
                 .build();
         edgeRepository.save(edge);
     }
@@ -177,10 +173,10 @@ public class LocalDataInit implements CommandLineRunner {
     /**
      * PathPlanner에서 생성한 경로 좌표 파일(x, y 배열)을 읽어 간선 보조점으로 저장합니다.
      */
-    private void importPathCoordinates(String prefix, String filePath, Node startNode, Node endNode, double distance) {
+    private void importPathCoordinates(String prefix, String filePath, Node startNode, Node endNode, Double maxSpeed) {
         try {
             java.io.File file = new java.io.File(filePath);
-            log.info("[LocalDataInit] Looking for path file at: {}", file.getAbsolutePath());
+            log.info("[LocalDataInit] Processing path file: {}", file.getAbsolutePath());
             if (!file.exists()) {
                 log.warn("[LocalDataInit] Path file not found: {}", file.getAbsolutePath());
                 return;
@@ -190,53 +186,36 @@ public class LocalDataInit implements CommandLineRunner {
             JsonNode xArray = root.get("x");
             JsonNode yArray = root.get("y");
 
+            double coordinateCount = (double) xArray.size(); // 좌표 개수가 가중치의 기준(distance)이 됨
+
             List<RdpSimplifier.Point> rawPoints = new ArrayList<>();
             for (int i = 0; i < xArray.size(); i++) {
                 rawPoints.add(new RdpSimplifier.Point(xArray.get(i).asDouble(), yArray.get(i).asDouble()));
             }
 
-            log.info("[LocalDataInit] Loaded {} raw path points for {}", rawPoints.size(), prefix);
-
-            // RDP 알고리즘으로 좌표 단순화 (70개 → 20~30개)
+            // RDP 알고리즘으로 좌표 단순화
             List<RdpSimplifier.Point> simplified = RdpSimplifier.simplify(rawPoints, 0.1);
-            log.info("[LocalDataInit] Simplified {} -> {} points for {}", rawPoints.size(), simplified.size(), prefix);
-
-            // Convert simplified points to JSON
             String waypointsJson = objectMapper.writeValueAsString(simplified);
 
-            // Create Bi-directional Edges with waypoints
-            saveEdgeWithWaypoints("E_" + startNode.getNodeCode() + "_to_" + endNode.getNodeCode(), startNode, endNode,
-                    distance, waypointsJson);
+            // 정방향 간선 저장
+            saveEdge("E_" + startNode.getNodeCode() + "_to_" + endNode.getNodeCode(),
+                    startNode, endNode, coordinateCount, waypointsJson, maxSpeed);
 
-            // For reverse edge, reverse the waypoints list
+            // 역방향 간선 저장 (좌표 리스트 반전)
             List<RdpSimplifier.Point> reversed = new ArrayList<>(simplified);
             java.util.Collections.reverse(reversed);
-            String reversedWaypointsJson = objectMapper.writeValueAsString(reversed);
-            saveEdgeWithWaypoints("E_" + endNode.getNodeCode() + "_to_" + startNode.getNodeCode(), endNode, startNode,
-                    distance, reversedWaypointsJson);
+            saveEdge("E_" + endNode.getNodeCode() + "_to_" + startNode.getNodeCode(),
+                    endNode, startNode, coordinateCount, objectMapper.writeValueAsString(reversed), maxSpeed);
 
         } catch (Exception e) {
             log.error("[LocalDataInit] Failed to import path {}: {}", prefix, e.getMessage());
         }
     }
 
-    private void saveEdgeWithWaypoints(String code, Node src, Node dst, double distance, String waypoints) {
-        // Calculate travel time (Distance / MaxSpeed)
-        // Default maxSpeed = 30 (assume consistent units, e.g. m/s or km/h)
-        Double tTime = (distance > 0 && 30 > 0) ? (distance / 30.0) : 0.0;
-
-        Edge edge = Edge.builder()
-                .edgeCode(code).srcNode(src).dstNode(dst)
-                .distance(distance).status(MapStatus.AVAILABLE).maxSpeed(30).restrictionInfo("NONE")
-                .waypoints(waypoints)
-                .travelTime(tTime)
-                .build();
-        edgeRepository.save(edge);
-    }
-
-    private void initMapInfo() {
-        if (mapInfoRepository.count() > 0)
-            return;
+    private MapInfo initMapInfo() {
+        Optional<MapInfo> existingMap = mapInfoRepository.findAll().stream().findFirst();
+        if (existingMap.isPresent())
+            return existingMap.get();
 
         String yamlPath = mapBasePath + "/my_map.yaml";
         String mapDir = mapBasePath + "/";
@@ -246,36 +225,34 @@ public class LocalDataInit implements CommandLineRunner {
             String imageName = yamlData.get("image");
             double resolution = Double.parseDouble(yamlData.get("resolution"));
 
-            // origin: [-5.42, -3.68, 0]
             String originStr = yamlData.get("origin").replace("[", "").replace("]", "");
             String[] originParts = originStr.split(",");
             double originX = Double.parseDouble(originParts[0].trim());
             double originY = Double.parseDouble(originParts[1].trim());
 
-            // PGM 가로/세로 크기 추출
             int[] dims = parsePgmHeader(mapDir + imageName);
 
-            mapInfoRepository.save(Objects.requireNonNull(MapInfo.builder()
+            MapInfo map = MapInfo.builder()
                     .mapCode("TEST_MAP_01")
                     .width(dims[0])
                     .height(dims[1])
                     .resolution(resolution)
                     .originX(originX)
                     .originY(originY)
-                    .maxSpeed(10.0)
+                    .maxSpeed(20.0)
                     .imagePath(imageName)
                     .basicMap(true)
-                    .build()));
+                    .build();
 
-            log.info("[LocalDataInit] Successfully initialized MapInfo from {}", yamlPath);
+            return mapInfoRepository.save(map);
         } catch (Exception e) {
             log.error("[LocalDataInit] Failed to load map metadata from {}: {}", yamlPath, e.getMessage());
-            // Fallback (기존 하드코딩 값)
-            mapInfoRepository.save(Objects.requireNonNull(MapInfo.builder()
+            // Fallback
+            return mapInfoRepository.save(MapInfo.builder()
                     .mapCode("TEST_MAP_01")
                     .width(2000).height(1500).resolution(0.05)
                     .originX(-5.42).originY(-3.68).maxSpeed(10.0)
-                    .imagePath("my_map.pgm").basicMap(true).build()));
+                    .imagePath("my_map.pgm").basicMap(true).build());
         }
     }
 
@@ -316,16 +293,6 @@ public class LocalDataInit implements CommandLineRunner {
             }
         }
         throw new IOException("Could not find width/height in PGM header");
-    }
-
-    // 미사용 함수
-    private List<Node> flatten(Node[][] grid) {
-        List<Node> list = new java.util.ArrayList<>();
-        for (Node[] row : grid) {
-            for (Node n : row)
-                list.add(n);
-        }
-        return list;
     }
 
     /**
