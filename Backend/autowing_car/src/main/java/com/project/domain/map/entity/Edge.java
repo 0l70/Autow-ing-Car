@@ -43,4 +43,7 @@ public class Edge {
 
     @Column(name = "max_speed")
     private Integer maxSpeed;
+
+    @Column(name = "waypoints", columnDefinition = "TEXT")
+    private String waypoints; // JSON string of path coordinates
 }

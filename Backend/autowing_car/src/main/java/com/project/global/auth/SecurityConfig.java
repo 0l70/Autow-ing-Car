@@ -34,8 +34,11 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**", "/h2-console/**", "/ws-server/**").permitAll() // 로그인, H2, WS
-                                                                                                        // Handshake 허용
+                        .requestMatchers("/api/auth/**", "/api/map/**", "/h2-console/**", "/ws-server/**").permitAll() // 로그인,
+                                                                                                                       // 맵,
+                                                                                                                       // H2,
+                                                                                                                       // WS
+                        // Handshake 허용
                         .requestMatchers("/app/**", "/topic/**", "/user/**").permitAll() // STOMP 메시징
                         /* 허용(ROLE : ATC ,PILOT) */
                         .requestMatchers("/springwolf/**").permitAll() // Springwolf UI 허용
