@@ -25,18 +25,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.ResourcePatternResolver;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Component;
 
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.BufferedReader;
-import java.io.FileReader;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -52,7 +51,6 @@ import java.util.List;
 public class LocalDataInit implements CommandLineRunner {
 
     private final PasswordEncoder passwordEncoder;
-
     private final NodeRepository nodeRepository;
     private final EdgeRepository edgeRepository;
     private final MapInfoRepository mapInfoRepository;
@@ -61,48 +59,72 @@ public class LocalDataInit implements CommandLineRunner {
     private final UserRepository userRepository;
     private final AircraftRepository aircraftRepository;
     private final ObjectMapper objectMapper;
+    private final ResourcePatternResolver resourceResolver = new PathMatchingResourcePatternResolver();
 
-    @Value("${app.map.path-planner-root}")
-    private String mapBasePath;
+    private final List<String> finalLocations;
+
+    public LocalDataInit(
+            PasswordEncoder passwordEncoder, NodeRepository nodeRepository, EdgeRepository edgeRepository,
+            MapInfoRepository mapInfoRepository, TowingCarRepository towingCarRepository,
+            FlightRepository flightRepository, UserRepository userRepository,
+            AircraftRepository aircraftRepository, ObjectMapper objectMapper,
+            @Value("${app.map.locations}") List<String> mapLocations,
+            @Value("${app.map.external-locations:}") String externalLocations) {
+        this.passwordEncoder = passwordEncoder;
+        this.nodeRepository = nodeRepository;
+        this.edgeRepository = edgeRepository;
+        this.mapInfoRepository = mapInfoRepository;
+        this.towingCarRepository = towingCarRepository;
+        this.flightRepository = flightRepository;
+        this.userRepository = userRepository;
+        this.aircraftRepository = aircraftRepository;
+        this.objectMapper = objectMapper;
+
+        // Combine for priority: External Environment Var > Configured YAML List
+        this.finalLocations = new ArrayList<>();
+        if (externalLocations != null && !externalLocations.isBlank()) {
+            for (String loc : externalLocations.split(",")) {
+                finalLocations.add(loc.trim());
+            }
+        }
+        finalLocations.addAll(mapLocations);
+    }
 
     @Override
     public void run(String... args) {
         log.info("############ Local Data Initialization Start ############");
 
         // 0. 맵 메타데이터 초기화
-        initMapInfo();
+        Resource activeYaml = initMapInfo();
 
         // 1. 사용자 초기화 (P001: 기장, A001: 관제사)
         User pilot = initUser("P001", "Maverick", "pilot@atc.com", "1234", UserRole.PILOT);
-        User atc = initUser("A001", "TowerControl", "atc@atc.com", "1234", UserRole.ATC);
+        initUser("A001", "TowerControl", "atc@atc.com", "1234", UserRole.ATC);
 
         // 2. 항공기 초기화 (B737, A320)
         Aircraft b737 = initAircraft("HL7777", "B737", 35.0, 39.0);
         Aircraft a320 = initAircraft("HL8888", "A320", 34.0, 37.0);
 
-        // 3. 지도 데이터 초기화 (PathPlanner 기반 노드 및 간선 생성)
-        Node s01 = createNode("S01", -1.22, -0.13); // 시작 노드
-        Node g01 = createNode("G01", 0.33, -0.28); // 중간 게이트 노드
-        Node r02 = createNode("R02", 4.03, -0.08); // 활주로 인근 노드
+        // 3. 지도 데이터 초기화 (내장/외장 리소스 기반)
+        Node s01 = createNode("S01", -1.22, -0.13);
+        Node g01 = createNode("G01", 0.33, -0.28);
+        Node r02 = createNode("R02", 4.03, -0.08);
 
         nodeRepository.saveAll(List.of(s01, g01, r02));
 
-        // resolvePath 메서드를 사용하여 해당 디렉토리의 최신 파일 검색
-        String path01 = resolvePath(mapBasePath + "/edge01/paths", "path_S01_to_G01");
-        String path02 = resolvePath(mapBasePath + "/edge02/paths", "path_S02_to_G02");
+        // 4. 경로 데이터 초기화 (검색된 YAML 리소스 기준 상대 경로로 읽음)
+        if (activeYaml != null) {
+            importResourcePath("edge01", activeYaml, "edge01/path_S01_to_G01", s01, g01, 1.56);
+            importResourcePath("edge02", activeYaml, "edge02/path_G01_to_R02", g01, r02, 3.70);
+        } else {
+            log.warn("[LocalDataInit] Active map resource is null, skipping edge path imports.");
+        }
 
-        // 경로 좌표 JSON 파일을 읽어 간선(Edge)의 보조점(Waypoints)으로 저장
-        // path가 비어있으면 건너뜀
-        if (!path01.isEmpty())
-            importPathCoordinates("edge01", path01, s01, g01, 1.56);
-        if (!path02.isEmpty())
-            importPathCoordinates("edge02", path02, g01, r02, 3.70);
-
-        // 4. 차량(Towing Car) 초기화
+        // 5. 차량(Towing Car) 초기화
         TowingCar tc1 = createAndSaveCar("TC01", -1.22, -0.13, 100);
         TowingCar tc2 = createAndSaveCar("TC02", 0.33, -0.28, 90);
 
-        // 5. 비행 정보 및 스케줄 초기화
+        // 6. 비행 정보 및 스케줄 초기화
         createAndSaveFlight("KE001", pilot, tc1, b737);
         createAndSaveFlight("OZ101", pilot, tc2, a320);
 
@@ -134,24 +156,6 @@ public class LocalDataInit implements CommandLineRunner {
                 .status(MapStatus.AVAILABLE).restrictionInfo("NONE").build();
     }
 
-    // 미사용 함수
-    private void createAndSaveBiEdge(Node n1, Node n2, double dist) {
-        createAndSaveEdge("E_" + n1.getNodeCode() + "_to_" + n2.getNodeCode(), n1, n2, dist);
-        createAndSaveEdge("E_" + n2.getNodeCode() + "_to_" + n1.getNodeCode(), n2, n1, dist);
-    }
-
-    private void createAndSaveEdge(String code, Node src, Node dst, double distance) {
-        // Calculate travel time
-        Double tTime = (distance > 0 && 30 > 0) ? (distance / 30.0) : 0.0;
-
-        Edge edge = Edge.builder()
-                .edgeCode(code).srcNode(src).dstNode(dst)
-                .distance(distance).status(MapStatus.AVAILABLE).maxSpeed(30).restrictionInfo("NONE")
-                .travelTime(tTime)
-                .build();
-        edgeRepository.save(edge);
-    }
-
     private TowingCar createAndSaveCar(String code, double x, double y, int battery) {
         TowingCar car = TowingCar.builder()
                 .code(code).carStatus(CarStatus.IDLE).battery(battery)
@@ -159,12 +163,11 @@ public class LocalDataInit implements CommandLineRunner {
         return towingCarRepository.save(car);
     }
 
-    private void createAndSaveFlight(String flightNumber, User pilot, TowingCar car,
-            Aircraft aircraft) {
+    private void createAndSaveFlight(String flightNumber, User pilot, TowingCar car, Aircraft aircraft) {
         Flight flight = Flight.builder()
                 .flightNumber(flightNumber)
-                .towingCar(car) // Default assignment
-                .assignedTowingCar(car) // Initial assignment
+                .towingCar(car)
+                .assignedTowingCar(car)
                 .pilot(pilot)
                 .aircraft(aircraft)
                 .nodeCode("G01")
@@ -174,114 +177,71 @@ public class LocalDataInit implements CommandLineRunner {
         flightRepository.save(flight);
     }
 
-    /**
-     * PathPlanner에서 생성한 경로 좌표 파일(x, y 배열)을 읽어 간선 보조점으로 저장합니다.
-     */
-    private void importPathCoordinates(String prefix, String filePath, Node startNode, Node endNode, double distance) {
-        try {
-            java.io.File file = new java.io.File(filePath);
-            log.info("[LocalDataInit] Looking for path file at: {}", file.getAbsolutePath());
-            if (!file.exists()) {
-                log.warn("[LocalDataInit] Path file not found: {}", file.getAbsolutePath());
-                return;
-            }
-
-            JsonNode root = objectMapper.readTree(file);
-            JsonNode xArray = root.get("x");
-            JsonNode yArray = root.get("y");
-
-            List<RdpSimplifier.Point> rawPoints = new ArrayList<>();
-            for (int i = 0; i < xArray.size(); i++) {
-                rawPoints.add(new RdpSimplifier.Point(xArray.get(i).asDouble(), yArray.get(i).asDouble()));
-            }
-
-            log.info("[LocalDataInit] Loaded {} raw path points for {}", rawPoints.size(), prefix);
-
-            // RDP 알고리즘으로 좌표 단순화 (70개 → 20~30개)
-            List<RdpSimplifier.Point> simplified = RdpSimplifier.simplify(rawPoints, 0.1);
-            log.info("[LocalDataInit] Simplified {} -> {} points for {}", rawPoints.size(), simplified.size(), prefix);
-
-            // Convert simplified points to JSON
-            String waypointsJson = objectMapper.writeValueAsString(simplified);
-
-            // Create Bi-directional Edges with waypoints
-            saveEdgeWithWaypoints("E_" + startNode.getNodeCode() + "_to_" + endNode.getNodeCode(), startNode, endNode,
-                    distance, waypointsJson);
-
-            // For reverse edge, reverse the waypoints list
-            List<RdpSimplifier.Point> reversed = new ArrayList<>(simplified);
-            java.util.Collections.reverse(reversed);
-            String reversedWaypointsJson = objectMapper.writeValueAsString(reversed);
-            saveEdgeWithWaypoints("E_" + endNode.getNodeCode() + "_to_" + startNode.getNodeCode(), endNode, startNode,
-                    distance, reversedWaypointsJson);
-
-        } catch (Exception e) {
-            log.error("[LocalDataInit] Failed to import path {}: {}", prefix, e.getMessage());
+    private Resource initMapInfo() {
+        if (mapInfoRepository.count() > 0) {
+            log.info("[LocalDataInit] MapInfo already exists in DB, skipping resource scan.");
+            return null;
         }
+
+        for (String location : finalLocations) {
+            try {
+                Resource resource = resourceResolver.getResource(location);
+                if (resource.exists()) {
+                    log.info("[LocalDataInit] Attempting to load map metadata from: {}", resource.getDescription());
+                    if (processMapYaml(resource)) {
+                        return resource; // First successful load wins
+                    }
+                } else {
+                    log.debug("[LocalDataInit] Map location not found: {}", location);
+                }
+            } catch (Exception e) {
+                log.warn("[LocalDataInit] Error checking map location {}: {}", location, e.getMessage());
+            }
+        }
+
+        log.error("[LocalDataInit] Failed to find valid map metadata in all configured locations!");
+        return null;
     }
 
-    private void saveEdgeWithWaypoints(String code, Node src, Node dst, double distance, String waypoints) {
-        // Calculate travel time (Distance / MaxSpeed)
-        // Default maxSpeed = 30 (assume consistent units, e.g. m/s or km/h)
-        Double tTime = (distance > 0 && 30 > 0) ? (distance / 30.0) : 0.0;
-
-        Edge edge = Edge.builder()
-                .edgeCode(code).srcNode(src).dstNode(dst)
-                .distance(distance).status(MapStatus.AVAILABLE).maxSpeed(30).restrictionInfo("NONE")
-                .waypoints(waypoints)
-                .travelTime(tTime)
-                .build();
-        edgeRepository.save(edge);
-    }
-
-    private void initMapInfo() {
-        if (mapInfoRepository.count() > 0)
-            return;
-
-        String yamlPath = mapBasePath + "/my_map.yaml";
-        String mapDir = mapBasePath + "/";
-
-        try {
-            Map<String, String> yamlData = parseYaml(yamlPath);
+    private boolean processMapYaml(Resource yamlResource) {
+        try (InputStream is = yamlResource.getInputStream()) {
+            Map<String, String> yamlData = parseYamlStream(is);
             String imageName = yamlData.get("image");
             double resolution = Double.parseDouble(yamlData.get("resolution"));
 
-            // origin: [-5.42, -3.68, 0]
             String originStr = yamlData.get("origin").replace("[", "").replace("]", "");
             String[] originParts = originStr.split(",");
             double originX = Double.parseDouble(originParts[0].trim());
             double originY = Double.parseDouble(originParts[1].trim());
 
-            // PGM 가로/세로 크기 추출
-            int[] dims = parsePgmHeader(mapDir + imageName);
+            // Load PGM header to get map dimensions
+            Resource pgmResource = yamlResource.createRelative(imageName);
+            int[] dims = { 2000, 1500 }; // Default fallback
+            if (pgmResource.exists()) {
+                dims = parsePgmHeaderFromResource(pgmResource);
+                log.info("[LocalDataInit] Map dimensions from PGM: {}x{}", dims[0], dims[1]);
+            } else {
+                log.warn("[LocalDataInit] PGM image file not found relative to YAML: {}", imageName);
+            }
 
-            mapInfoRepository.save(Objects.requireNonNull(MapInfo.builder()
+            mapInfoRepository.save(MapInfo.builder()
                     .mapCode("TEST_MAP_01")
-                    .width(dims[0])
-                    .height(dims[1])
-                    .resolution(resolution)
-                    .originX(originX)
-                    .originY(originY)
-                    .maxSpeed(10.0)
-                    .imagePath(imageName)
-                    .basicMap(true)
-                    .build()));
+                    .width(dims[0]).height(dims[1])
+                    .resolution(resolution).originX(originX).originY(originY)
+                    .maxSpeed(10.0).imagePath(imageName).basicMap(true).build());
 
-            log.info("[LocalDataInit] Successfully initialized MapInfo from {}", yamlPath);
+            log.info("[LocalDataInit] Map metadata successfully loaded from {}", yamlResource.getDescription());
+            return true;
         } catch (Exception e) {
-            log.error("[LocalDataInit] Failed to load map metadata from {}: {}", yamlPath, e.getMessage());
-            // Fallback (기존 하드코딩 값)
-            mapInfoRepository.save(Objects.requireNonNull(MapInfo.builder()
-                    .mapCode("TEST_MAP_01")
-                    .width(2000).height(1500).resolution(0.05)
-                    .originX(-5.42).originY(-3.68).maxSpeed(10.0)
-                    .imagePath("my_map.pgm").basicMap(true).build()));
+            log.error("[LocalDataInit] Failed to process map YAML {}: {}", yamlResource.getDescription(),
+                    e.getMessage());
+            return false;
         }
     }
 
-    private Map<String, String> parseYaml(String path) throws IOException {
+    private Map<String, String> parseYamlStream(InputStream is) throws IOException {
         Map<String, String> result = new HashMap<>();
-        try (BufferedReader reader = new BufferedReader(new FileReader(path))) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(is))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 if (line.trim().isEmpty() || line.startsWith("#"))
@@ -297,55 +257,82 @@ public class LocalDataInit implements CommandLineRunner {
         return result;
     }
 
-    private int[] parsePgmHeader(String path) throws IOException {
-        try (BufferedReader reader = new BufferedReader(new FileReader(path))) {
-            String line = reader.readLine(); // P5 or P2
+    private int[] parsePgmHeaderFromResource(Resource resource) throws IOException {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(resource.getInputStream()))) {
+            String line = reader.readLine();
             if (line == null)
-                throw new IOException("Invalid PGM file");
-
+                throw new IOException("Empty PGM file");
             while ((line = reader.readLine()) != null) {
                 line = line.trim();
                 if (line.startsWith("#") || line.isEmpty())
                     continue;
-
-                // 가로 세로 추출 (e.g., "2000 1500")
                 String[] parts = line.split("\\s+");
                 if (parts.length >= 2) {
                     return new int[] { Integer.parseInt(parts[0]), Integer.parseInt(parts[1]) };
                 }
             }
         }
-        throw new IOException("Could not find width/height in PGM header");
+        throw new IOException("Could not find dimensions in PGM header");
     }
 
-    // 미사용 함수
-    private List<Node> flatten(Node[][] grid) {
-        List<Node> list = new java.util.ArrayList<>();
-        for (Node[] row : grid) {
-            for (Node n : row)
-                list.add(n);
+    private void importResourcePath(String prefix, Resource rootResource, String relativePath, Node start, Node end,
+            double dist) {
+        try {
+            Resource pathResource = rootResource.createRelative(relativePath + ".json");
+            if (!pathResource.exists()) {
+                log.warn("[LocalDataInit] Path resource not found: {} (derived from {})",
+                        pathResource.getDescription(), rootResource.getDescription());
+                return;
+            }
+
+            try (InputStream is = pathResource.getInputStream()) {
+                JsonNode root = objectMapper.readTree(is);
+                JsonNode xArray = root.get("x");
+                JsonNode yArray = root.get("y");
+
+                List<RdpSimplifier.Point> rawPoints = new ArrayList<>();
+                for (int i = 0; i < xArray.size(); i++) {
+                    rawPoints.add(new RdpSimplifier.Point(xArray.get(i).asDouble(), yArray.get(i).asDouble()));
+                }
+
+                List<RdpSimplifier.Point> simplified = RdpSimplifier.simplify(rawPoints, 0.1);
+                String waypointsJson = objectMapper.writeValueAsString(simplified);
+
+                saveEdgeWithWaypoints("E_" + start.getNodeCode() + "_to_" + end.getNodeCode(), start, end, dist,
+                        waypointsJson);
+
+                // Reverse direction
+                List<RdpSimplifier.Point> reversed = new ArrayList<>(simplified);
+                java.util.Collections.reverse(reversed);
+                saveEdgeWithWaypoints("E_" + end.getNodeCode() + "_to_" + start.getNodeCode(), end, start, dist,
+                        objectMapper.writeValueAsString(reversed));
+
+                log.info("[LocalDataInit] Imported path coordinates for {} from {}", prefix,
+                        pathResource.getDescription());
+            }
+        } catch (Exception e) {
+            log.error("[LocalDataInit] Failed to import path coordinates for {}: {}", prefix, e.getMessage());
         }
-        return list;
     }
 
-    /**
-     * 특정 디렉토리에서 접두어로 시작하는 가장 최신 JSON 파일을 찾습니다.
-     */
-    private String resolvePath(String dirPath, String prefix) {
-        java.io.File dir = new java.io.File(dirPath);
-        if (!dir.exists() || !dir.isDirectory()) {
-            log.warn("[LocalDataInit] Directory not found: {}", dirPath);
-            return "";
-        }
+    private void saveEdgeWithWaypoints(String code, Node src, Node dst, double distance, String waypoints) {
+        Double tTime = (distance > 0) ? (distance / 30.0) : 0.0;
+        Edge edge = Edge.builder()
+                .edgeCode(code).srcNode(src).dstNode(dst)
+                .distance(distance).status(MapStatus.AVAILABLE).maxSpeed(30).restrictionInfo("NONE")
+                .waypoints(waypoints)
+                .travelTime(tTime)
+                .build();
+        edgeRepository.save(edge);
+    }
 
-        java.io.File[] files = dir.listFiles((d, name) -> name.startsWith(prefix) && name.endsWith(".json"));
-        if (files == null || files.length == 0) {
-            log.warn("[LocalDataInit] No files found for prefix {} in {}", prefix, dirPath);
-            return "";
-        }
-
-        // 수정한 날짜 기준 내림차순 정렬 후 가장 최신 파일 반환
-        java.util.Arrays.sort(files, (f1, f2) -> Long.compare(f2.lastModified(), f1.lastModified()));
-        return files[0].getAbsolutePath();
+    private void createAndSaveEdge(String code, Node src, Node dst, double distance) {
+        Double tTime = (distance > 0) ? (distance / 30.0) : 0.0;
+        Edge edge = Edge.builder()
+                .edgeCode(code).srcNode(src).dstNode(dst)
+                .distance(distance).status(MapStatus.AVAILABLE).maxSpeed(30).restrictionInfo("NONE")
+                .travelTime(tTime)
+                .build();
+        edgeRepository.save(edge);
     }
 }
