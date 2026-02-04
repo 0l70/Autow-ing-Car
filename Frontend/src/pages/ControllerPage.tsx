@@ -5,7 +5,6 @@ import { ActivityTimeline } from "@/features/dashboard/ActivityTimeline";
 import { MissionInspector } from "@/features/dashboard/MissionInspector";
 import { AtcMapWidget } from "@/widgets/atc-map";
 import { useMapData } from "@/features/map-visualizer/model/useMapData";
-import { useMapLoader } from "@/features/map-visualizer/model/useMapLoader";
 import { useTelemetrySocket } from "@/features/map-visualizer/model/useTelemetrySocket";
 import { useMapSync } from "@/features/map-visualizer/model/useMapSync";
 import { useGraphStore } from "@/entities/map/model/store";
@@ -15,7 +14,7 @@ import { AircraftLayer } from "@/features/map-visualizer/ui/AircraftLayer";
 export function ControllerPage() {
     // --- 1. Map Data Loading (Hook) ---
     // Single source of truth for map data
-    const { meta: mapMeta, mapImage } = useMapData('final_map');
+    const { meta: mapMeta, mapImage } = useMapData();
     
     // --- 2. Store & Local State ---
     const { mapWidth: storeMapWidth, mapHeight: storeMapHeight } = useGraphStore();
@@ -26,7 +25,6 @@ export function ControllerPage() {
     const USE_REAL_DATA = true;
     
     // 3. Logic Hooks
-    useMapLoader(); 
     useTelemetrySocket(undefined, USE_REAL_DATA);
     useMapSync(USE_REAL_DATA);
     
