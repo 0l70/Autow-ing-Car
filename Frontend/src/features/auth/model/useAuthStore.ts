@@ -11,10 +11,12 @@ interface User {
 
 interface AuthState {
     accessToken: string | null;
-    user: User | null;
     socketToken: string | null;
+    refreshToken: string | null; // NEW: Refresh Token 추가
+    user: User | null;
     isAuthenticated: boolean;
-    login: (accessToken: string, socketToken: string, role: UserRole, email: string, carId?: string) => void;
+    login: (accessToken: string, refreshToken: string, socketToken: string, role: UserRole, email: string, carId?: string) => void;
+    setTokens: (accessToken: string, refreshToken: string, socketToken: string) => void; // NEW: Token Refresh용
     logout: () => void;
 }
 
@@ -23,25 +25,31 @@ export const useAuthStore = create<AuthState>()(
         (set) => ({
             accessToken: null,
             socketToken: null,
+            refreshToken: null,
             user: null,
             isAuthenticated: false,
-            login: (accessToken, socketToken, role, email) => {
+            login: (accessToken, refreshToken, socketToken, role, email) => {
                 const newUser: User = { 
                     email, 
                     role
                 };
                 set({ 
                     accessToken,
+                    refreshToken,
                     socketToken,
                     user: newUser, 
                     isAuthenticated: true 
                 });
+            },
+            setTokens: (accessToken, refreshToken, socketToken) => {
+                set({ accessToken, refreshToken, socketToken });
             },
             logout: () => {
                 sessionStorage.clear(); // Clear session data (e.g. welcome flags) on logout
                 set({ 
                     accessToken: null, 
                     socketToken: null,
+                    refreshToken: null,
                     user: null, 
                     isAuthenticated: false 
                 });
@@ -49,6 +57,13 @@ export const useAuthStore = create<AuthState>()(
         }),
         {
             name: 'auth-storage', // localStorage key
+            // [IMPORTANT] Only persist refreshToken and user info. 
+            // accessToken and socketToken stay in memory only.
+            partialize: (state) => ({ 
+                refreshToken: state.refreshToken, 
+                user: state.user,
+                isAuthenticated: state.isAuthenticated 
+            }),
         }
     )
 );
