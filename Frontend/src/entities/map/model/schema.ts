@@ -34,11 +34,15 @@ export const GraphNodeSchema = z.object({
  * Graph Edge Schema (JSON)
  */
 export const GraphEdgeSchema = z.object({
-  id: z.string().uuid().describe("Unique Edge ID"),
+  id: z.string().describe("Unique Edge ID"),
   fromId: z.string(),
   toId: z.string(),
   cost: z.number().positive().describe("Euclidean distance or weighted cost"),
   bidirectional: z.boolean().default(true),
+  waypoints: z.array(z.object({
+    x: z.number(),
+    y: z.number()
+  })).nullable().optional().default([]),
 });
 
 /**

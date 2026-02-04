@@ -50,7 +50,12 @@ public class MissionService {
             throw new TowingCarNotAssignedException(flight.getFlightNumber());
 
         String currentGate = flight.getNodeCode();
-        String activeRunway = "RUNWAY"; // Mock: 실제 로직은 기상/운영 DB 연동 필요
+        // [DB 연동] 'R'로 시작하는 노드(활주로)를 동적으로 찾습니다.
+        String activeRunway = mapDBAdaptor.findAllNodes().stream()
+                .map(Node::getNodeCode)
+                .filter(code -> code.startsWith("R"))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("사용 가능한 활주로 노드가 없습니다."));
 
         Node startNode = mapDBAdaptor.getNodeByCode(currentGate);
         Node endNode = mapDBAdaptor.getNodeByCode(activeRunway);

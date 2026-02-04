@@ -16,20 +16,29 @@ import org.springframework.stereotype.Service;
 import com.project.domain.common.MapStatus;
 import com.project.domain.map.component.GraphCache;
 import com.project.domain.map.component.UsageManager;
+import com.project.domain.map.dto.MapResponse;
 import com.project.domain.map.entity.Edge;
 import com.project.domain.map.entity.Node;
 import com.project.domain.mission.dto.MissionWebSocketDtos.PathOptionDto;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
+/**
+ * 지도 및 경로 탐색 관련 비즈니스 로직을 담당하는 서비스 클래스
+ * A*, Yen's 알고리즘 등을 사용하여 최적 경로를 계산합니다.
+ */
 @Service
 @RequiredArgsConstructor
 public class MapService {
 
     private final GraphCache graphCache;
     private final UsageManager usageManager;
+    private final MapDBAdaptor mapDBAdaptor;
+    private final ObjectMapper objectMapper;
 
     @AllArgsConstructor
     @Getter
@@ -43,13 +52,23 @@ public class MapService {
      * A* Algorithm using GraphCache and UsageManager
      */
 
-    // [Mock] Pushback Path Calculation
+    // Pushback Path Calculation - 실제 경로 계산
     public Map<String, Object> getPushbackPath(Long flightId, String targetGate) {
-        // 실제로는 flightId로 현재 위치 조회, targetGate로 경로 계산 필요
-        // 지금은 Mock 데이터 반환
+        Node startNode = mapDBAdaptor.getNodeByCode("CURRENT"); // TODO: Flight에서 현재 위치 조회 필요
+        Node endNode = mapDBAdaptor.getNodeByCode(targetGate);
+
+        List<PathOptionDto> pathOptions = findShortestPath(startNode, endNode);
+
+        if (pathOptions.isEmpty()) {
+            return Map.of(
+                    "destNodeName", targetGate,
+                    "path", List.of());
+        }
+
+        // 첫 번째 최적 경로 반환
         return Map.of(
                 "destNodeName", targetGate,
-                "path", List.of("WP-001", "WP-002", "Gate-01"));
+                "path", pathOptions.get(0).getEdgeIds());
     }
 
     /**
@@ -223,6 +242,46 @@ public class MapService {
             current = edge.getSrcNode();
         }
         return path;
+    }
+
+    /**
+     * HTTP API 요청에 따라 전체 지도 데이터(노드, 간선)를 반환합니다.
+     * 
+     * @param mapId 지도를 식별하는 ID
+     * @return 지도의 전체 구성을 담은 MapResponse DTO
+     */
+    public MapResponse getFullMap(String mapId) {
+        List<Node> dbNodes = mapDBAdaptor.findAllNodes();
+        List<Edge> dbEdges = mapDBAdaptor.findAllEdges();
+
+        return MapResponse.builder()
+                .mapId(mapId)
+                .nodes(dbNodes.stream().map(n -> MapResponse.NodeDto.builder()
+                        .id(n.getNodeCode())
+                        .x(n.getPosX())
+                        .y(n.getPosY())
+                        .status(n.getStatus().name())
+                        .build()).toList())
+                .edges(dbEdges.stream().map(e -> {
+                    List<MapResponse.PointDto> waypoints = new java.util.ArrayList<>();
+                    if (e.getWaypoints() != null && !e.getWaypoints().isEmpty()) {
+                        try {
+                            waypoints = objectMapper.readValue(e.getWaypoints(),
+                                    new TypeReference<List<MapResponse.PointDto>>() {
+                                    });
+                        } catch (Exception ex) {
+                            // ignore or log
+                        }
+                    }
+                    return MapResponse.EdgeDto.builder()
+                            .id(e.getEdgeCode())
+                            .from(e.getSrcNode().getNodeCode())
+                            .to(e.getDstNode().getNodeCode())
+                            .cost(e.getDistance())
+                            .waypoints(waypoints)
+                            .build();
+                }).toList())
+                .build();
     }
 
     // Heuristic: Euclidean Distance

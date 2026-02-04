@@ -16,7 +16,7 @@ public class TowingCarWebSocketService {
     // 1. 차량 상태 브로드캐스트 (Topic: /topic/car/{carCode})
     public void broadcastCarStatus(String carCode, Object monitoringPayload) {
         webSocketService.broadcast(WebSocketTopics.carChannel(carCode), monitoringPayload);
-        log.debug("차량 상태 전송: carCode={}", carCode);
+        log.info("차량 상태 전송: carCode={}", carCode);
     }
 
     // 2. 항공편 채널 알림 (Topic: /topic/flight/{scheduleId})

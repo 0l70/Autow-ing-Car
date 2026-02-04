@@ -184,11 +184,12 @@ public class TowingCarService {
             throw new TowingCarNotAssignedException(flight.getFlightNumber());
 
         log.info("🔌 [Disconnect] Flight={} (By {})", flight.getFlightNumber(), pilotId);
-
+        // 수정필요!!!!
         // ✅ 비즈니스 로직: 상태 변경과 미션 종료
         assignedCar.updateStatus(assignedCar.getLastPosX(), assignedCar.getLastPosY(),
                 assignedCar.getLastHeading(), assignedCar.getLastVelocity(),
-                assignedCar.getBattery(), CarStatus.UNLOADING);
+                // assignedCar.getBattery(), CarStatus.UNLOADING);
+                assignedCar.getBattery(), CarStatus.IDLE); // [FIX] IDLE로 직접 변경
 
         // 미션 완료 처리
         if (assignedCar.getCurrentMissionId() != null) {
@@ -196,6 +197,10 @@ public class TowingCarService {
             mission.updateStatus(MissionStatus.COMPLETED);
             assignedCar.clearMission();
         }
+        // 수정필요!!!!
+        // [FIX] 명시적 DB 저장
+        towingCarDBAdaptor.save(assignedCar);
+        log.info("✅ [Disconnect] Car {} status updated to IDLE in DB", assignedCar.getCode());
 
         // ✅ 알림: WebSocket (Helper 메서드로 위임)
         notifyCarDisconnected(assignedCar, pilotId);

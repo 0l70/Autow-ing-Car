@@ -46,4 +46,8 @@ public class MapDBAdaptor {
     public List<Edge> findAllEdges() {
         return edgeRepository.findAllWithNodes();
     }
+
+    public List<Node> findAllNodes() {
+        return nodeRepository.findAll();
+    }
 }
