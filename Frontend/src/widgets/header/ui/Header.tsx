@@ -1,9 +1,21 @@
 import { LogOut } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import { useAuthStore } from "@/features/auth/model/useAuthStore";
+import { apiClient } from "@/shared/api/apiClient";
 
 export function Header() {
   const { logout, user } = useAuthStore();
+  
+  const handleLogout = async () => {
+    try {
+        await apiClient.request('/api/auth/logout', { method: 'POST' });
+    } catch (err) {
+        console.warn('Logout API failed:', err);
+    } finally {
+        logout();
+    }
+  };
+
   const isPilot = user?.role === 'PILOT';
 
   return (
@@ -26,7 +38,7 @@ export function Header() {
         <Button
           variant="ghost"
           size="sm"
-          onClick={logout}
+          onClick={handleLogout}
           className="text-slate-400 hover:text-white hover:bg-white/10 gap-2 h-7"
         >
           <LogOut className="h-3 w-3" />
