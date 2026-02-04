@@ -1,20 +1,28 @@
-# Created by https://www.toptal.com/developers/gitignore/api/react
-# Edit at https://www.toptal.com/developers/gitignore?templates=react
+# Production
+dist
+dist-ssr
+*.local
 
-### react ###
-.DS_*
+# Logs
 *.log
-logs
-**/*.backup.*
-**/*.back.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 node_modules
-bower_components
-
 *.sublime*
 *.env
 psd
 thumb
 sketch
-
-# End of https://www.toptal.com/developers/gitignore/api/react

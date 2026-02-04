@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import useLongPress from "@/shared/lib/useLongPress";
-import { usePilotSocket } from "./usePilotSocket";
+import { usePilotSocket } from "@/features/pilot-actions/model/usePilotSocket";
 import { useSystemLogs } from "./useSystemLogs";
 import { FlightInfo, FlightInfoSchema } from "./dashboardTypes";
 import { WS_TOPICS } from "@/shared/realtime/config/topics";
