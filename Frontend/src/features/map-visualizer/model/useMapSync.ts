@@ -37,7 +37,7 @@ export function useMapSync(enabled: boolean = true) {
     const client = context || fallbackClient;
     const { isConnected, send, onMessage } = client;
 
-    console.log(`[MapSync Hook] isConnected: ${isConnected}, enabled: ${enabled}`);
+    // console.log(`[MapSync Hook] isConnected: ${isConnected}, enabled: ${enabled}`);
 
     // 5. Subscription Logic (Runs for BOTH Context and Fallback)
     useEffect(() => {

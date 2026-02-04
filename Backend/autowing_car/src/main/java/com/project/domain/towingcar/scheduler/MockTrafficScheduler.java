@@ -2,6 +2,8 @@ package com.project.domain.towingcar.scheduler;
 
 import com.project.domain.common.CarStatus;
 import com.project.domain.flight.dto.FlightWebSocketDtos.FlightInfoDto;
+import com.project.domain.flight.entity.Flight;
+import com.project.domain.flight.repository.FlightRepository;
 import com.project.domain.mission.dto.MissionWebSocketDtos.MissionResponseDto;
 import com.project.domain.towingcar.entity.TowingCar;
 import com.project.domain.towingcar.repository.TowingCarRepository; // [NEW] Direct Repository Access
@@ -40,6 +42,7 @@ public class MockTrafficScheduler {
     private final MqttService mqttService;
     private final TowingCarDBAdaptor towingCarDBAdaptor;
     private final TowingCarRepository towingCarRepository; // [NEW] Direct Repository Access
+    private final FlightRepository flightRepository; // [NEW] Flight DB Access
     private final NodeRepository nodeRepository; // [NEW] Use DB for Map
     private final EdgeRepository edgeRepository; // [NEW] Use DB for Map
     private final TowingCarWebSocketService towingCarWebSocketService;
@@ -47,9 +50,6 @@ public class MockTrafficScheduler {
 
     private double time = 0;
     private final Map<String, Integer> loadingCounters = new HashMap<>();
-
-    // [NEW] Flight Info Tick Counter
-    private int flightInfoTick = 0;
 
     // 시뮬레이션 메인 루프 (1초마다 실행)
     @Scheduled(fixedRate = 1000) // 1Hz for quieter debugging
@@ -77,11 +77,6 @@ public class MockTrafficScheduler {
             if (time > 10000)
                 time = 0;
 
-            // [Flight Info Fix] Send Mock Flight Data periodically
-            flightInfoTick++;
-            if (flightInfoTick % 20 == 0) { // Every 2 seconds (100ms * 20)
-                sendMockFlightInfo();
-            }
         } catch (Exception e) {
             log.error("❌ [MockTrafficScheduler] Error in simulate loop: {}", e.getMessage(), e);
         }
@@ -258,36 +253,60 @@ public class MockTrafficScheduler {
         log.info("✅ [MockScheduler] Periodically Sent DB Map Data ({})", dbNodes.size());
     }
 
-    // [NEW] Mock Flight Info Sender
+    // [REFACTORED] Flight Info Sender - Now uses DB data
     private void sendMockFlightInfo() {
-        // Mock Data: Matches Frontend 'pilot' user expectation
-        // Note: The pilotId here matches "pilot" which is the test account,
-        // OR it matches the token-based principal name if we were dynamically checking.
-        // For mock scheduler, we broadcast to a specific test user 'pilot'.
+        List<Flight> allFlights = flightRepository.findAll();
 
-        FlightInfoDto mockFlight = FlightInfoDto.builder()
-                .flightId(101L)
-                .flightNumber("KE023")
-                .pilotName("Captain Kim")
-                .aircraftRegistrationNum("HL7755")
-                .aircraftTypeCode("B777")
-                .destination("SFO")
-                .departureTime("14:30")
-                .gateNode("GATE_23")
-                .assignedCarId("TUG-004") // MUST Match 'TC01' or similar if we want physics to work?
-                                          // Actually TUG-004 is often used in frontend mock data.
-                                          // Let's use TUG-004 to be safe or TC01.
-                                          // Looking at existing mock data: TC01 used in physics.
-                                          // Let's use TC01 to ensure map visualization works for "My Car".
-                .assignedCarId("TC01")
-                .build();
+        if (allFlights.isEmpty()) {
+            // Fallback: 테스트용 Mock 데이터 (DB에 데이터가 없는 경우)
+            log.debug("[MockScheduler] No flights in DB, sending fallback mock data");
+            FlightInfoDto mockFlight = FlightInfoDto.builder()
+                    .flightId(0L)
+                    .flightNumber("TEST-001")
+                    .pilotName("Test Pilot")
+                    .aircraftRegistrationNum("N/A")
+                    .aircraftTypeCode("N/A")
+                    .destination("N/A")
+                    .departureTime("--:--")
+                    .gateNode("N/A")
+                    .assignedCarId("TC01")
+                    .build();
+            towingCarWebSocketService.notifyPilotFlightInfo("pilot@atc.com", mockFlight);
+            return;
+        }
 
-        // Send to 'pilot@atc.com' user (The actual login ID)
-        // Ensure that the frontend user logs in as 'pilot@atc.com'.
-        towingCarWebSocketService.notifyPilotFlightInfo("pilot@atc.com", mockFlight);
+        // DB에서 가져온 모든 Flight 정보를 각 기장에게 전송
+        for (Flight flight : allFlights) {
+            if (flight.getPilot() == null)
+                continue;
 
-        // Also send to 'admin' or generic topics if needed, but for now specific user
-        // only.
-        // log.info("✅ [MockScheduler] Sent Mock Flight Info: KE023 -> pilot");
+            String pilotEmail = flight.getPilot().getEmail();
+            if (pilotEmail == null || pilotEmail.isBlank())
+                continue;
+
+            FlightInfoDto flightDto = FlightInfoDto.builder()
+                    .flightId(flight.getId())
+                    .flightNumber(flight.getFlightNumber())
+                    .pilotName(flight.getPilot().getUsername())
+                    .aircraftRegistrationNum(
+                            flight.getAircraft() != null ? flight.getAircraft().getRegistrationNum() : "N/A")
+                    .aircraftTypeCode(
+                            flight.getAircraft() != null ? flight.getAircraft().getTypeCode() : "N/A")
+                    .destination("N/A") // TODO: Flight에 destination 필드가 없음
+                    .departureTime(
+                            flight.getScheduledTime() != null
+                                    ? flight.getScheduledTime().toLocalTime().toString()
+                                    : "--:--")
+                    .gateNode(flight.getNodeCode() != null ? flight.getNodeCode() : "N/A")
+                    .assignedCarId(
+                            flight.getAssignedTowingCar() != null
+                                    ? flight.getAssignedTowingCar().getCode()
+                                    : "N/A")
+                    .build();
+
+            towingCarWebSocketService.notifyPilotFlightInfo(pilotEmail, flightDto);
+        }
+
+        log.debug("✅ [MockScheduler] Sent DB Flight Info to {} pilots", allFlights.size());
     }
 }

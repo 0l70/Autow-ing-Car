@@ -52,13 +52,23 @@ public class MapService {
      * A* Algorithm using GraphCache and UsageManager
      */
 
-    // [Mock] Pushback Path Calculation
+    // Pushback Path Calculation - 실제 경로 계산
     public Map<String, Object> getPushbackPath(Long flightId, String targetGate) {
-        // 실제로는 flightId로 현재 위치 조회, targetGate로 경로 계산 필요
-        // 지금은 Mock 데이터 반환
+        Node startNode = mapDBAdaptor.getNodeByCode("CURRENT"); // TODO: Flight에서 현재 위치 조회 필요
+        Node endNode = mapDBAdaptor.getNodeByCode(targetGate);
+
+        List<PathOptionDto> pathOptions = findShortestPath(startNode, endNode);
+
+        if (pathOptions.isEmpty()) {
+            return Map.of(
+                    "destNodeName", targetGate,
+                    "path", List.of());
+        }
+
+        // 첫 번째 최적 경로 반환
         return Map.of(
                 "destNodeName", targetGate,
-                "path", List.of("WP-001", "WP-002", "Gate-01"));
+                "path", pathOptions.get(0).getEdgeIds());
     }
 
     /**

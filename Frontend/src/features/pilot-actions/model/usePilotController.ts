@@ -182,9 +182,9 @@ export function usePilotController(initialCarId?: string) {
       return;
     }
 
-    console.log(
-      `[Sync] MyCar: ${myCar.id}, Status: ${myCar.status}, UI State: ${connState}`,
-    );
+    // console.log(
+    //   `[Sync] MyCar: ${myCar.id}, Status: ${myCar.status}, UI State: ${connState}`,
+    // );
 
     // [Logic Update] Map Backend Status to UI Button State
 
@@ -206,7 +206,10 @@ export function usePilotController(initialCarId?: string) {
     else if (myCar.status === "TOWING") {
       if (connState !== "connected") {
         console.log("[Sync] Status: TOWING -> UI: connected");
-        addLog("success", "Tug connected successfully.");
+        // Only log "Connected" if we weren't already in pushback mode
+        if (moveState !== "pushback" && moveState !== "waiting") {
+          addLog("success", "Tug connected successfully.");
+        }
         setConnState("connected");
       }
     }

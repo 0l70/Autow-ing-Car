@@ -5,6 +5,9 @@ import {
   Radio,
   TriangleAlert,
   Bell,
+  MapPin,
+  Route,
+  X,
 } from "lucide-react";
 import { useStompClient } from "@/shared/realtime/clients/useStompClient";
 import { cn } from "@/shared/lib/utils";
@@ -20,6 +23,13 @@ interface PathOptionDto {
   optionId: number;
   label: string;
   edgeIds: string[];
+}
+
+interface NodeDto {
+  id: number;
+  nodeCode: string;
+  posX: number;
+  posY: number;
 }
 
 interface AdminAlertDto {
@@ -40,8 +50,22 @@ interface AdminAlertDto {
   timestamp: number;
 }
 
+
+
+interface PathOptionsResponseDto {
+  flightId: number;
+  flightNumber: string;
+  departNode: string;
+  destNode: string;
+  pathOptions: PathOptionDto[];
+}
+
 export function ApprovalQueue() {
   const [alerts, setAlerts] = useState<AdminAlertDto[]>([]);
+  
+  // [NEW] 1단계 워크플로우 상태 (경로 선택)
+  const [pathOptionsData, setPathOptionsData] = useState<PathOptionsResponseDto | null>(null);
+  const [selectedPath, setSelectedPath] = useState<PathOptionDto | null>(null);
 
   const { socketToken } = useAuthStore();
 
@@ -82,18 +106,42 @@ export function ApprovalQueue() {
   }, [isConnected, send]);
 
   useEffect(() => {
+    console.log("[ApprovalQueue] Connection Status Check:", { isConnected });
+  }, [isConnected]);
+
+  useEffect(() => {
     const unsubscribe = onMessage((msg: any) => {
+      console.log("[ApprovalQueue] 📥 Potential Message received from client:", msg.destination);
+      
       // Filter by destination to avoid data leakage
       if (
         msg.destination !== WS_TOPICS.MISSION_UPDATES &&
         msg.destination !== WS_TOPICS.CONTROLLER_REQUESTS
-      )
+      ) {
+        console.log("[ApprovalQueue] ⏭️ Skipping message - topic mismatch:", msg.destination);
         return;
+      }
 
       const data = msg.body;
-      console.log("[ApprovalQueue] 📨 Received Message:", msg.destination, data); // [DEBUG]
-      // Basic structure check
-      if (data.flightId || data.type) {
+      console.log("[ApprovalQueue] 📨 Received Message (Topic Match):", {
+        dest: msg.destination,
+        data,
+      });
+
+      // [REMOVED] Step 1 response (availableNodes) is no longer needed in this simplified flow
+      // as pathOptions come directly with the initial MISSION_REQUEST.
+
+      // Step 2 응답: 경로 옵션 수신 (PathOptionsResponseDto)
+      // destNode가 있으면 Step 2 응답 (관제사가 명시적으로 다시 요청한 경우 등)
+      if (data && data.pathOptions && data.destNode && !data.currentGate) {
+        console.log("[ApprovalQueue] 🛤️ Path options received (Sync)");
+        setPathOptionsData(data as PathOptionsResponseDto);
+        return;
+      }
+
+      // 기존 알림 처리 (AdminAlertDto - MISSION_REQUEST 등)
+      if (data && (data.flightId || data.type)) {
+        console.log("[ApprovalQueue] 🚨 Adding Alert to Queue:", data.type || "MISSION_REQUEST");
         const newAlert: AdminAlertDto = {
           ...data,
           type: data.type || "MISSION_REQUEST",
@@ -101,13 +149,14 @@ export function ApprovalQueue() {
           timestamp: Date.now(),
         };
 
-        // EMERGENCY_STOP goes to top, others append
         setAlerts((prev) => {
           if (newAlert.type === "EMERGENCY_STOP") {
             return [newAlert, ...prev];
           }
           return [newAlert, ...prev];
         });
+      } else {
+        console.warn("[ApprovalQueue] ⚠️ Message skipped - missing flightId or type:", data);
       }
     });
     return () => unsubscribe();
@@ -116,6 +165,7 @@ export function ApprovalQueue() {
   const addLog = useTimelineStore((state) => state.addLog);
 
   // --- Actions ---
+  // [Step 1] 출발 요청 승인 -> 도착지 선택 활성화
   const handleDecision = async (
     alertItem: AdminAlertDto,
     approved: boolean,
@@ -123,15 +173,30 @@ export function ApprovalQueue() {
     if (!alertItem.flightId) return;
 
     try {
-      // [TEST MODE] Bypass Backend for Mock Data
-      if (alertItem.flightId === 101) {
-        console.log("[TEST] Skipping Backend Call for Mock Flight 101");
+      if (approved) {
+        // [Simplified] Instead of Step 1 approval API, we directly open the Path Options UI
+        // using the pathOptions already present in the alertItem (AdminAlertDto).
+        if (alertItem.pathOptions && alertItem.pathOptions.length > 0) {
+          console.log("[ApprovalQueue] Opening path selection directly");
+          setPathOptionsData({
+            flightId: alertItem.flightId,
+            flightNumber: alertItem.flightNumber || "",
+            departNode: alertItem.currentGate || "",
+            destNode: alertItem.activeRunway || "", // Default destination in mock
+            pathOptions: alertItem.pathOptions,
+          });
+        } else {
+          window.alert("No path options available for this request.");
+          return;
+        }
+
+        addLog({
+          type: "APPROVE",
+          message: `PUSHBACK REQUEST ACCEPETED: ${alertItem.flightNumber}`,
+          subMessage: `Opening path options...`,
+          actor: "ATC-Controller",
+        });
       } else {
-        // ✅ Use send() instead of request() - decideMission doesn't return a response
-        console.log(
-          "[ApprovalQueue] Sending decision to:",
-          WS_TOPICS.ATC.MISSION_DECIDE,
-        );
         send(
           "SEND",
           {
@@ -139,36 +204,55 @@ export function ApprovalQueue() {
           },
           JSON.stringify({
             flightId: alertItem.flightId,
-            approved: approved,
-            rejectReason: approved ? null : "Denied by ATC",
-            // Mock selection: first path logic
-            selectedEdgeIds: alertItem.pathOptions?.[0]?.edgeIds || [
-              "E1",
-              "E2",
-            ],
-            destNode: alertItem.activeRunway || "RUNWAY",
+            approved: false,
+            rejectReason: "Denied by ATC",
           }),
         );
+
+        addLog({
+          type: "REJECT",
+          message: `PUSHBACK REJECTED: ${alertItem.flightNumber}`,
+          subMessage: `Reason: Denied by ATC`,
+          actor: "ATC-Controller",
+        });
       }
 
-      // Log to Timeline
-      addLog({
-        type: approved ? "APPROVE" : "REJECT",
-        message: approved
-          ? `PUSHBACK APPROVED: ${alertItem.flightNumber}`
-          : `PUSHBACK REJECTED: ${alertItem.flightNumber}`,
-        subMessage: approved
-          ? `Dest: ${alertItem.activeRunway || "N/A"}`
-          : `Reason: Denied by ATC`,
-        actor: "ATC-Controller",
-      });
-
-      // Remove from list on success
       setAlerts((prev) => prev.filter((a) => a.id !== alertItem.id));
     } catch (e) {
       console.error("Decision Failed", e);
       window.alert("Failed to send decision");
     }
+  };
+
+
+
+  // [Step 3] 경로 승인 -> 미션 생성
+  const handleRouteConfirm = () => {
+    if (!pathOptionsData || !selectedPath) return;
+
+    console.log("[ApprovalQueue] Step 3: Confirming route via MISSION_DECIDE", selectedPath);
+    send(
+      "SEND",
+      {
+        destination: WS_TOPICS.ATC.MISSION_DECIDE,
+      },
+      JSON.stringify({
+        flightId: pathOptionsData.flightId,
+        approved: true,
+        destNode: pathOptionsData.destNode,
+        selectedEdgeIds: selectedPath.edgeIds,
+      }),
+    );
+
+    addLog({
+      type: "APPROVE",
+      message: `ROUTE CONFIRMED: ${pathOptionsData.flightNumber}`,
+      subMessage: `${pathOptionsData.departNode} → ${pathOptionsData.destNode} (${selectedPath.edgeIds.length} edges)`,
+      actor: "ATC-Controller",
+    });
+
+    setPathOptionsData(null);
+    setSelectedPath(null);
   };
 
   const handleConfirm = (id: string) => {
@@ -184,7 +268,6 @@ export function ApprovalQueue() {
         actor: "ATC-Controller",
       });
     }
-    // Just remove from list
     setAlerts((prev) => prev.filter((a) => a.id !== id));
   };
 
@@ -208,10 +291,76 @@ export function ApprovalQueue() {
 
       {/* Alert List */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-hide">
-        {alerts.length === 0 && (
+        {alerts.length === 0 && !pathOptionsData && (
           <div className="h-full flex flex-col items-center justify-center opacity-30 text-xs text-center">
             <CheckCircle className="w-8 h-8 mb-2" />
             NO PENDING ACTIONS
+          </div>
+        )}
+
+
+
+        {/* [NEW] 경로 승인 UI */}
+        {pathOptionsData && (
+          <div className="p-3 rounded border border-purple-500/40 bg-purple-500/5 animate-in slide-in-from-left-2">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-bold text-purple-400 flex items-center gap-2">
+                <Route className="w-3 h-3" />
+                CONFIRM ROUTE
+              </h3>
+              <button
+                onClick={() => setPathOptionsData(null)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="text-[11px] text-gray-400 mb-3 font-mono">
+              <span>FLIGHT: <span className="text-white">{pathOptionsData.flightNumber}</span></span>
+              <div className="mt-1">
+                <span className="text-purple-400">{pathOptionsData.departNode}</span>
+                <span className="mx-2">→</span>
+                <span className="text-purple-400">{pathOptionsData.destNode}</span>
+              </div>
+            </div>
+
+            {/* Path Options */}
+            <div className="space-y-2 mb-3">
+              {pathOptionsData.pathOptions.map((option) => (
+                <button
+                  key={option.optionId}
+                  onClick={() => setSelectedPath(option)}
+                  className={cn(
+                    "w-full p-2 text-left rounded border transition-all",
+                    selectedPath?.optionId === option.optionId
+                      ? "bg-purple-500/20 border-purple-400 ring-2 ring-purple-400/50"
+                      : "bg-white/5 border-white/10 hover:bg-white/10 hover:border-purple-500/50"
+                  )}
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="text-[11px] font-bold text-white">{option.label}</span>
+                    <span className="text-[9px] text-gray-500">{option.edgeIds.length} edges</span>
+                  </div>
+                  <div className="text-[9px] text-gray-400 mt-1 font-mono truncate">
+                    {option.edgeIds.slice(0, 3).join(" → ")}
+                    {option.edgeIds.length > 3 && "..."}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={handleRouteConfirm}
+              disabled={!selectedPath}
+              className={cn(
+                "w-full py-2 text-[11px] font-bold rounded transition-all uppercase",
+                selectedPath
+                  ? "bg-purple-500 text-white hover:bg-purple-400"
+                  : "bg-gray-700 text-gray-500 cursor-not-allowed"
+              )}
+            >
+              {selectedPath ? "Confirm Route" : "Select a route"}
+            </button>
           </div>
         )}
 
@@ -220,7 +369,6 @@ export function ApprovalQueue() {
           const isEmergency =
             alert.type === "EMERGENCY_STOP" || alert.type === "MANUAL_CONTROL";
 
-          // Style Config based on logic
           const borderClass = isMission
             ? "border-accent-cyan/40"
             : "border-accent-orange/40";
@@ -336,7 +484,7 @@ export function ApprovalQueue() {
 
       {/* DEBUG: Temporary Testing Controls */}
       {import.meta.env.DEV && (
-        <div className="p-2 border-t border-white/10 flex gap-2 justify-center opacity-50 hover:opacity-100 transition-opacity">
+        <div className="p-2 border-t border-white/10 flex gap-2 justify-center opacity-50 hover:opacity-100 transition-opacity flex-wrap">
           <button
             onClick={() =>
               setAlerts((prev) => [
@@ -387,6 +535,25 @@ export function ApprovalQueue() {
             className="text-[10px] bg-accent-cyan/20 text-accent-cyan px-2 py-1 rounded"
           >
             [TEST] Request
+          </button>
+
+          <button
+            onClick={() =>
+              setPathOptionsData({
+                flightId: 101,
+                flightNumber: "KE123",
+                departNode: "T1-105",
+                destNode: "RUNWAY_34L",
+                pathOptions: [
+                  { optionId: 1, label: "최적 경로", edgeIds: ["E1", "E2", "E3"] },
+                  { optionId: 2, label: "대안 경로 1", edgeIds: ["E1", "E4", "E5", "E3"] },
+                  { optionId: 3, label: "대안 경로 2", edgeIds: ["E6", "E7", "E8", "E9", "E3"] },
+                ],
+              })
+            }
+            className="text-[10px] bg-purple-500/20 text-purple-500 px-2 py-1 rounded"
+          >
+            [TEST] PathOptions
           </button>
         </div>
       )}
