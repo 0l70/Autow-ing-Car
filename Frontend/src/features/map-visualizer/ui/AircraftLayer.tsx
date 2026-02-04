@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Aircraft, MapMeta } from "@/entities/map/model/types";
 import { worldToPixel } from "@/entities/map/lib/coordinate";
-import { useGraphStore } from "@/entities/map/model/store";
+import { useAircraftStore } from "@/entities/aircraft";
 import { useSmoothAnimation } from "@/features/map-visualizer/lib/useSmoothAnimation";
 
 // Colors for status
@@ -28,7 +28,7 @@ const ANIMATION_DURATION_MS = 300;
 const LABEL_OFFSET_Y = 35;
 
 export function AircraftLayer({ meta, mapWidth, mapHeight, pixelRatio = 1, onAircraftClick }: AircraftLayerProps) {
-    const aircraftList = useGraphStore((state) => state.aircrafts);
+    const aircraftList = useAircraftStore((state) => state.aircrafts);
     
     // Apply Smooth Animation (Interpolation)
     const animatedList = useSmoothAnimation(aircraftList, ANIMATION_DURATION_MS);

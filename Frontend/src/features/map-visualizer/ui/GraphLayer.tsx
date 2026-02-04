@@ -17,7 +17,6 @@ interface GraphLayerProps {
  */
 export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
     const { nodes, edges, selectedId } = useGraphStore();
-    // console.log(`[GraphLayer] Nodes: ${nodes.length}, Edges: ${edges.length}, mapHeight: ${mapHeight}`);
 
     if (!meta || mapHeight === 0) return null;
 

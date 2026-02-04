@@ -5,6 +5,7 @@ import { useAuthStore } from "@/features/auth/model/useAuthStore";
 import { SocketProvider } from "@/shared/realtime/context/SocketProvider";
 
 import { RootLayout } from "@/shared/ui/layout/RootLayout";
+import { SocketBridge } from "@/app/providers/SocketBridge";
 
 function App() {
   const { isAuthenticated, user } = useAuthStore();
@@ -17,6 +18,7 @@ function App() {
   // 2. Role-Based Routing
   return (
     <SocketProvider>
+      <SocketBridge />
       <RootLayout>
         {user?.role === 'PILOT' ? (
             <PilotPage />

@@ -5,15 +5,12 @@ import {
   Radio,
   TriangleAlert,
   Bell,
-  MapPin,
   Route,
   X,
 } from "lucide-react";
-import { useStompClient } from "@/shared/realtime/clients/useStompClient";
 import { cn } from "@/shared/lib/utils";
 import { useTimelineStore } from "./model/useTimelineStore";
 import { useSocket } from "@/shared/realtime/context/SocketProvider";
-import { useAuthStore } from "@/features/auth/model/useAuthStore";
 import { WS_TOPICS } from "@/shared/realtime/config/topics";
 
 // --- Types (Match Backend DTO) ---
@@ -60,6 +57,8 @@ interface PathOptionsResponseDto {
   pathOptions: PathOptionDto[];
 }
 
+import { useMissionStore } from "@/entities/mission";
+
 export function ApprovalQueue() {
   const [alerts, setAlerts] = useState<AdminAlertDto[]>([]);
   
@@ -67,81 +66,20 @@ export function ApprovalQueue() {
   const [pathOptionsData, setPathOptionsData] = useState<PathOptionsResponseDto | null>(null);
   const [selectedPath, setSelectedPath] = useState<PathOptionDto | null>(null);
 
-  const { socketToken } = useAuthStore();
-
-  // 1. Try to consume Context
-  const context = useSocket();
-  const shouldFallback = !context;
-
-  // 2. Fallback Client
-  const fallbackClient = useStompClient({
-    url:
-      import.meta.env.VITE_WS_BASE_URL ||
-      "ws://localhost:8080/ws-server/websocket",
-    token: socketToken,
-    enabled: shouldFallback && !!socketToken,
-  });
-
-  // 3. Active Client
-  const client = context || fallbackClient;
-  const { onMessage, request, send, isConnected } = client;
-
-  // [New] Explicit Subscription Logic
-  useEffect(() => {
-    if (isConnected) {
-      console.log("[ApprovalQueue] Subscribing to ATC Channels...");
-
-      // 1. Mission Updates (Global)
-      send("SUBSCRIBE", {
-        id: "sub-atc-mission-updates",
-        destination: WS_TOPICS.MISSION_UPDATES,
-      });
-
-      // 2. Controller Requests (Private/Broadcast)
-      send("SUBSCRIBE", {
-        id: "sub-atc-controller-requests",
-        destination: WS_TOPICS.CONTROLLER_REQUESTS,
-      });
-    }
-  }, [isConnected, send]);
+  // Global Client from Context
+  const { onMessage, send, isConnected } = useSocket() || {};
+  const ingestMission = useMissionStore(state => state.ingest);
 
   useEffect(() => {
-    console.log("[ApprovalQueue] Connection Status Check:", { isConnected });
-  }, [isConnected]);
-
-  useEffect(() => {
+    if (!onMessage) return;
+    
+    // Listen for MISSION_REQUEST and other ATC alerts that aren't persisted in missionStore yet
     const unsubscribe = onMessage((msg: any) => {
-      console.log("[ApprovalQueue] 📥 Potential Message received from client:", msg.destination);
+      const { destination, body: data } = msg;
       
-      // Filter by destination to avoid data leakage
-      if (
-        msg.destination !== WS_TOPICS.MISSION_UPDATES &&
-        msg.destination !== WS_TOPICS.CONTROLLER_REQUESTS
-      ) {
-        console.log("[ApprovalQueue] ⏭️ Skipping message - topic mismatch:", msg.destination);
-        return;
-      }
+      if (destination !== WS_TOPICS.CONTROLLER_REQUESTS) return;
 
-      const data = msg.body;
-      console.log("[ApprovalQueue] 📨 Received Message (Topic Match):", {
-        dest: msg.destination,
-        data,
-      });
-
-      // [REMOVED] Step 1 response (availableNodes) is no longer needed in this simplified flow
-      // as pathOptions come directly with the initial MISSION_REQUEST.
-
-      // Step 2 응답: 경로 옵션 수신 (PathOptionsResponseDto)
-      // destNode가 있으면 Step 2 응답 (관제사가 명시적으로 다시 요청한 경우 등)
-      if (data && data.pathOptions && data.destNode && !data.currentGate) {
-        console.log("[ApprovalQueue] 🛤️ Path options received (Sync)");
-        setPathOptionsData(data as PathOptionsResponseDto);
-        return;
-      }
-
-      // 기존 알림 처리 (AdminAlertDto - MISSION_REQUEST 등)
       if (data && (data.flightId || data.type)) {
-        console.log("[ApprovalQueue] 🚨 Adding Alert to Queue:", data.type || "MISSION_REQUEST");
         const newAlert: AdminAlertDto = {
           ...data,
           type: data.type || "MISSION_REQUEST",
@@ -149,16 +87,10 @@ export function ApprovalQueue() {
           timestamp: Date.now(),
         };
 
-        setAlerts((prev) => {
-          if (newAlert.type === "EMERGENCY_STOP") {
-            return [newAlert, ...prev];
-          }
-          return [newAlert, ...prev];
-        });
-      } else {
-        console.warn("[ApprovalQueue] ⚠️ Message skipped - missing flightId or type:", data);
+        setAlerts((prev: AdminAlertDto[]) => [newAlert, ...prev]);
       }
     });
+
     return () => unsubscribe();
   }, [onMessage]);
 
@@ -197,17 +129,19 @@ export function ApprovalQueue() {
           actor: "ATC-Controller",
         });
       } else {
-        send(
-          "SEND",
-          {
-            destination: WS_TOPICS.ATC.MISSION_DECIDE,
-          },
-          JSON.stringify({
-            flightId: alertItem.flightId,
-            approved: false,
-            rejectReason: "Denied by ATC",
-          }),
-        );
+        if (send) {
+          send(
+            "SEND",
+            {
+              destination: WS_TOPICS.ATC.MISSION_DECIDE,
+            },
+            JSON.stringify({
+              flightId: alertItem.flightId,
+              approved: false,
+              rejectReason: "Denied by ATC",
+            }),
+          );
+        }
 
         addLog({
           type: "REJECT",
@@ -231,18 +165,20 @@ export function ApprovalQueue() {
     if (!pathOptionsData || !selectedPath) return;
 
     console.log("[ApprovalQueue] Step 3: Confirming route via MISSION_DECIDE", selectedPath);
-    send(
-      "SEND",
-      {
-        destination: WS_TOPICS.ATC.MISSION_DECIDE,
-      },
-      JSON.stringify({
-        flightId: pathOptionsData.flightId,
-        approved: true,
-        destNode: pathOptionsData.destNode,
-        selectedEdgeIds: selectedPath.edgeIds,
-      }),
-    );
+    if (send) {
+      send(
+        "SEND",
+        {
+          destination: WS_TOPICS.ATC.MISSION_DECIDE,
+        },
+        JSON.stringify({
+          flightId: pathOptionsData.flightId,
+          approved: true,
+          destNode: pathOptionsData.destNode,
+          selectedEdgeIds: selectedPath.edgeIds,
+        }),
+      );
+    }
 
     addLog({
       type: "APPROVE",

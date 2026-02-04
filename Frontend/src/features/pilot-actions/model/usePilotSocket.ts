@@ -1,5 +1,4 @@
 import { useEffect, useCallback } from 'react';
-import { useGraphStore } from '@/entities/map/model/store';
 import { Aircraft } from '@/entities/map/model/types';
 import { useAuthStore } from '@/features/auth/model/useAuthStore';
 import { useStompClient } from '@/shared/realtime/clients/useStompClient';
@@ -36,8 +35,10 @@ const TelemetrySchema = z.object({
 // TODO: .env 파일로 이동 필요
 const WS_URL_DEV = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8080/ws-server/websocket';
 
+import { useAircraftStore } from '@/entities/aircraft';
+
 export function usePilotSocket(targetCarId?: string | null, enabled: boolean = true) {
-    const { updateAircraft } = useGraphStore();
+    const ingestAircraft = useAircraftStore(state => state.ingest);
     const { socketToken } = useAuthStore();
     const serverUrl = WS_URL_DEV;
 
@@ -97,13 +98,13 @@ export function usePilotSocket(targetCarId?: string | null, enabled: boolean = t
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleTelemetryMessage = useCallback((msg: any) => {
         const { destination, body } = msg;
-        const parseData = body || msg; // Unwrap Stomp Message Wrapper
 
-        // Only process if it's from the monitoring topic
-        // [FIX] Relaxed Destination Check: Check payload content instead of strict topic matching
-        // if (targetCarId && destination !== WS_TOPICS.MONITORING(targetCarId)) {
-        //     return;
-        // }
+        // [RESTORED] Strict filtering: Only process telemetry topics
+        if (!destination?.startsWith('/topic/towingcar/')) {
+            return;
+        }
+
+        const parseData = body || msg; // Unwrap Stomp Message Wrapper
         
         const result = TelemetrySchema.safeParse(parseData);
         if (!result.success) {
@@ -124,7 +125,6 @@ export function usePilotSocket(targetCarId?: string | null, enabled: boolean = t
 
         // 내 차 정보만 업데이트
         if (rawId && rawId === targetCarId) {
-            // console.log(`[PilotSocket] Updating Store for ${rawId} with status: ${finalStatus}`);
             const aircraft: Aircraft = {
                 id: rawId,
                 callsign: rawId,
@@ -134,17 +134,17 @@ export function usePilotSocket(targetCarId?: string | null, enabled: boolean = t
                     y: finalY,
                     r: finalYaw * (Math.PI / 180)
                 },
-                status: finalStatus,
+                status: finalStatus as any,
                 battery: data.battery,
                 speed: finalV,
                 currentMission: data.currentMission,
                 isLoaded: data.is_loaded
             };
-            updateAircraft(aircraft);
+            ingestAircraft(aircraft);
         } else if (rawId) {
             // console.log(`[PilotSocket] Ignoring telemetry for ${rawId} (Target: ${targetCarId})`);
         }
-    }, [updateAircraft, targetCarId]);
+  }, [ingestAircraft, targetCarId]);
 
     // 4. Register Listener
     useEffect(() => {

@@ -87,12 +87,16 @@ public class LocalDataInit implements CommandLineRunner {
 
         nodeRepository.saveAll(List.of(s01, g01, r02));
 
-        String path01 = mapBasePath + "/edge01/paths/path_S01_to_G01_20260202_173003.json";
-        String path02 = mapBasePath + "/edge02/paths/path_S02_to_G02_20260202_180927.json";
+        // resolvePath 메서드를 사용하여 해당 디렉토리의 최신 파일 검색
+        String path01 = resolvePath(mapBasePath + "/edge01/paths", "path_S01_to_G01");
+        String path02 = resolvePath(mapBasePath + "/edge02/paths", "path_S02_to_G02");
 
         // 경로 좌표 JSON 파일을 읽어 간선(Edge)의 보조점(Waypoints)으로 저장
-        importPathCoordinates("edge01", path01, s01, g01, 1.56);
-        importPathCoordinates("edge02", path02, g01, r02, 3.70);
+        // path가 비어있으면 건너뜀
+        if (!path01.isEmpty())
+            importPathCoordinates("edge01", path01, s01, g01, 1.56);
+        if (!path02.isEmpty())
+            importPathCoordinates("edge02", path02, g01, r02, 3.70);
 
         // 4. 차량(Towing Car) 초기화
         TowingCar tc1 = createAndSaveCar("TC01", -1.22, -0.13, 100);
@@ -137,9 +141,14 @@ public class LocalDataInit implements CommandLineRunner {
     }
 
     private void createAndSaveEdge(String code, Node src, Node dst, double distance) {
+        // Calculate travel time
+        Double tTime = (distance > 0 && 30 > 0) ? (distance / 30.0) : 0.0;
+
         Edge edge = Edge.builder()
                 .edgeCode(code).srcNode(src).dstNode(dst)
-                .distance(distance).status(MapStatus.AVAILABLE).maxSpeed(30).restrictionInfo("NONE").build();
+                .distance(distance).status(MapStatus.AVAILABLE).maxSpeed(30).restrictionInfo("NONE")
+                .travelTime(tTime)
+                .build();
         edgeRepository.save(edge);
     }
 
@@ -212,10 +221,15 @@ public class LocalDataInit implements CommandLineRunner {
     }
 
     private void saveEdgeWithWaypoints(String code, Node src, Node dst, double distance, String waypoints) {
+        // Calculate travel time (Distance / MaxSpeed)
+        // Default maxSpeed = 30 (assume consistent units, e.g. m/s or km/h)
+        Double tTime = (distance > 0 && 30 > 0) ? (distance / 30.0) : 0.0;
+
         Edge edge = Edge.builder()
                 .edgeCode(code).srcNode(src).dstNode(dst)
                 .distance(distance).status(MapStatus.AVAILABLE).maxSpeed(30).restrictionInfo("NONE")
                 .waypoints(waypoints)
+                .travelTime(tTime)
                 .build();
         edgeRepository.save(edge);
     }

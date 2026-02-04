@@ -1,15 +1,14 @@
 import { Gauge, Navigation, MapPin, Signal, Battery } from "lucide-react";
-import { Aircraft } from "@/entities/map/model/types";
-import { useGraphStore } from "@/entities/map/model/store";
+import { useMissionStore } from "@/entities/mission";
+import { useAircraftStore } from "@/entities/aircraft";
 
 interface MissionInspectorProps {
     selectedAircraftId: string | null;
 }
 
 export function MissionInspector({ selectedAircraftId }: MissionInspectorProps) {
-    const activeMissions = useGraphStore(state => state.activeMissions);
-    // [Fix] Subscribe to live store updates finding the aircraft by ID
-    const selectedAircraft = useGraphStore(state => 
+    const activeMissions = useMissionStore(state => state.activeMissions);
+    const selectedAircraft = useAircraftStore(state => 
         state.aircrafts.find(a => a.id === selectedAircraftId) ?? null
     );
 

@@ -4,19 +4,19 @@ import { v4 as uuidv4 } from "uuid";
 export interface StompClientOptions {
   url: string;
   token?: string | null;
-  enabled?: boolean; // Default true
+  enabled?: boolean; 
   onConnect?: (
     send: (cmd: string, headers: Record<string, string>, body?: string) => void,
   ) => void;
+  onDisconnect?: () => void;
+  reconnectDelay?: number;
+  maxReconnectDelay?: number;
 }
 
 export interface StompResponse {
   correlationId?: string;
   status?: "SUCCESS" | "FAIL" | "ACCEPTED" | "REJECTED";
   message?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data?: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
 }
 
@@ -25,11 +25,16 @@ export function useStompClient({
   token,
   enabled = true,
   onConnect,
+  onDisconnect,
+  reconnectDelay = 1000,
+  maxReconnectDelay = 30000,
 }: StompClientOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const reconnectAttempts = useRef(0);
+  const heartbeatTimer = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // Dispatcher: Map<CorrelationId, PromiseResolvers>
   const pendingRequests = useRef<
     Map<
       string,
@@ -37,11 +42,8 @@ export function useStompClient({
     >
   >(new Map());
 
-  // Global Listeners
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const messageListeners = useRef<Set<(msg: any) => void>>(new Set());
 
-  // --- Helper: Send STOMP Frame ---
   const sendFrame = useCallback(
     (command: string, headers: Record<string, string>, body?: string) => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN)
@@ -51,9 +53,9 @@ export function useStompClient({
       for (const [key, value] of Object.entries(headers)) {
         frame += `${key}:${value}\n`;
       }
-      frame += "\n"; // End of headers
+      frame += "\n"; 
       if (body) frame += body;
-      frame += "\0"; // Null terminator
+      frame += "\0"; 
 
       wsRef.current.send(frame);
       return true;
@@ -61,8 +63,6 @@ export function useStompClient({
     [],
   );
 
-  // --- Subscription Listener Registration ---
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const onMessage = useCallback((callback: (msg: any) => void) => {
     messageListeners.current.add(callback);
     return () => {
@@ -70,8 +70,6 @@ export function useStompClient({
     };
   }, []);
 
-  // --- Request / Response Pattern ---
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const request = useCallback(
     (
       destination: string,
@@ -105,11 +103,11 @@ export function useStompClient({
     [sendFrame],
   );
 
-  useEffect(() => {
+  const connect = useCallback(() => {
     if (!enabled || !token) return;
 
     const wsUrl = `${url}?socket_token=${token}`;
-    console.log(`[StompClient] Connecting to ${wsUrl}...`);
+    console.log(`[StompClient] Connecting (Attempt ${reconnectAttempts.current + 1})...`);
 
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
@@ -122,17 +120,23 @@ export function useStompClient({
     };
 
     ws.onmessage = (event) => {
-      try {
-        const data = event.data;
+      const data = event.data;
+      if (data === "\n" || data === "\r\n") return; // Heartbeat ignore
 
+      try {
         if (data.startsWith("CONNECTED")) {
           console.log("[StompClient] STOMP Session Established");
           setIsConnected(true);
+          reconnectAttempts.current = 0;
+          
+          // Start Heartbeat
+          if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
+          heartbeatTimer.current = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) ws.send("\n");
+          }, 10000);
 
-          // Trigger onConnect callback to let caller subscribe
           if (onConnect) {
             onConnect((cmd, hdrs, bdy) => {
-              // Minimal send implementation for callback
               if (ws.readyState === WebSocket.OPEN) {
                 let f = `${cmd}\n`;
                 for (const [k, v] of Object.entries(hdrs)) f += `${k}:${v}\n`;
@@ -148,7 +152,6 @@ export function useStompClient({
           const headers: Record<string, string> = {};
           let bodyIndex = -1;
 
-          // Parse Headers
           for (let i = 1; i < lines.length; i++) {
             const line = lines[i];
             if (line === "") {
@@ -161,44 +164,24 @@ export function useStompClient({
             }
           }
 
-          // Extract Body
           if (bodyIndex !== -1) {
-            const rawBody = lines
-              .slice(bodyIndex)
-              .join("\n")
-              .replace(/\0$/, "");
+            const rawBody = lines.slice(bodyIndex).join("\n").replace(/\0$/, "");
             if (rawBody) {
               try {
                 const parseData = JSON.parse(rawBody);
                 const destination = headers["destination"];
+                const messageWrapper = { destination, body: parseData, headers };
 
-                // 1. Notify global listeners with { destination, body, headers }
-                const messageWrapper = {
-                  destination,
-                  body: parseData,
-                  headers,
-                };
+                messageListeners.current.forEach((listener) => listener(messageWrapper));
 
-                // 🔍 Debug: Log incoming messages
-                console.log(`[StompClient] 📨 MESSAGE received:`, {
-                  destination,
-                  body: parseData,
-                });
-
-                messageListeners.current.forEach((listener) =>
-                  listener(messageWrapper),
-                );
-
-                // 2. Resolver pending requests (Legacy support for correlationId)
-                const corrId =
-                  parseData.correlationId || headers["correlation-id"];
+                const corrId = parseData.correlationId || headers["correlation-id"];
                 if (corrId && pendingRequests.current.has(corrId)) {
                   const { resolve } = pendingRequests.current.get(corrId)!;
                   resolve(parseData);
                   pendingRequests.current.delete(corrId);
                 }
               } catch (e) {
-                console.error("[StompClient] JSON Parse Error in Body:", e);
+                console.error("[StompClient] JSON Parse Error:", e);
               }
             }
           }
@@ -211,24 +194,33 @@ export function useStompClient({
     ws.onclose = () => {
       console.log("[StompClient] Disconnected");
       setIsConnected(false);
+      if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
+      if (onDisconnect) onDisconnect();
+
+      // Exponential Backoff
+      if (enabled) {
+        const delay = Math.min(reconnectDelay * Math.pow(2, reconnectAttempts.current), maxReconnectDelay);
+        console.log(`[StompClient] Retrying in ${delay}ms...`);
+        reconnectTimer.current = setTimeout(() => {
+          reconnectAttempts.current++;
+          connect();
+        }, delay);
+      }
     };
 
     ws.onerror = (err) => {
       console.error("[StompClient] WebSocket Error", err);
     };
+  }, [url, enabled, token, onConnect, onDisconnect, reconnectDelay, maxReconnectDelay]);
 
+  useEffect(() => {
+    connect();
     return () => {
-      if (
-        ws.readyState === WebSocket.OPEN ||
-        ws.readyState === WebSocket.CONNECTING
-      ) {
-        console.log("[StompClient] Closing socket in state:", ws.readyState);
-        ws.close();
-      }
-      wsRef.current = null;
-      setIsConnected(false);
+      if (wsRef.current) wsRef.current.close();
+      if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
     };
-  }, [url, enabled, token, onConnect]);
+  }, [connect]);
 
   return {
     isConnected,
