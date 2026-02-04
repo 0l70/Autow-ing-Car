@@ -20,17 +20,22 @@ import com.project.domain.map.dto.MapResponse;
 import com.project.domain.map.entity.Edge;
 import com.project.domain.map.entity.Node;
 import com.project.domain.mission.dto.MissionWebSocketDtos.PathOptionDto;
+import com.project.domain.flight.entity.Flight;
+import com.project.domain.flight.service.FlightDBAdaptor;
+import com.project.domain.towingcar.entity.TowingCar;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 지도 및 경로 탐색 관련 비즈니스 로직을 담당하는 서비스 클래스
  * A*, Yen's 알고리즘 등을 사용하여 최적 경로를 계산합니다.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class MapService {
@@ -38,6 +43,7 @@ public class MapService {
     private final GraphCache graphCache;
     private final UsageManager usageManager;
     private final MapDBAdaptor mapDBAdaptor;
+    private final FlightDBAdaptor flightDBAdaptor;
     private final ObjectMapper objectMapper;
 
     @AllArgsConstructor
@@ -52,9 +58,20 @@ public class MapService {
      * A* Algorithm using GraphCache and UsageManager
      */
 
-    // Pushback Path Calculation - 실제 경로 계산
+    /**
+     * [New] Calculate Pushback Path using actual car position
+     */
     public Map<String, Object> getPushbackPath(Long flightId, String targetGate) {
-        Node startNode = mapDBAdaptor.getNodeByCode("CURRENT"); // TODO: Flight에서 현재 위치 조회 필요
+        Flight flight = flightDBAdaptor.getFlightById(flightId);
+        TowingCar car = flight.getAssignedTowingCar();
+
+        Node startNode;
+        if (car != null) {
+            startNode = findNearestNode(car.getLastPosX(), car.getLastPosY());
+        } else {
+            startNode = mapDBAdaptor.getNodeByCode(flight.getNodeCode());
+        }
+
         Node endNode = mapDBAdaptor.getNodeByCode(targetGate);
 
         List<PathOptionDto> pathOptions = findShortestPath(startNode, endNode);
@@ -65,10 +82,62 @@ public class MapService {
                     "path", List.of());
         }
 
-        // 첫 번째 최적 경로 반환
+        // Return best path's edge IDs
         return Map.of(
                 "destNodeName", targetGate,
                 "path", pathOptions.get(0).getEdgeIds());
+    }
+
+    /**
+     * [Legacy Support] 최단 경로 1개 반환 (A* for Towing Service)
+     */
+    public List<Edge> findOptimalPath(Node start, Node end) {
+        return findSinglePath(start, end, Collections.emptySet());
+    }
+
+    /**
+     * [Helper] Edge List -> MQTT Payload List 변환
+     */
+    public List<Map<String, Object>> convertPathToPayload(List<Edge> path) {
+        List<Map<String, Object>> payload = new ArrayList<>();
+
+        for (Edge edge : path) {
+            // 1. 중간 경로점(Waypoints) 추가
+            if (edge.getWaypoints() != null && !edge.getWaypoints().isEmpty()) {
+                try {
+                    List<MapResponse.PointDto> waypoints = objectMapper.readValue(
+                            edge.getWaypoints(),
+                            new TypeReference<List<MapResponse.PointDto>>() {
+                            });
+
+                    for (MapResponse.PointDto wp : waypoints) {
+                        Map<String, Object> point = new HashMap<>();
+                        point.put("nodeId", null); // 중간 점은 노드 ID가 없음
+                        point.put("x", wp.getX());
+                        point.put("y", wp.getY());
+                        point.put("edgeId", edge.getEdgeCode());
+                        point.put("maxSpeed", edge.getMaxSpeed() != null ? (double) edge.getMaxSpeed() : 10.0);
+                        payload.add(point);
+                    }
+                } catch (Exception e) {
+                    // 로그만 남기고 다음 노드로 진행
+                    log.error("Failed to parse waypoints for edge {}: {}", edge.getEdgeCode(), e.getMessage());
+                }
+            }
+
+            // 2. 도착 노드(Target Node) 추가
+            Map<String, Object> targetPoint = new HashMap<>();
+            Node targetNode = edge.getDstNode();
+
+            targetPoint.put("nodeId", targetNode.getNodeCode());
+            targetPoint.put("x", targetNode.getPosX());
+            targetPoint.put("y", targetNode.getPosY());
+            targetPoint.put("edgeId", edge.getEdgeCode());
+            targetPoint.put("maxSpeed", edge.getMaxSpeed() != null ? (double) edge.getMaxSpeed() : 10.0);
+
+            payload.add(targetPoint);
+        }
+        return payload;
     }
 
     /**
@@ -242,6 +311,15 @@ public class MapService {
             current = edge.getSrcNode();
         }
         return path;
+    }
+
+    /**
+     * 특정 좌표(x, y)에서 가장 가까운 노드를 찾습니다.
+     */
+    public Node findNearestNode(double x, double y) {
+        return mapDBAdaptor.findAllNodes().stream()
+                .min(Comparator.comparingDouble(n -> Math.pow(n.getPosX() - x, 2) + Math.pow(n.getPosY() - y, 2)))
+                .orElse(null);
     }
 
     /**

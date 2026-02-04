@@ -1,7 +1,5 @@
 package com.project.service;
 
-import com.project.domain.common.CarStatus;
-import com.project.domain.common.LogType;
 import com.project.domain.common.MissionStatus;
 import com.project.domain.flight.entity.Flight;
 import com.project.domain.flight.service.FlightDBAdaptor;
@@ -10,11 +8,11 @@ import com.project.domain.mission.entity.Mission;
 import com.project.domain.mission.service.MissionDBAdaptor;
 import com.project.domain.mission.service.MissionService;
 import com.project.domain.mission.service.MissionWebSocketService;
-import com.project.domain.towingcar.entity.TowingCar;
+
 import com.project.domain.towingcar.service.TowingCarDBAdaptor;
 import com.project.domain.towingcar.service.TowingCarMqttService; // NEW
 import com.project.domain.user.entity.User;
-import com.project.domain.user.repository.UserRepository;
+
 import com.project.domain.user.service.UserDBAdaptor;
 import com.project.global.config.LocalDataInit;
 
@@ -23,17 +21,25 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest
-@Transactional
+@TestPropertySource(properties = {
+                "jwt.secret=testSecretKeyForUnitTestingMustBeLongEnoughToSatisfyHS256RequirementsSinceItRequiresAtLeast256Bits",
+                "jwt.expiration=3600000",
+                "MQTT_HOST=localhost",
+                "MQTT_PORT=1883",
+                "REDIS_HOST=localhost",
+                "REDIS_PORT=6379"
+})
 class MissionServiceTest {
 
         @Autowired
@@ -54,6 +60,9 @@ class MissionServiceTest {
         private MissionWebSocketService missionWebSocketService;
         @MockBean
         private TowingCarMqttService towingCarMqttService;
+
+        @Autowired
+        private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
 
         @Test
         @DisplayName("기장이 운송을 요청하면 -> DB 저장 없이 -> 관제사에게 승인 요청 알림만 가야 한다")
@@ -83,32 +92,38 @@ class MissionServiceTest {
         @DisplayName("관제사가 승인하면 -> 미션이 생성되고 -> 로봇에게 출발 명령이 가야 한다")
         void approveMissionTest() {
                 // given
-                User controller = userDBAdaptor.findUserByEmail("atc@atc.com");
-                Flight flight = flightDBAdaptor.getFlightByFlightNumber("KE001");
+                User controller = transactionTemplate.execute(status -> userDBAdaptor.findUserByEmail("atc@atc.com"));
+                Flight flight = transactionTemplate.execute(status -> flightDBAdaptor.getFlightByFlightNumber("KE001"));
 
                 ATCDecisionDto decision = new ATCDecisionDto();
                 decision.setFlightId(flight.getId());
                 decision.setApproved(true);
-                decision.setDestNode("RUNWAY"); // Valid Node Code
-                decision.setSelectedEdgeIds(List.of("E_GATE_101_to_N_0_0")); // Valid Edge Code if possible, or dummy
+                decision.setDestNode("RUNWAY");
+                decision.setSelectedEdgeIds(List.of("E_GATE_101_to_N_0_0"));
 
                 // when
-                // principal.getName() returns email
-                missionService.approveMission(controller.getEmail(), decision);
+                 missionService.approveMission(controller.getEmail(), decision);
 
                 // then
-                // 1. 미션 저장 확인 (Assigned Car로 조회)
-                Mission mission = missionDBAdaptor.findActiveMissionByCar(flight.getAssignedTowingCar());
-                assertNotNull(mission);
-                assertEquals(MissionStatus.RUNNING, mission.getStatus());
-                assertEquals("RUNWAY", mission.getDestNode());
+                transactionTemplate.execute(status -> {
+                        Mission mission = missionDBAdaptor.findActiveMissionByCar(flight.getAssignedTowingCar());
+                        assertNotNull(mission);
+                        assertEquals(MissionStatus.RUNNING, mission.getStatus());
+                        assertEquals("RUNWAY", mission.getDestNode());
 
-                // 2. 로그 저장 확인 (MissionDBAdaptor saveLog 내부 로직 검증은 어려우나, 예외 없으면 통과 간주)
+                        // 3. 알림 전송 확인
+                        verify(missionWebSocketService).broadcastMissionUpdate(any(MissionResponseDto.class));
 
-                // 3. 알림 전송 확인
-                verify(missionWebSocketService).broadcastMissionUpdate(any(MissionResponseDto.class));
-
-                // 4. MQTT 명령 전송 확인
-                verify(towingCarMqttService).startTransport(eq(flight.getAssignedTowingCar().getCode()), anyMap());
+                        // 4. MQTT 명령 전송 확인 (Standardized Payload)
+                        verify(towingCarMqttService).sendDriveCommand(eq(flight.getAssignedTowingCar().getCode()),
+                                        argThat((Map<String, Object> payload) -> {
+                                                @SuppressWarnings("unchecked")
+                                                Map<String, Object> data = (Map<String, Object>) payload.get("data");
+                                                return payload.containsKey("msgId") &&
+                                                                "DRIVE".equals(payload.get("type")) &&
+                                                                "STOP".equals(data.get("finalAction"));
+                                        }));
+                        return null;
+                });
         }
 }
