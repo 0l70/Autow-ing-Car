@@ -8,13 +8,13 @@ import {
 } from "@/features/dashboard/model/dashboardTypes";
 
 import { useFlightWelcome } from "./useFlightWelcome";
-import { useGraphStore } from "@/entities/map/model/store";
-import { pilotApi } from "../api/pilotApi"; // [NEW]
-import { AircraftStatus } from "@/entities/map/model/types"; // [NEW]
+import { useAircraftStore } from "@/entities/aircraft";
+import { pilotApi } from "../api/pilotApi";
+import { AircraftStatus, Aircraft } from "@/entities/map/model/types";
 
 export function usePilotController(initialCarId?: string) {
   // const { accessToken } = useAuthStore(); // [NEW] - Removed because apiClient handles it
-  const { updateAircraft } = useGraphStore(); // [NEW]
+  const ingestAircraft = useAircraftStore(state => state.ingest);
 
   // --- State ---
   const [logs, setLogs] = useState<PilotLog[]>([]);
@@ -27,7 +27,7 @@ export function usePilotController(initialCarId?: string) {
 
   // [Dynamic Car ID Logic with IDLE Filtering]
   // Only show car info if it's actively moving or connected (not IDLE)
-  const aircrafts = useGraphStore((s) => s.aircrafts);
+  const aircrafts = useAircraftStore((s) => s.aircrafts);
   const assignedCar = flightInfo?.assignedCarId
     ? aircrafts.find((a) => a.id === flightInfo.assignedCarId)
     : null;
@@ -55,7 +55,7 @@ export function usePilotController(initialCarId?: string) {
 
         if (statusData.code && statusData.status !== "NONE") {
           const status = statusData.status as AircraftStatus;
-          updateAircraft({
+          ingestAircraft({
             id: statusData.code,
             callsign: statusData.code,
             type: "TUG",
@@ -68,7 +68,7 @@ export function usePilotController(initialCarId?: string) {
             battery: statusData.battery,
             speed: statusData.velocity,
             isLoaded: status === "TOWING" || status === "UNLOADING",
-          });
+          } as Aircraft);
           hasFetchedStatus.current = true;
         }
       } catch (err) {
@@ -77,7 +77,7 @@ export function usePilotController(initialCarId?: string) {
     };
 
     syncStatus();
-  }, [updateAircraft]);
+  }, [ingestAircraft]);
 
   useEffect(() => {
     if (!activeCarId) return;
@@ -94,7 +94,7 @@ export function usePilotController(initialCarId?: string) {
           const status = statusData.status as AircraftStatus;
 
           // Update Aircraft in Store
-          updateAircraft({
+          ingestAircraft({
             id: statusData.code,
             callsign: statusData.code,
             type: "TUG",
@@ -107,7 +107,7 @@ export function usePilotController(initialCarId?: string) {
             battery: statusData.battery,
             speed: statusData.velocity,
             isLoaded: status === "TOWING" || status === "UNLOADING",
-          });
+          } as Aircraft);
 
           // [FIX] Sync connState based on car status
           if (status === "TOWING") {
@@ -131,7 +131,7 @@ export function usePilotController(initialCarId?: string) {
       }
     };
     safeSync();
-  }, [activeCarId, updateAircraft]);
+  }, [activeCarId, ingestAircraft]);
 
   // --- Modal State ---
   const [confirmModal, setConfirmModal] = useState<{
@@ -236,7 +236,7 @@ export function usePilotController(initialCarId?: string) {
         setConnState("idle");
       }
     }
-  }, [aircrafts, socketCarId, connState, addLog]);
+  }, [aircrafts, socketCarId, connState, addLog, moveState]);
 
   // --- Message Handler ---
   useEffect(() => {

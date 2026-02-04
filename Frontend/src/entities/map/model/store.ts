@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { v4 as uuidv4 } from 'uuid';
 import { GraphNode, GraphEdge, NodeType } from './types';
 
 interface GraphState {
@@ -40,20 +39,6 @@ interface GraphState {
   // Bulk
   loadGraph: (nodes: GraphNode[], edges: GraphEdge[]) => void;
   clearGraph: () => void;
-
-  // Aircraft State
-  aircrafts: import('./types').Aircraft[];
-  updateAircraft: (data: import('./types').Aircraft) => void;
-  setAircrafts: (list: import('./types').Aircraft[]) => void;
-  
-  // Mission State (ATC Context)
-  activeMissions: Record<string, {
-      flightNumber: string;
-      destNode: string;
-      status: string;
-      departNode?: string; 
-  }>;
-  updateMission: (data: any) => void;
 
   setMapMeta: (meta: import('./types').MapMeta) => void;
   setCorners: (corners: import('@/shared/realtime/api/map.schema').MapCorners) => void;
@@ -143,39 +128,6 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   loadGraph: (nodes, edges) => set({ nodes, edges }),
   clearGraph: () => set({ nodes: [], edges: [], selectedId: null }),
 
-  // --- Aircraft State Actions ---
-  aircrafts: [],
-  activeMissions: {}, // Map: towingCarCode -> MissionInfo
-  
-  updateAircraft: (data) => set((state) => {
-      const exists = state.aircrafts.find(a => a.id === data.id);
-      if (exists) {
-          return {
-              aircrafts: state.aircrafts.map(a => a.id === data.id ? { ...a, ...data } : a)
-          };
-      } else {
-          return {
-              aircrafts: [...state.aircrafts, data]
-          };
-      }
-  }),
-  
-  updateMission: (data: any) => set((state) => {
-      if (!data.towingCarCode) return {};
-      return {
-          activeMissions: {
-              ...state.activeMissions,
-              [data.towingCarCode]: {
-                  flightNumber: data.flightNumber,
-                  destNode: data.destNode,
-                  status: data.status,
-                  departNode: data.departNode
-              }
-          }
-      };
-  }),
-
-  setAircrafts: (list) => set({ aircrafts: list }),
   setMapMeta: (meta) => set({ mapMeta: meta }),
   setCorners: (corners) => set((state) => {
     // [Plan B] Fallback: Calculate dimensions from corners if they exist
