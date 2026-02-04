@@ -1,0 +1,9 @@
+services:
+  redis:
+    image: redis:latest
+    container_name: autowing-redis
+    ports:
+      - "6379:6379"
+    restart: always
+
+  # 필요하다면 나중에 다른 인프라(MQTT 등)도 여기에 추가 가능합니다.

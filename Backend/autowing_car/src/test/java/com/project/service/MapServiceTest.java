@@ -11,14 +11,25 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import com.project.domain.map.entity.Edge;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @Transactional
+@TestPropertySource(properties = {
+        "jwt.secret=testSecretKeyForUnitTestingMustBeLongEnoughToSatisfyHS256RequirementsSinceItRequiresAtLeast256Bits",
+        "jwt.expiration=3600000",
+        "MQTT_HOST=localhost",
+        "MQTT_PORT=1883",
+        "REDIS_HOST=localhost",
+        "REDIS_PORT=6379"
+})
 class MapServiceTest {
 
     @Autowired
@@ -62,5 +73,50 @@ class MapServiceTest {
         // (R,R,D,D), (R,D,R,D), (R,D,D,R), (D,R,R,D), (D,R,D,R), (D,D,R,R)
         // K=3 means we should get exactly 3 distinct paths.
         assertThat(paths.size()).isGreaterThanOrEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("convertPathToPayload: Should include intermediate waypoints")
+    void testConvertPathToPayloadWithWaypoints() {
+        // Given
+        Node n1 = Node.builder().nodeCode("N1").posX(0.0).posY(0.0).build();
+        Node n2 = Node.builder().nodeCode("N2").posX(10.0).posY(10.0).build();
+
+        // Waypoints JSON
+        String waypointsJson = "[{\"x\": 2.0, \"y\": 2.0}, {\"x\": 5.0, \"y\": 5.0}]";
+
+        Edge edge = Edge.builder()
+                .edgeCode("E1")
+                .srcNode(n1)
+                .dstNode(n2)
+                .distance(14.14)
+                .maxSpeed(5)
+                .waypoints(waypointsJson)
+                .build();
+
+        List<Edge> path = List.of(edge);
+
+        // When
+        List<Map<String, Object>> payload = mapService.convertPathToPayload(path);
+
+        // Then
+        // Result should have 3 points: waypoint1, waypoint2, and finally dstNode
+        assertThat(payload).hasSize(3);
+
+        // Point 1 (Waypoint 1)
+        assertThat(payload.get(0).get("nodeId")).isNull();
+        assertThat(payload.get(0).get("x")).isEqualTo(2.0);
+        assertThat(payload.get(0).get("y")).isEqualTo(2.0);
+        assertThat(payload.get(0).get("edgeId")).isEqualTo("E1");
+
+        // Point 2 (Waypoint 2)
+        assertThat(payload.get(1).get("nodeId")).isNull();
+        assertThat(payload.get(1).get("x")).isEqualTo(5.0);
+        assertThat(payload.get(1).get("y")).isEqualTo(5.0);
+
+        // Point 3 (Destination Node)
+        assertThat(payload.get(2).get("nodeId")).isEqualTo("N2");
+        assertThat(payload.get(2).get("x")).isEqualTo(10.0);
+        assertThat(payload.get(2).get("y")).isEqualTo(10.0);
     }
 }

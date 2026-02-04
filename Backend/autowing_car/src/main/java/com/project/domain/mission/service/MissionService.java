@@ -12,6 +12,7 @@ import com.project.domain.towingcar.entity.TowingCar;
 import com.project.domain.towingcar.service.TowingCarMqttService;
 import com.project.global.error.domain.car.TowingCarNotAssignedException;
 import com.project.domain.map.entity.Node;
+import com.project.domain.map.entity.Edge; // [NEW]
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,8 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import com.project.domain.user.entity.User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
+import com.project.global.util.TxUtil; // [NEW]
 
 import java.security.Principal;
 import java.util.*;
@@ -103,11 +103,28 @@ public class MissionService {
         missionDBAdaptor.saveLog(savedMission, LogType.APPROVE, "Approved by " + controllerId);
         notifyMissionUpdate(savedMission);
 
-        // 로봇 출발
-        sendMqttAfterCommit(car.getCode(), Map.of(
-                "path", decision.getSelectedEdgeIds(),
-                "missionId", savedMission.getId(),
-                "destNode", savedMission.getDestNode()));
+        // [New Logic] Path Generation & MQTT
+        List<Edge> path = new ArrayList<>();
+        for (String edgeId : decision.getSelectedEdgeIds()) {
+            path.add(mapDBAdaptor.getEdgeByCode(edgeId));
+        }
+
+        List<Map<String, Object>> pathPayload = mapService.convertPathToPayload(path);
+
+        // [Standardized Payload]
+        Map<String, Object> data = new HashMap<>();
+        data.put("carId", car.getCode());
+        data.put("waypoints", pathPayload);
+        data.put("finalAction", "STOP");
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("msgId", UUID.randomUUID().toString());
+        payload.put("timestamp", System.currentTimeMillis());
+        payload.put("type", "DRIVE");
+        payload.put("taskId", "MISSION_" + savedMission.getId());
+        payload.put("data", data);
+
+        TxUtil.executeAfterCommit(() -> towingCarMqttService.sendDriveCommand(car.getCode(), payload));
     }
 
     // --- Helpers ---
@@ -124,16 +141,5 @@ public class MissionService {
         missionWebSocketService.broadcastMissionUpdate(response);
     }
 
-    private void sendMqttAfterCommit(String carCode, Map<String, Object> data) {
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    towingCarMqttService.startTransport(carCode, data);
-                }
-            });
-        } else {
-            towingCarMqttService.startTransport(carCode, data);
-        }
-    }
+    // sendMqttAfterCommit removed
 }

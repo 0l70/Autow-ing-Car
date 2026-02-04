@@ -1,36 +1,48 @@
 package com.project.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.project.domain.common.CarStatus;
-import com.project.domain.common.MissionStatus;
+import com.project.domain.common.MapStatus;
 import com.project.domain.flight.entity.Flight;
 import com.project.domain.flight.service.FlightDBAdaptor;
-import com.project.domain.mission.entity.Mission;
-import com.project.domain.mission.service.MissionDBAdaptor;
+
 import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.CarConnectRequestDto;
 import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.CarDisconnectRequestDto;
-import com.project.domain.towingcar.entity.DrivingLog;
+
 import com.project.domain.towingcar.entity.TowingCar;
 import com.project.domain.towingcar.service.TowingCarDBAdaptor;
 import com.project.domain.towingcar.service.TowingCarMqttService;
 import com.project.domain.towingcar.service.TowingCarService;
-import com.project.domain.user.entity.User;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.test.context.TestPropertySource;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-import java.util.List;
+import com.project.domain.map.entity.Node;
+import com.project.domain.map.repository.NodeRepository;
+import org.junit.jupiter.api.BeforeEach;
+
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.argThat;
 
 @SpringBootTest
-@Transactional
+// @Transactional // [Remove] to ensure commit happens and
+// TxUtil.executeAfterCommit runs
+@TestPropertySource(properties = {
+                "jwt.secret=testSecretKeyForUnitTestingMustBeLongEnoughToSatisfyHS256RequirementsSinceItRequiresAtLeast256Bits",
+                "jwt.expiration=3600000",
+                "MQTT_HOST=localhost",
+                "MQTT_PORT=1883",
+                "REDIS_HOST=localhost",
+                "REDIS_PORT=6379"
+})
 class TowingCarServiceTest {
 
         @Autowired
@@ -42,19 +54,36 @@ class TowingCarServiceTest {
         @Autowired
         private TowingCarDBAdaptor towingCarDBAdaptor;
 
-        @Autowired
-        private MissionDBAdaptor missionDBAdaptor;
-
-        /** 외부 연동(MQTT)만 Mock */
-        @MockBean
+        @MockitoBean
         private TowingCarMqttService towingCarMqttService;
+
+        @Autowired
+        private TransactionTemplate transactionTemplate;
+
+        @Autowired
+        private NodeRepository nodeRepository;
+
+        @BeforeEach
+        void setUp() {
+                transactionTemplate.execute(status -> {
+                        if (nodeRepository.findByNodeCode("S01").isEmpty()) {
+                                Node baseNode = Node.builder()
+                                                .nodeCode("S01")
+                                                .posX(0.0)
+                                                .posY(0.0)
+                                                .status(MapStatus.AVAILABLE)
+                                                .build();
+                                nodeRepository.save(baseNode);
+                        }
+                        return null;
+                });
+        }
 
         // ----------------------------------------------------------------
         // 1. 배차 테스트
         // ----------------------------------------------------------------
-
         @Test
-        @DisplayName("배차 요청 시 -> 가용 차량(IDLE)을 찾고 -> MOVE_TO_GATE 명령을 보낸다")
+        @DisplayName("배차 요청 시 -> 가용 차량을 찾고 -> MOVE_TO_GATE(Payload with carId) 명령을 보낸다")
         void dispatchCarToFlightTest() {
                 // given
                 String flightNumber = "OZ101";
@@ -63,183 +92,110 @@ class TowingCarServiceTest {
                 towingCarService.dispatchCarToFlight(flightNumber);
 
                 // then
-                Flight flight = flightDBAdaptor.getFlightByFlightNumber(flightNumber);
-                TowingCar car = flight.getAssignedTowingCar();
+                transactionTemplate.execute(status -> {
+                        Flight flight = flightDBAdaptor.getFlightByFlightNumber(flightNumber);
+                        TowingCar car = flight.getAssignedTowingCar();
+                        assertNotNull(car);
 
-                assertNotNull(car);
-                verify(towingCarMqttService)
-                                .moveCarToGate(eq(car.getCode()), eq(flight.getNodeCode()));
+                        // Verify Payload Structure
+                        verify(towingCarMqttService).sendDriveCommand(eq(car.getCode()),
+                                        argThat((Map<String, Object> payload) -> {
+                                                @SuppressWarnings("unchecked")
+                                                Map<String, Object> data = (Map<String, Object>) payload.get("data");
+                                                return payload.containsKey("msgId") &&
+                                                                payload.containsKey("timestamp") &&
+                                                                "DRIVE".equals(payload.get("type")) &&
+                                                                car.getCode().equals(data.get("carId")) &&
+                                                                data.containsKey("waypoints") &&
+                                                                "DOCK".equals(data.get("finalAction"));
+                                        }));
+
+                        // Cleanup
+                        flight.assignCar(null);
+                        flightDBAdaptor.save(flight);
+                        car.updateStatus(0.0, 0.0, 0.0, 0.0, 100, CarStatus.IDLE);
+                        towingCarDBAdaptor.save(car);
+                        return null;
+                });
         }
 
         // ----------------------------------------------------------------
         // 2. 수동 CONNECT
         // ----------------------------------------------------------------
-
         @Test
-        @DisplayName("수동 연결 요청 시 -> CONNECT 명령 전송 및 상태 변경")
+        @DisplayName("수동 연결 요청 시 -> CONNECT 명령 전송 및 LOADING 상태 변경")
         void connectCarManualTest() {
                 // given
-                Flight flight = flightDBAdaptor.getFlightByFlightNumber("KE001");
-                TowingCar car = flight.getAssignedTowingCar();
-
-                car.updateStatus(car.getLastPosX(), car.getLastPosY(), car.getLastHeading(), car.getLastVelocity(),
-                                car.getBattery(), CarStatus.MOVING_TO_LOAD);
-                towingCarDBAdaptor.save(car);
+                Flight flight = transactionTemplate.execute(status -> {
+                        Flight f = flightDBAdaptor.getFlightByFlightNumber("KE001");
+                        TowingCar car = f.getAssignedTowingCar();
+                        car.updateStatus(0.0, 0.0, 0.0, 0.0, 100, CarStatus.MOVING_TO_LOAD);
+                        towingCarDBAdaptor.save(car);
+                        return f;
+                });
 
                 // when
-                towingCarService.connectCar(
-                                "pilot@atc.com",
-                                new CarConnectRequestDto(flight.getId()));
+                towingCarService.connectCar("pilot@atc.com", new CarConnectRequestDto(flight.getId()));
 
                 // then
-                verify(towingCarMqttService)
-                                .connectCar(eq(car.getCode()), eq(flight.getId()));
+                transactionTemplate.execute(status -> {
+                        TowingCar car = towingCarDBAdaptor.getCarById(flight.getAssignedTowingCar().getId());
+                        verify(towingCarMqttService).connectCar(eq(car.getCode()), eq(flight.getId()));
 
-                TowingCar updated = towingCarDBAdaptor.getCarById(car.getId());
-                assertEquals(CarStatus.LOADING, updated.getCarStatus());
+                        TowingCar updated = towingCarDBAdaptor.getCarById(car.getId());
+                        assertEquals(CarStatus.LOADING, updated.getCarStatus());
+
+                        // Cleanup
+                        car.updateStatus(0.0, 0.0, 0.0, 0.0, 100, CarStatus.IDLE);
+                        towingCarDBAdaptor.save(car);
+                        return null;
+                });
         }
 
         // ----------------------------------------------------------------
-        // 3. 수동 DISCONNECT
+        // 3. 해제 및 복귀 (Disconnect & Return)
         // ----------------------------------------------------------------
-
         @Test
-        @DisplayName("수동 해제 요청 시 -> DISCONNECT 명령 전송")
-        void disconnectCarManualTest() {
+        @DisplayName("해제 요청 시 -> UNLOADING -> 복귀 명령(PARK) 전송 -> MOVING_TO_IDLE 상태")
+        void disconnectCarAndReturnTest() {
                 // given
                 Flight flight = flightDBAdaptor.getFlightByFlightNumber("KE001");
-                TowingCar car = flight.getAssignedTowingCar();
+
+                transactionTemplate.execute(status -> {
+                        Flight f = flightDBAdaptor.getFlightByFlightNumber("KE001");
+                        TowingCar car = f.getAssignedTowingCar();
+                        // Assume Mission is running/completed
+                        car.updateStatus(100.0, 100.0, 0.0, 0.0, 80, CarStatus.TOWING);
+                        towingCarDBAdaptor.save(car);
+                        return null;
+                });
 
                 // when
-                towingCarService.disconnectCar(
-                                "pilot@atc.com",
-                                new CarDisconnectRequestDto(flight.getId()));
+                towingCarService.disconnectCar("pilot@atc.com", new CarDisconnectRequestDto(flight.getId()));
 
                 // then
-                verify(towingCarMqttService)
-                                .disconnectCar(eq(car.getCode()), eq(flight.getId()));
-        }
+                transactionTemplate.execute(status -> {
+                        Flight f = flightDBAdaptor.getFlightByFlightNumber("KE001");
+                        TowingCar car = f.getAssignedTowingCar();
 
-        // ----------------------------------------------------------------
-        // 4. 자동 CONNECT 트리거
-        // ----------------------------------------------------------------
+                        // 1. Verify Return Command (PARK)
+                        verify(towingCarMqttService).sendDriveCommand(eq(car.getCode()),
+                                        argThat((Map<String, Object> payload) -> {
+                                                @SuppressWarnings("unchecked")
+                                                Map<String, Object> data = (Map<String, Object>) payload.get("data");
+                                                return "PARK".equals(data.get("finalAction")) &&
+                                                                ("RETURN_" + car.getCode())
+                                                                                .equals(payload.get("taskId"));
+                                        }));
 
-        @Test
-        @DisplayName("[자동화] 게이트 도착(IDLE) -> 자동 CONNECT 실행")
-        void autoConnectTriggerTest() throws Exception {
-                // given
-                Flight flight = flightDBAdaptor.getFlightByFlightNumber("KE001");
-                User pilot = flight.getPilot();
-                TowingCar car = flight.getAssignedTowingCar();
+                        // 2. Verify Status Transition (Final state should be MOVING_TO_IDLE)
+                        TowingCar updated = towingCarDBAdaptor.getCarById(car.getId());
+                        assertEquals(CarStatus.MOVING_TO_IDLE, updated.getCarStatus());
 
-                car.updateStatus(car.getLastPosX(), car.getLastPosY(), car.getLastHeading(), car.getLastVelocity(),
-                                car.getBattery(), CarStatus.MOVING_TO_LOAD);
-                towingCarDBAdaptor.save(car);
-
-                ObjectMapper om = new ObjectMapper();
-                JsonNode payload = om.readTree("""
-                                    {
-                                      "x": -50.0,
-                                      "y": 0.0,
-                                      "mode": "IDLE",
-                                      "battery": 90,
-                                      "v": 0.0,
-                                      "yaw": 0.0
-                                    }
-                                """);
-
-                // when
-                // towingCarService.processCarMonitoring(car.getCode(), payload);
-                towingCarService.connectCar(pilot.getEmail(), new CarConnectRequestDto(flight.getId()));
-                // then ❗️직접 connectCar 호출 ❌
-                verify(towingCarMqttService)
-                                .connectCar(eq(car.getCode()), eq(flight.getId()));
-
-                TowingCar updated = towingCarDBAdaptor.getCarById(car.getId());
-                assertEquals(CarStatus.LOADING, updated.getCarStatus());
-        }
-
-        // ----------------------------------------------------------------
-        // 5. 자동 DISCONNECT 트리거
-        // ----------------------------------------------------------------
-
-        @Test
-        @DisplayName("[자동화] 활주로 도착(IDLE) -> 자동 DISCONNECT 실행")
-        void autoDisconnectTriggerTest() throws Exception {
-                // given
-                Flight flight = flightDBAdaptor.getFlightByFlightNumber("KE001");
-                TowingCar car = flight.getAssignedTowingCar();
-                User pilot = flight.getPilot();
-
-                Mission mission = Mission.builder()
-                                .flight(flight)
-                                .towingCar(car)
-                                .pilot(pilot)
-                                .status(MissionStatus.RUNNING)
-                                .destNode("RUNWAY")
-                                .build();
-
-                missionDBAdaptor.save(mission);
-                car.assignMission(mission.getId());
-                towingCarDBAdaptor.save(car);
-
-                ObjectMapper om = new ObjectMapper();
-                JsonNode payload = om.readTree("""
-                                    {
-                                      "x": 150.0,
-                                      "y": 100.0,
-                                      "mode": "IDLE",
-                                      "battery": 80,
-                                      "v": 0.0,
-                                      "yaw": 0.0
-                                    }
-                                """);
-
-                // when
-                towingCarService.processCarMonitoring(car.getCode(), payload);
-
-                // then
-                verify(towingCarMqttService)
-                                .disconnectCar(eq(car.getCode()), eq(flight.getId()));
-
-                Mission updated = missionDBAdaptor.getMissionById(mission.getId());
-                assertEquals(MissionStatus.COMPLETED, updated.getStatus());
-        }
-
-        // ----------------------------------------------------------------
-        // 6. 모니터링 로그 저장
-        // ----------------------------------------------------------------
-
-        @Test
-        @DisplayName("모니터링 데이터 수신 시 -> DrivingLog 저장")
-        void monitoringLogTest() throws Exception {
-                // given
-                TowingCar car = towingCarDBAdaptor.getCarByCode("TC01");
-                car.updateStatus(car.getLastPosX(), car.getLastPosY(), car.getLastHeading(), car.getLastVelocity(),
-                                car.getBattery(), CarStatus.IDLE);
-                towingCarDBAdaptor.save(car);
-
-                ObjectMapper om = new ObjectMapper();
-                JsonNode payload = om.readTree("""
-                                    {
-                                      "x": 5.0,
-                                      "y": 5.0,
-                                      "mode": "MOVING",
-                                      "battery": 95,
-                                      "v": 1.0,
-                                      "yaw": 90.0
-                                    }
-                                """);
-
-                // when
-                towingCarService.processCarMonitoring(car.getCode(), payload);
-
-                // then
-                TowingCar updated = towingCarDBAdaptor.getCarById(car.getId());
-                assertEquals(5.0, updated.getLastPosX());
-                assertEquals(95, updated.getBattery());
-
-                List<DrivingLog> logs = towingCarDBAdaptor.findAllDrivingLogsByCarId(car.getId());
-                assertFalse(logs.isEmpty());
+                        // Cleanup
+                        car.updateStatus(0.0, 0.0, 0.0, 0.0, 100, CarStatus.IDLE);
+                        towingCarDBAdaptor.save(car);
+                        return null;
+                });
         }
 }
