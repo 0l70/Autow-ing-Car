@@ -55,4 +55,10 @@ public class MissionDBAdaptor {
                 com.project.domain.common.MissionStatus.RUNNING,
                 com.project.domain.common.MissionStatus.PAUSED));
     }
+
+    // [NEW] 차량 코드와 상태로 미션 조회 (Resume용)
+    public java.util.Optional<Mission> findByCarCodeAndStatus(String carCode,
+            com.project.domain.common.MissionStatus status) {
+        return missionRepository.findByCarCodeAndStatus(carCode, status);
+    }
 }
