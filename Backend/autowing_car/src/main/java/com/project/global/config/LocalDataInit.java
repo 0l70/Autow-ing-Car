@@ -95,9 +95,8 @@ public class LocalDataInit implements CommandLineRunner {
         User pilot = initUser("P001", "Maverick", "pilot@atc.com", "1234", UserRole.PILOT);
         initUser("A001", "TowerControl", "atc@atc.com", "1234", UserRole.ATC);
 
-        // 2. 항공기 초기화 (B737, A320)
+        // 2. 항공기 초기화 (B737)
         Aircraft b737 = initAircraft("HL7777", "B737", 35.0, 39.0);
-        Aircraft a320 = initAircraft("HL8888", "A320", 34.0, 37.0);
 
         // 3. 지도 데이터 초기화 (PathPlanner 기반 노드 및 간선 생성)
         // [Refactor] Load nodes/edges via MapLoadingService from resources
@@ -109,11 +108,9 @@ public class LocalDataInit implements CommandLineRunner {
 
         // 4. 차량(Towing Car) 초기화
         TowingCar tc1 = createAndSaveCar("TC01", -1.22, -0.13, 100);
-        TowingCar tc2 = createAndSaveCar("TC02", 0.33, -0.28, 90);
 
         // 5. 비행 정보 및 스케줄 초기화
         createAndSaveFlight("KE001", pilot, tc1, b737);
-        createAndSaveFlight("OZ101", pilot, tc2, a320);
 
         log.info("############ Local Data Initialization Finished ############");
     }

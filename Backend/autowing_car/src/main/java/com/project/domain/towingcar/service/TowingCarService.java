@@ -111,16 +111,18 @@ public class TowingCarService {
 
         // [New Logic] Calculate Path on Server
         Node carNode = mapDBAdaptor.getNodeByCode(START_NODE); // Default Origin
-
         Node gateNode = mapDBAdaptor.getNodeByCode(nodeCode);
 
         List<Edge> path = mapService.findOptimalPath(carNode, gateNode);
-        List<Map<String, Object>> pathPayload = mapService.convertPathToPayload(path);
+        // List<Map<String, Object>> pathPayload =
+        // mapService.convertPathToPayload(path); // Removed
 
         // Define Payload (Standardized Format)
-        Map<String, Object> data = new HashMap<>(); // [FIX] Use import
-        data.put("carId", carCode); // [Request] Add carId
-        data.put("waypoints", pathPayload); // Renamed from path to waypoints
+        Map<String, Object> data = new HashMap<>();
+        data.put("carId", carCode);
+        data.put("startNode", START_NODE);
+        data.put("endNode", nodeCode);
+        data.put("edgeIds", path.stream().map(Edge::getEdgeCode).toList());
         data.put("finalAction", "DOCK");
 
         Map<String, Object> payload = new HashMap<>(); // [FIX] Use import
@@ -224,12 +226,15 @@ public class TowingCarService {
 
         // 2. Calculate Path
         List<Edge> path = mapService.findOptimalPath(carNode, baseNode);
-        List<Map<String, Object>> pathPayload = mapService.convertPathToPayload(path);
+        // List<Map<String, Object>> pathPayload =
+        // mapService.convertPathToPayload(path);
 
         // 3. Construct Payload
         Map<String, Object> data = new HashMap<>();
         data.put("carId", car.getCode());
-        data.put("waypoints", pathPayload);
+        data.put("startNode", carNode.getNodeCode());
+        data.put("endNode", baseNode.getNodeCode());
+        data.put("edgeIds", path.stream().map(Edge::getEdgeCode).toList());
         data.put("finalAction", "PARK"); // 도착 시 IDLE로 전환
 
         Map<String, Object> payload = new HashMap<>();
@@ -284,6 +289,19 @@ public class TowingCarService {
         Mission mission = (assignedCar.getCurrentMissionId() != null)
                 ? missionDBAdaptor.getMissionById(assignedCar.getCurrentMissionId())
                 : null;
+
+        // [Status Tracking] Car status -> Mission status sync
+        if (mission != null && mission.getStatus() == MissionStatus.RUNNING) {
+            if (status == CarStatus.STOP) {
+                mission.updateStatus(MissionStatus.PAUSED);
+                missionDBAdaptor.save(mission);
+                log.warn("⚠️ [Monitoring] Car {} STOPPED -> Mission {} PAUSED", carCode, mission.getId());
+                // Notify?
+            } else if (status == CarStatus.ERROR) {
+                // handle error...
+            }
+        }
+
         saveDrivingLog(assignedCar, mission);
 
         // [Final Step] 통합 브로드캐스트 (DTO 기반으로 Pilot + ATCs에게 전송)
