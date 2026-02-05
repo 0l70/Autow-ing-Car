@@ -78,12 +78,27 @@ public class MapLoadingService {
                     rawPoints.add(new RdpSimplifier.Point(xArray.get(i).asDouble(), yArray.get(i).asDouble()));
                 }
 
+                // Calculate Euclidean Distance
+                double totalDistance = 0.0;
+                for (int i = 0; i < rawPoints.size() - 1; i++) {
+                    double x1 = rawPoints.get(i).x;
+                    double y1 = rawPoints.get(i).y;
+                    double x2 = rawPoints.get(i + 1).x;
+                    double y2 = rawPoints.get(i + 1).y;
+                    totalDistance += Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+                }
+
+                // Default speed (km/h -> m/s)
+                // Assuming 10 km/h ~= 2.78 m/s. Using 3 m/s (Integer)
+                int defaultMaxSpeed = 3; 
+                double travelTime = totalDistance / defaultMaxSpeed;
+
                 List<RdpSimplifier.Point> simplified = RdpSimplifier.simplify(rawPoints, 0.1);
                 String waypointsJson = objectMapper.writeValueAsString(simplified);
 
                 // Forward Edge
                 upsertEdge("E_" + startNodeCode + "_to_" + endNodeCode,
-                        srcNode, dstNode, coordinateCount, waypointsJson);
+                        srcNode, dstNode, totalDistance, defaultMaxSpeed, travelTime, waypointsJson);
 
                 // Reverse Edge
                 List<RdpSimplifier.Point> reversed = new ArrayList<>(simplified);
@@ -91,7 +106,7 @@ public class MapLoadingService {
                 String reversedWaypointsJson = objectMapper.writeValueAsString(reversed);
 
                 upsertEdge("E_" + endNodeCode + "_to_" + startNodeCode,
-                        dstNode, srcNode, coordinateCount, reversedWaypointsJson);
+                        dstNode, srcNode, totalDistance, defaultMaxSpeed, travelTime, reversedWaypointsJson);
 
                 log.info("Loaded path {} -> {} from {}", startNodeCode, endNodeCode, filename);
             }
@@ -100,10 +115,13 @@ public class MapLoadingService {
         }
     }
 
-    private void upsertEdge(String edgeCode, Node src, Node dst, Double distance, String waypoints) {
+    private void upsertEdge(String edgeCode, Node src, Node dst, Double distance, Integer maxSpeed, Double travelTime,
+            String waypoints) {
         edgeRepository.findByEdgeCode(edgeCode).ifPresentOrElse(
                 edge -> {
-                    edge.updatePath(waypoints, distance); // Explicit Update
+                    // Update potentially changed values
+                    edge.updatePath(waypoints, distance, travelTime);
+                    //
                     log.debug("Updated edge: {}", edgeCode);
                 },
                 () -> {
@@ -112,11 +130,12 @@ public class MapLoadingService {
                             .srcNode(src)
                             .dstNode(dst)
                             .distance(distance)
-                            .maxSpeed(11) // Default speed or could be derived
-                            .travelTime(11 * distance)
+                            .maxSpeed(maxSpeed)
+                            .travelTime(travelTime)
                             .waypoints(waypoints)
                             .status(MapStatus.AVAILABLE)
                             .restrictionInfo("NONE")
+                            //
                             .build();
                     edgeRepository.save(newEdge);
                     log.debug("Created edge: {}", edgeCode);
