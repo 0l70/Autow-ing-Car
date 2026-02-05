@@ -32,7 +32,7 @@ public class JwtTokenProvider {
     // Token Validity Periods
     private static final long ACCESS_TOKEN_VALIDITY = 900_000L; // 15분
     private static final long REFRESH_TOKEN_VALIDITY = 604_800_000L; // 7일
-    private static final long SOCKET_TOKEN_VALIDITY = 60_000L; // 1분
+    private static final long SOCKET_TOKEN_VALIDITY = 600_000L; // 1분
 
     public JwtTokenProvider(
             CustomUserDetailsService userDetailsService,
