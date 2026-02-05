@@ -102,7 +102,7 @@ public class LocalDataInit implements CommandLineRunner {
         // 3. 지도 데이터 초기화 (PathPlanner 기반 노드 및 간선 생성)
         Node s01 = createNode("S01", -1.22, -0.13); // 시작 노드
         Node g01 = createNode("G01", 0.33, -0.28); // 중간 게이트 노드
-        Node r02 = createNode("R02", 4.03, -0.08); // 활주로 인근 노드
+        Node r02 = createNode("R01", 4.03, -0.08); // 활주로 인근 노드
 
         // [Fix] Add missing nodes for path_S02_to_G02
         Node s02 = createNode("S02", -0.02, -0.88);
