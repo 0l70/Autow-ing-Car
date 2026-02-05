@@ -10,6 +10,8 @@ import { MapCanvas } from "@/features/map-visualizer/ui/MapCanvas";
 import { GraphLayer } from "@/features/map-visualizer/ui/GraphLayer";
 import { AircraftLayer } from "@/features/map-visualizer/ui/AircraftLayer";
 import { useMapData } from "@/features/map-visualizer/model/useMapData";
+import { useAutoViewport } from "@/features/map-visualizer/model/useAutoViewport"; 
+import { useGridMetadata } from "@/features/map-visualizer/model/useGridMetadata"; 
 
 interface AtcMapWidgetProps {
     className?: string;
@@ -17,47 +19,60 @@ interface AtcMapWidgetProps {
 }
 
 export function AtcMapWidget({ className, onAircraftSelect }: AtcMapWidgetProps) {
-    // --- Data Loading ---
-    const { meta, mapImage, dimensions } = useMapData(); // Use a distinct key or same if shared
+    // 1. Data Layer
+    const { meta, mapImage, dimensions } = useMapData(); 
+    const { mapMeta: storeMeta, nodes } = useGraphStore();
     
-    // --- Store State ---
-    const { mapWidth: storeMapWidth, mapHeight: storeMapHeight, mapMeta: storeMeta } = useGraphStore();
-
     // Map Load Handler
     const [loadedDims, setLoadedDims] = useState({ width: 0, height: 0 });
     
-    // Grid Metadata
-    const gridMetadata = useMemo(() => {
-        // [Update] Always prefer resolution and origin from local YAML (meta)
-        const effectiveMeta = meta || storeMeta;
-        const resolution = effectiveMeta?.resolution || 0.05;
-        
-        // [Fix] Prioritize Backend Dimensions (from useMapData/mapInfo) -> Store -> Schema -> Mock
-        const logicalWidth = dimensions?.width || storeMapWidth || MOCK_MAP_SIZE.width;
-        const logicalHeight = dimensions?.height || storeMapHeight || MOCK_MAP_SIZE.height;
+    // 2. Logic Layer: Grid Metadata (FSD Hook)
+    const { gridMetadata: rawGridMetadata } = useGridMetadata();
 
+    // [Update] 1.2x Grid Expansion Logic (Virtual Map) - Matching Pilot Map
+    const paddedGridMetadata = useMemo(() => {
+        const expansionRatio = 0.2; // Total +20%
+        const sideRatio = 0.1;      // +10% per side
+
+        const extraW = rawGridMetadata.width * expansionRatio;
+        const extraH = rawGridMetadata.height * expansionRatio;
+
+        const newWidth = rawGridMetadata.width + extraW;
+        const newHeight = rawGridMetadata.height + extraH;
+
+        // Calculate Metric Padding (Meters)
+        const padX_Meters = (rawGridMetadata.width * sideRatio) * rawGridMetadata.resolution;
+        const padY_Meters = (rawGridMetadata.height * sideRatio) * rawGridMetadata.resolution;
+
+        // Shift Origin
+        const baseOrigin = rawGridMetadata.origin || [0,0,0];
+        
         return {
-            width: logicalWidth,
-            height: logicalHeight,
-            resolution
+            ...rawGridMetadata,
+            width: newWidth,
+            height: newHeight,
+            origin: [
+                baseOrigin[0] - padX_Meters,
+                baseOrigin[1] - padY_Meters,
+                baseOrigin[2]
+            ]
         };
-    }, [storeMapWidth, storeMapHeight, meta, dimensions]);
+    }, [rawGridMetadata]);
 
     // Dimensions to use
-    // If we have an image, use its real pixels. Otherwise use store/mock.
-    const activeWidth = loadedDims.width || gridMetadata.width;
-    const activeHeight = loadedDims.height || gridMetadata.height;
+    const activeWidth = loadedDims.width || paddedGridMetadata.width;
+    const activeHeight = loadedDims.height || paddedGridMetadata.height;
 
-    // ATC View: Full Map by default (Dynamic)
-    // Map Size: Based on loaded metadata
-    const fullMapView = useMemo(() => {
-        return {
-            x: 0,
-            y: 0,
-            width: gridMetadata.width,
-            height: gridMetadata.height
-        };
-    }, [gridMetadata]);
+    // Viewport Logic (Feature Hook)
+    // Dynamic Fit to Nodes (Like Pilot Map) but for Overview
+    const { viewBox: dynamicViewBox } = useAutoViewport(
+        nodes, 
+        paddedGridMetadata as any, 
+        paddedGridMetadata.height,     
+        paddedGridMetadata.width, 
+        paddedGridMetadata.height,
+        { paddingScale: 0.05, minPadding: 2 } // Consistent with Pilot Overview
+    );
 
     const handleAircraftClick = (ac: Aircraft) => {
         console.log("ATC Selected Aircraft:", ac.id);
@@ -82,27 +97,25 @@ export function AtcMapWidget({ className, onAircraftSelect }: AtcMapWidgetProps)
                 <MapCanvas
                     // Data
                     mapImage={mapImage || null}
-                    meta={meta || null}
+                    meta={paddedGridMetadata as any}
                     
                     // Config
-                    visualStyle="abstract" // [Update] Use 'abstract' style for grid visibility
-                    gridMetadata={gridMetadata}
+                    visualStyle="abstract" 
+                    gridMetadata={paddedGridMetadata}
                     pixelRatio={5} 
                     
                     // Viewport Control
-                    initialViewBox={fullMapView}
-                    // maxBounds={fullMapView}
+                    initialViewBox={dynamicViewBox}
+                    maxBounds={dynamicViewBox}
                     
-                    // Grid Customization (Match Pilot Style but adjusted for Full Map scale)
-                    // Pilot: 1.5m / 0.5m
-                    // ATC: 5.0m / 1.0m (To avoid too much density on full map)
+                    // Grid Customization (Match Pilot Style)
                     gridOptions={{
-                        majorInterval: 1.5,  // 1.5m 간격 (주요 격자)
-                        minorInterval: 0.5,  // 0.5m 간격 (세부 격자)
-                        majorWidth: 0.3,     // 주요 격자 두께
-                        minorWidth: 0.1,     // 세부 격자 두께
-                        majorColor: 'rgba(0, 255, 255, 0.2)', // 시안색 (은은하게)
-                        minorColor: 'rgba(255, 255, 255, 0.3)'  // 흰색 (배경처럼)
+                        majorInterval: 1.5,
+                        minorInterval: 0.5,
+                        majorWidth: 0.3, 
+                        minorWidth: 0.1, 
+                        majorColor: 'rgba(0, 255, 255, 0.2)', 
+                        minorColor: 'rgba(255, 255, 255, 0.3)' 
                     }}
                     
                     className="w-full h-full"
@@ -111,12 +124,12 @@ export function AtcMapWidget({ className, onAircraftSelect }: AtcMapWidgetProps)
                 >
                     {/* Render Layers */}
                     <GraphLayer 
-                        meta={meta || storeMeta || null} 
+                        meta={paddedGridMetadata as any} 
                         mapHeight={activeHeight} 
                     />
                     
                     <AircraftLayer
-                        meta={meta || storeMeta || null}
+                        meta={paddedGridMetadata as any}
                         mapWidth={activeWidth}
                         mapHeight={activeHeight}
                         pixelRatio={5}
