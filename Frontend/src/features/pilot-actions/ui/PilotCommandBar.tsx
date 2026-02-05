@@ -1,5 +1,5 @@
 import { Button } from "@/shared/ui/Button";
-import { MoveState, ConnectionState } from "../model/types";
+import { MoveState, ConnectionState } from "../model/pilot.types";
 
 interface PilotCommandBarProps {
     moveState: MoveState;

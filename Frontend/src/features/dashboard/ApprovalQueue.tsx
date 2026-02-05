@@ -13,41 +13,12 @@ import { useTimelineStore } from "./model/useTimelineStore";
 import { useSocket } from "@/shared/realtime/context/SocketProvider";
 import { WS_TOPICS } from "@/shared/realtime/config/topics";
 
-// --- Types (Match Backend DTO) ---
-type NotificationType = "MISSION_REQUEST" | "MANUAL_CONTROL" | "EMERGENCY_STOP";
+// [FSD] Import Types & Store
+import { useAlertStore } from "./model/useAlertStore";
+import { AdminAlertDto, PathOptionDto } from "./model/alert.types";
 
-interface PathOptionDto {
-  optionId: number;
-  label: string;
-  edgeIds: string[];
-}
-
-interface NodeDto {
-  id: number;
-  nodeCode: string;
-  posX: number;
-  posY: number;
-}
-
-interface AdminAlertDto {
-  type: NotificationType;
-  message?: string;
-  severity?: "INFO" | "WARNING" | "CRITICAL";
-
-  // Mission Specific
-  flightId?: number;
-  flightNumber?: string;
-  pilotId?: string;
-  currentGate?: string;
-  activeRunway?: string;
-  pathOptions?: PathOptionDto[];
-
-  // Internal
-  id: string; // for React key
-  timestamp: number;
-}
-
-
+// [NEW] Use Aircraft Store for State Sync
+import { useAircraftStore } from "@/entities/aircraft/model/store";
 
 interface PathOptionsResponseDto {
   flightId: number;
@@ -57,47 +28,103 @@ interface PathOptionsResponseDto {
   pathOptions: PathOptionDto[];
 }
 
-import { useMissionStore } from "@/entities/mission";
-
 export function ApprovalQueue() {
-  const [alerts, setAlerts] = useState<AdminAlertDto[]>([]);
+  const { onMessage, send, isConnected } = useSocket() || {};
   
-  // [NEW] 1단계 워크플로우 상태 (경로 선택)
+  // [FSD] Persistent Store
+  const { alerts, addAlert, removeAlert } = useAlertStore();
+  
+  // [NEW] Aircraft State for Sync
+  const aircrafts = useAircraftStore((state) => state.aircrafts);
+
+  // Timeline Store
+  const addLog = useTimelineStore((state) => state.addLog);
+
+  // Local UI State (Workflow)
   const [pathOptionsData, setPathOptionsData] = useState<PathOptionsResponseDto | null>(null);
   const [selectedPath, setSelectedPath] = useState<PathOptionDto | null>(null);
 
-  // Global Client from Context
-  const { onMessage, send, isConnected } = useSocket() || {};
-  const ingestMission = useMissionStore(state => state.ingest);
+  // --- [NEW] State Synchronization Logic ---
+  // If an aircraft is in ERROR/STOP state but no alert exists, create one.
+  useEffect(() => {
+    aircrafts.forEach(car => {
+      // Check for Emergency conditions
+      if (car.status === 'ERROR' || car.status === 'STOP') {
+         // Check if alert already exists to prevent duplicate (spam)
+         // We assume one active emergency alert per car is enough
+         const exists = alerts.find(a => 
+           (a.type === 'EMERGENCY_STOP' || a.type === 'MANUAL_CONTROL') && 
+           a.flightNumber === car.callsign // or car.id
+         );
+         
+         if (!exists) {
+            console.log(`[ApprovalQueue] ⚠️ Detected silent emergency for ${car.callsign}. Synced alert.`);
+            addAlert({
+                id: `sync-alert-${Date.now()}-${car.id}`,
+                type: 'EMERGENCY_STOP',
+                message: `Synced: Vehicle ${car.callsign} is in ${car.status} state.`,
+                severity: 'CRITICAL',
+                timestamp: Date.now(),
+                flightNumber: car.callsign, 
+             });
+         }
+      }
+    });
+  // Check periodically or only when aircrafts change? 
+  // 'aircrafts' changes frequently (telemetry), so we need to be careful not to spam.
+  // 'addAlert' in store should handle duplicates if ID matches, but here we generate new ID.
+  // We rely on the 'exists' check.
+  }, [aircrafts, alerts, addAlert]);
 
+
+  // --- WebSocket Subscription ---
   useEffect(() => {
     if (!onMessage) return;
-    
-    // Listen for MISSION_REQUEST and other ATC alerts that aren't persisted in missionStore yet
+
+    // Listen for All Controller Notifications (Requests + Emergencies)
     const unsubscribe = onMessage((msg: any) => {
-      const { destination, body: data } = msg;
-      
-      if (destination !== WS_TOPICS.CONTROLLER_REQUESTS) return;
+      const { destination, body } = msg;
 
-      if (data && (data.flightId || data.type)) {
-        const newAlert: AdminAlertDto = {
-          ...data,
-          type: data.type || "MISSION_REQUEST",
-          id: Date.now().toString() + Math.random(),
-          timestamp: Date.now(),
-        };
+      // Ensure we listen to the correct topic constant
+      if (destination === WS_TOPICS.CONTROLLER_REQUESTS) {
+        const data = typeof body === 'string' ? JSON.parse(body) : body;
+        console.log("[ApprovalQueue] Received Notification:", data);
 
-        setAlerts((prev: AdminAlertDto[]) => [newAlert, ...prev]);
+        // CASE 1: Emergency / Manual Control Notif
+        if (data.type === 'EMERGENCY_STOP' || data.type === 'MANUAL_CONTROL' || data.severity === 'emergency_stop') {
+             addAlert({
+                id: `alert-${Date.now()}`,
+                type: data.type || (data.severity === "emergency_stop" ? "EMERGENCY_STOP" : "MANUAL_CONTROL"),
+                message: data.message,
+                severity: data.severity === "emergency_stop" ? "CRITICAL" : "WARNING",
+                timestamp: Date.now(),
+                flightNumber: data.flightNumber || data.carCode || "Unknown", // Backend sends flightNumber or carCode
+                flightId: data.flightId, 
+             });
+        } 
+        // CASE 2: Mission Request (Default)
+        else {
+             addAlert({
+                ...data,
+                type: "MISSION_REQUEST",
+                id: data.id || `req-${Date.now()}`,
+                timestamp: Date.now(),
+             });
+             addLog({
+                type: "CONFIRM",
+                message: `NEW REQUEST: ${data.flightNumber}`,
+                subMessage: "Pilot requested pushback.",
+                actor: "System",
+             });
+        }
       }
     });
 
     return () => unsubscribe();
-  }, [onMessage]);
-
-  const addLog = useTimelineStore((state) => state.addLog);
+  }, [onMessage, addAlert, addLog]);
 
   // --- Actions ---
-  // [Step 1] 출발 요청 승인 -> 도착지 선택 활성화
+  // ... existing handleDecision ...
   const handleDecision = async (
     alertItem: AdminAlertDto,
     approved: boolean,
@@ -106,35 +133,30 @@ export function ApprovalQueue() {
 
     try {
       if (approved) {
-        // [Simplified] Instead of Step 1 approval API, we directly open the Path Options UI
-        // using the pathOptions already present in the alertItem (AdminAlertDto).
         if (alertItem.pathOptions && alertItem.pathOptions.length > 0) {
-          console.log("[ApprovalQueue] Opening path selection directly");
           setPathOptionsData({
             flightId: alertItem.flightId,
             flightNumber: alertItem.flightNumber || "",
             departNode: alertItem.currentGate || "",
-            destNode: alertItem.activeRunway || "", // Default destination in mock
+            destNode: alertItem.activeRunway || "", 
             pathOptions: alertItem.pathOptions,
+          });
+          
+          addLog({
+            type: "APPROVE",
+            message: `PUSHBACK REQUEST ACCEPTED: ${alertItem.flightNumber}`,
+            subMessage: `Opening path options...`,
+            actor: "ATC-Controller",
           });
         } else {
           window.alert("No path options available for this request.");
           return;
         }
-
-        addLog({
-          type: "APPROVE",
-          message: `PUSHBACK REQUEST ACCEPETED: ${alertItem.flightNumber}`,
-          subMessage: `Opening path options...`,
-          actor: "ATC-Controller",
-        });
       } else {
         if (send) {
           send(
             "SEND",
-            {
-              destination: WS_TOPICS.ATC.MISSION_DECIDE,
-            },
+            { destination: WS_TOPICS.ATC.MISSION_DECIDE },
             JSON.stringify({
               flightId: alertItem.flightId,
               approved: false,
@@ -151,26 +173,21 @@ export function ApprovalQueue() {
         });
       }
 
-      setAlerts((prev) => prev.filter((a) => a.id !== alertItem.id));
+      // Remove from Store
+      removeAlert(alertItem.id);
     } catch (e) {
       console.error("Decision Failed", e);
       window.alert("Failed to send decision");
     }
   };
 
-
-
-  // [Step 3] 경로 승인 -> 미션 생성
   const handleRouteConfirm = () => {
     if (!pathOptionsData || !selectedPath) return;
 
-    console.log("[ApprovalQueue] Step 3: Confirming route via MISSION_DECIDE", selectedPath);
     if (send) {
       send(
         "SEND",
-        {
-          destination: WS_TOPICS.ATC.MISSION_DECIDE,
-        },
+        { destination: WS_TOPICS.ATC.MISSION_DECIDE },
         JSON.stringify({
           flightId: pathOptionsData.flightId,
           approved: true,
@@ -204,7 +221,7 @@ export function ApprovalQueue() {
         actor: "ATC-Controller",
       });
     }
-    setAlerts((prev) => prev.filter((a) => a.id !== id));
+    removeAlert(id);
   };
 
   return (
@@ -233,8 +250,6 @@ export function ApprovalQueue() {
             NO PENDING ACTIONS
           </div>
         )}
-
-
 
         {/* [NEW] 경로 승인 UI */}
         {pathOptionsData && (
@@ -302,9 +317,7 @@ export function ApprovalQueue() {
 
         {alerts.map((alert) => {
           const isMission = alert.type === "MISSION_REQUEST";
-          const isEmergency =
-            alert.type === "EMERGENCY_STOP" || alert.type === "MANUAL_CONTROL";
-
+          
           const borderClass = isMission
             ? "border-accent-cyan/40"
             : "border-accent-orange/40";
@@ -423,15 +436,14 @@ export function ApprovalQueue() {
         <div className="p-2 border-t border-white/10 flex gap-2 justify-center opacity-50 hover:opacity-100 transition-opacity flex-wrap">
           <button
             onClick={() =>
-              setAlerts((prev) => [
+              addAlert(
                 {
                   id: Date.now().toString(),
                   type: "MANUAL_CONTROL",
                   message: "Pilot requested MANUAL CONTROL",
                   timestamp: Date.now(),
-                },
-                ...prev,
-              ])
+                }
+              )
             }
             className="text-[10px] bg-accent-orange/20 text-accent-orange px-2 py-1 rounded"
           >
@@ -439,15 +451,14 @@ export function ApprovalQueue() {
           </button>
           <button
             onClick={() =>
-              setAlerts((prev) => [
+              addAlert(
                 {
                   id: Date.now().toString(),
                   type: "EMERGENCY_STOP",
                   message: "EMERGENCY STOP TRIGGERED",
                   timestamp: Date.now(),
-                },
-                ...prev,
-              ])
+                }
+              )
             }
             className="text-[10px] bg-red-500/20 text-red-500 px-2 py-1 rounded"
           >
@@ -455,7 +466,7 @@ export function ApprovalQueue() {
           </button>
           <button
             onClick={() =>
-              setAlerts((prev) => [
+              addAlert(
                 {
                   id: Date.now().toString(),
                   type: "MISSION_REQUEST",
@@ -464,9 +475,8 @@ export function ApprovalQueue() {
                   activeRunway: "RUNWAY_34L",
                   flightId: 101,
                   timestamp: Date.now(),
-                },
-                ...prev,
-              ])
+                }
+              )
             }
             className="text-[10px] bg-accent-cyan/20 text-accent-cyan px-2 py-1 rounded"
           >

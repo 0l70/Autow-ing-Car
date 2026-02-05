@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import useLongPress from "@/shared/lib/useLongPress";
 import { usePilotSocket } from "./usePilotSocket";
-import { MoveState, ConnectionState, PilotLog } from "./types";
+import { MoveState, ConnectionState, PilotLog } from "./pilot.types"; // [UPDATED] Import from new file
+import { usePilotStore } from "./usePilotStore"; // [NEW] Import Store
 import {
   FlightInfo,
   FlightInfoSchema,
@@ -13,18 +14,25 @@ import { useMissionStore } from "@/entities/mission";
 import { pilotApi } from "../api/pilotApi";
 import { AircraftStatus, Aircraft } from "@/entities/map/model/types";
 
-// --- LocalStorage Keys for State Persistence ---
-const LS_PUSHBACK_WAITING = 'pilot_pushback_waiting';
+// --- LocalStorage Keys Removed (Handled by Store) ---
 
 export function usePilotController(initialCarId?: string) {
   // const { accessToken } = useAuthStore(); // [NEW] - Removed because apiClient handles it
   const ingestAircraft = useAircraftStore((state) => state.ingest);
 
-  // --- State ---
-  const [logs, setLogs] = useState<PilotLog[]>([]);
-  const [moveState, setMoveState] = useState<MoveState>("stopped");
-  const [connState, setConnState] = useState<ConnectionState>("idle");
-  const [isAutoMode, setIsAutoMode] = useState(false);
+  // --- State (Replaced with Store) ---
+  const { 
+      moveState, setMoveState, 
+      connState, setConnState, 
+      isAutoMode, setIsAutoMode,
+      logs, addLog: addStoreLog, clearLogs
+  } = usePilotStore();
+  
+  // const [logs, setLogs] = useState<PilotLog[]>([]); // Removed
+  // const [moveState, setMoveState] = useState<MoveState>("stopped"); // Removed
+  // const [connState, setConnState] = useState<ConnectionState>("idle"); // Removed
+  // const [isAutoMode, setIsAutoMode] = useState(false); // Removed
+
   const flightInfo = useMissionStore((state) => state.flightInfo);
   const setFlightInfo = useMissionStore((state) => state.setFlightInfo);
   const [fetchedCarId, setFetchedCarId] = useState<string | undefined>(
@@ -55,7 +63,8 @@ export function usePilotController(initialCarId?: string) {
         ? initialCarId || fetchedCarId
         : undefined;
 
-  // --- Initial State Sync (Restore moveState from localStorage) ---
+  // --- Initial State Sync ---
+  // Store handles persistence, but we might want to check MISSION status to override local state if backend says otherwise.
   const activeMissions = useMissionStore((state) => state.activeMissions);
   
   useEffect(() => {
@@ -65,19 +74,11 @@ export function usePilotController(initialCarId?: string) {
       const missionStatus = activeMissions[carId].status;
       if (missionStatus === 'RUNNING') {
         console.log('[Restore] Found RUNNING mission -> pushback');
-        setMoveState('pushback');
-        localStorage.removeItem(LS_PUSHBACK_WAITING); // Clear stale flag
+        if (moveState !== 'pushback') setMoveState('pushback');
         return;
       }
     }
-    
-    // Priority 2: Check localStorage for pending approval
-    const waitingFlightId = localStorage.getItem(LS_PUSHBACK_WAITING);
-    if (waitingFlightId && flightInfo && String(flightInfo.flightId) === waitingFlightId) {
-      console.log('[Restore] Found pending approval in localStorage -> waiting');
-      setMoveState('waiting');
-    }
-  }, [flightInfo, activeMissions]);
+  }, [flightInfo, activeMissions, setMoveState, moveState]);
 
   // --- Modal State ---
   const [confirmModal, setConfirmModal] = useState<{
@@ -99,16 +100,13 @@ export function usePilotController(initialCarId?: string) {
   const socketCarId = flightInfo?.assignedCarId || fetchedCarId || initialCarId;
   const { send, onMessage, isConnected } = usePilotSocket(socketCarId);
 
-  // --- Logger ---
+  // --- Logger Wrapper ---
+  // Using useCallback to match existing signature, but delegating to store
   const addLog = useCallback(
     (type: "info" | "success" | "warning" | "error", message: string) => {
-      const time = new Date().toLocaleTimeString("en-US", { hour12: false });
-      setLogs((prev) => [
-        { id: Date.now(), type, message, timestamp: time },
-        ...prev,
-      ]);
+        addStoreLog({ type, message });
     },
-    [],
+    [addStoreLog],
   );
 
   // --- Dynamic Status Sync ---
@@ -257,8 +255,7 @@ export function usePilotController(initialCarId?: string) {
             // setConnState('disconnected'); // Let telemetry handle it
           }
         } else if (payload.status === "APPROVED") {
-          // Pushback Approved - clear localStorage and transition
-          localStorage.removeItem(LS_PUSHBACK_WAITING);
+          // Pushback Approved
           if (moveState === "waiting") {
             setMoveState("pushback");
             if (payload.data && payload.data.destNodeName) {
@@ -269,8 +266,7 @@ export function usePilotController(initialCarId?: string) {
             }
           }
         } else if (payload.status === "REJECTED" || payload.status === "FAIL") {
-          // Rejected or Failed - clear localStorage
-          localStorage.removeItem(LS_PUSHBACK_WAITING);
+          // Rejected or Failed
           if (payload.message.includes("Connect")) setConnState("idle");
           if (payload.message.includes("Disconnect")) setConnState("connected");
           if (moveState === "waiting") setMoveState("stopped");
@@ -321,8 +317,7 @@ export function usePilotController(initialCarId?: string) {
             return;
           }
 
-          // Save to localStorage BEFORE sending request
-          localStorage.setItem(LS_PUSHBACK_WAITING, String(flightInfo.flightId));
+          // Save to localStorage handled by Store Persist automatically when we setState
           setMoveState("waiting");
           addLog("info", "REQ: Requesting Pushback Agreement...");
 
@@ -337,7 +332,6 @@ export function usePilotController(initialCarId?: string) {
           );
 
           if (!sent) {
-            localStorage.removeItem(LS_PUSHBACK_WAITING);
             setMoveState("stopped");
             addLog("error", "SYS: Not Connected");
           }
@@ -418,9 +412,9 @@ export function usePilotController(initialCarId?: string) {
   // 4. Emergency Stop
   const handleEmergencyStop = useCallback(() => {
     // [NEW] 이동 중이었으면 paused, 아니면 stopped
-    setMoveState(prev => 
-      (prev === "pushback" || prev === "moving") ? "paused" : "stopped"
-    );
+    // [NEW] 이동 중이었으면 paused, 아니면 stopped
+    const newState = (moveState === "pushback" || moveState === "moving") ? "paused" : "stopped";
+    setMoveState(newState);
     setIsAutoMode(false);
 
     // [REVERT] Only allow E-Stop if there is an ACTIVE car (moving/connected)
