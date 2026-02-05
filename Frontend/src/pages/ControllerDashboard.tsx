@@ -12,7 +12,7 @@ export function ControllerDashboard() {
     useMapData();
     
     // --- 2. Store & Local State ---
-    const [selectedAircraftId] = useState<string | null>(null);
+    const [selectedAircraftId, setSelectedAircraftId] = useState<string | null>(null);
     
     // --- 3. Handlers ---
     // Map dimension handling moved to widgets/atc-map
@@ -22,18 +22,21 @@ export function ControllerDashboard() {
     // 4. Render
     return (
         <MainLayout
-            leftPanel={
+            leftPanel={<MissionInspector selectedAircraftId={selectedAircraftId} />}
+            rightPanel={
                 <>
                     <ApprovalQueue />
                     <ActivityTimeline />
                 </>
             }
-            rightPanel={<MissionInspector selectedAircraftId={selectedAircraftId} />}
         >
             <div className="absolute inset-0 flex items-center justify-center p-8">
                 {/* Map Container */}
                 <div className="relative w-full h-full border border-white/5 rounded-lg flex items-center justify-center bg-black/20 overflow-hidden">
-                    <AtcMapWidget className="w-full h-full" />
+                    <AtcMapWidget 
+                        className="w-full h-full" 
+                        onAircraftSelect={setSelectedAircraftId}
+                    />
                 </div>
             </div>
         </MainLayout>
