@@ -13,6 +13,9 @@ import { useMissionStore } from "@/entities/mission";
 import { pilotApi } from "../api/pilotApi";
 import { AircraftStatus, Aircraft } from "@/entities/map/model/types";
 
+// --- LocalStorage Keys for State Persistence ---
+const LS_PUSHBACK_WAITING = 'pilot_pushback_waiting';
+
 export function usePilotController(initialCarId?: string) {
   // const { accessToken } = useAuthStore(); // [NEW] - Removed because apiClient handles it
   const ingestAircraft = useAircraftStore((state) => state.ingest);
@@ -52,10 +55,29 @@ export function usePilotController(initialCarId?: string) {
         ? initialCarId || fetchedCarId
         : undefined;
 
-  // --- Initial State Sync (REST API handled by SocketBridge) ---
-
-  // [REMOVED] Redundant SafeSync that causes UI state flicker by overriding WebSocket data with stale REST API data.
-  // We now rely purely on WebSocket (Telemetry + Reply) for real-time updates after initial load.
+  // --- Initial State Sync (Restore moveState from localStorage) ---
+  const activeMissions = useMissionStore((state) => state.activeMissions);
+  
+  useEffect(() => {
+    // Priority 1: Check if there's a RUNNING mission for assigned car
+    const carId = flightInfo?.assignedCarId;
+    if (carId && activeMissions[carId]) {
+      const missionStatus = activeMissions[carId].status;
+      if (missionStatus === 'RUNNING') {
+        console.log('[Restore] Found RUNNING mission -> pushback');
+        setMoveState('pushback');
+        localStorage.removeItem(LS_PUSHBACK_WAITING); // Clear stale flag
+        return;
+      }
+    }
+    
+    // Priority 2: Check localStorage for pending approval
+    const waitingFlightId = localStorage.getItem(LS_PUSHBACK_WAITING);
+    if (waitingFlightId && flightInfo && String(flightInfo.flightId) === waitingFlightId) {
+      console.log('[Restore] Found pending approval in localStorage -> waiting');
+      setMoveState('waiting');
+    }
+  }, [flightInfo, activeMissions]);
 
   // --- Modal State ---
   const [confirmModal, setConfirmModal] = useState<{
@@ -235,7 +257,8 @@ export function usePilotController(initialCarId?: string) {
             // setConnState('disconnected'); // Let telemetry handle it
           }
         } else if (payload.status === "APPROVED") {
-          // Pushback Approved
+          // Pushback Approved - clear localStorage and transition
+          localStorage.removeItem(LS_PUSHBACK_WAITING);
           if (moveState === "waiting") {
             setMoveState("pushback");
             if (payload.data && payload.data.destNodeName) {
@@ -245,7 +268,9 @@ export function usePilotController(initialCarId?: string) {
               );
             }
           }
-        } else if (payload.status === "FAIL") {
+        } else if (payload.status === "REJECTED" || payload.status === "FAIL") {
+          // Rejected or Failed - clear localStorage
+          localStorage.removeItem(LS_PUSHBACK_WAITING);
           if (payload.message.includes("Connect")) setConnState("idle");
           if (payload.message.includes("Disconnect")) setConnState("connected");
           if (moveState === "waiting") setMoveState("stopped");
@@ -265,14 +290,15 @@ export function usePilotController(initialCarId?: string) {
         action: moveState === "stopped" ? "REQUEST PUSHBACK" : "STOP VEHICLE",
         onConfirm: () => {
           if (moveState === "stopped") {
-            setMoveState("waiting");
-            addLog("info", "REQ: Requesting Pushback Agreement...");
-
             if (!flightInfo) {
               addLog("error", "SYS: Flight Info not found");
-              setMoveState("stopped");
               return;
             }
+
+            // Save to localStorage BEFORE sending request
+            localStorage.setItem(LS_PUSHBACK_WAITING, String(flightInfo.flightId));
+            setMoveState("waiting");
+            addLog("info", "REQ: Requesting Pushback Agreement...");
 
             const sent = send(
               "SEND",
@@ -281,11 +307,11 @@ export function usePilotController(initialCarId?: string) {
                 type: "PUSHBACK",
                 flightId: flightInfo.flightId,
                 carId: activeCarId,
-                // reqId removed
               }),
             );
 
             if (!sent) {
+              localStorage.removeItem(LS_PUSHBACK_WAITING);
               setMoveState("stopped");
               addLog("error", "SYS: Not Connected");
             }
@@ -302,7 +328,8 @@ export function usePilotController(initialCarId?: string) {
   // 2. Connection Actions (Connect / Disconnect)
   const connLongPress = useLongPress(
     () => {
-      if (connState === "waiting" || connState === "connecting") return;
+      // Block action if connection is in progress OR waiting for pushback approval
+      if (connState === "waiting" || connState === "connecting" || moveState === "waiting") return;
 
       setConfirmModal({
         open: true,
