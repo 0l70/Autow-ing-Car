@@ -52,21 +52,24 @@ export function PilotCommandBar({ moveState, connState, moveLongPress, connLongP
             <div className="relative group flex-1">
                 <Button
                     {...connLongPress}
+                    disabled={moveState === 'waiting'}
                     className={`w-full h-full text-base font-bold tracking-wider transition-all duration-300 border whitespace-normal leading-tight glass-panel
-                        ${connState === 'connected'
+                        ${connState === 'connected' && moveState !== 'waiting'
                             ? 'bg-cyan-500/10 border-cyan-500 text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.2)]'
-                            : (connState === 'connecting' || connState === 'waiting')
+                            : (connState === 'connecting' || connState === 'waiting' || moveState === 'waiting')
                                 ? 'bg-slate-800 border-slate-600 text-slate-500 cursor-wait'
                                 : 'border-white/10 text-slate-400 hover:bg-white/5 hover:border-cyan-500/50 hover:text-cyan-400'
                         }
+                        disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:border-slate-600 disabled:hover:text-slate-500
                     `}
                 >
-                    {connState === 'connected' ? 'DISCONNECT TUG'
+                    {moveState === 'waiting' ? 'WAITING APPROVAL...'
+                        : connState === 'connected' ? 'DISCONNECT TUG'
                         : connState === 'waiting' ? 'WAITING...'
                             : connState === 'connecting' ? 'CONNECTING...'
                                 : 'CONNECT TUG'}
 
-                    {connState === 'connected' && (
+                    {connState === 'connected' && moveState !== 'waiting' && (
                         <div className="text-[9px] font-normal opacity-50 absolute bottom-2 font-mono w-full text-center tracking-widest">
                             HOLD 1S
                         </div>

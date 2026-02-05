@@ -449,4 +449,11 @@ public class TowingCarService {
                         .message("Towing Connected (Ready for Mission)")
                         .build());
     }
+
+    @Transactional(readOnly = true)
+    public List<TowingCarStatusResponse> getAllTowingCars() {
+        return towingCarDBAdaptor.findAllCars().stream()
+                .map(towingCarMapper::toResponseDTO)
+                .collect(java.util.stream.Collectors.toList());
+    }
 }

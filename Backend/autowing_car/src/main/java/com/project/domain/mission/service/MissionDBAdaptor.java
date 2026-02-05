@@ -49,4 +49,10 @@ public class MissionDBAdaptor {
     public Mission findActiveMissionByCar(com.project.domain.towingcar.entity.TowingCar car) {
         return missionRepository.findActiveMissionByCar(car).orElse(null);
     }
+
+    public List<Mission> findActiveMissions() {
+        return missionRepository.findAllByStatusIn(List.of(
+                com.project.domain.common.MissionStatus.RUNNING,
+                com.project.domain.common.MissionStatus.PAUSED));
+    }
 }
