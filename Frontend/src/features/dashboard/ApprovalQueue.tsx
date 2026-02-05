@@ -15,18 +15,10 @@ import { WS_TOPICS } from "@/shared/realtime/config/topics";
 
 // [FSD] Import Types & Store
 import { useAlertStore } from "./model/useAlertStore";
-import { AdminAlertDto, PathOptionDto } from "./model/alert.types";
+import { AdminAlertDto, PathOptionDto, PathOptionsResponseDto } from "./model/alert.types";
 
 // [NEW] Use Aircraft Store for State Sync
 import { useAircraftStore } from "@/entities/aircraft/model/store";
-
-interface PathOptionsResponseDto {
-  flightId: number;
-  flightNumber: string;
-  departNode: string;
-  destNode: string;
-  pathOptions: PathOptionDto[];
-}
 
 export function ApprovalQueue() {
   const { onMessage, send, isConnected } = useSocket() || {};
@@ -140,6 +132,7 @@ export function ApprovalQueue() {
             departNode: alertItem.currentGate || "",
             destNode: alertItem.activeRunway || "", 
             pathOptions: alertItem.pathOptions,
+            alertId: alertItem.id, // [NEW] Store Alert ID
           });
           
           addLog({
@@ -148,6 +141,7 @@ export function ApprovalQueue() {
             subMessage: `Opening path options...`,
             actor: "ATC-Controller",
           });
+          // NOTE: Do NOT remove alert here. Wait for Route Confirmation.
         } else {
           window.alert("No path options available for this request.");
           return;
@@ -171,10 +165,10 @@ export function ApprovalQueue() {
           subMessage: `Reason: Denied by ATC`,
           actor: "ATC-Controller",
         });
+        
+        // Remove only on rejection
+        removeAlert(alertItem.id);
       }
-
-      // Remove from Store
-      removeAlert(alertItem.id);
     } catch (e) {
       console.error("Decision Failed", e);
       window.alert("Failed to send decision");
@@ -203,6 +197,11 @@ export function ApprovalQueue() {
       subMessage: `${pathOptionsData.departNode} → ${pathOptionsData.destNode} (${selectedPath.edgeIds.length} edges)`,
       actor: "ATC-Controller",
     });
+
+    // [NEW] Remove Alert NOW (after route confirmation)
+    if (pathOptionsData.alertId) {
+        removeAlert(pathOptionsData.alertId);
+    }
 
     setPathOptionsData(null);
     setSelectedPath(null);
@@ -315,7 +314,9 @@ export function ApprovalQueue() {
           </div>
         )}
 
-        {alerts.map((alert) => {
+        {alerts
+        .filter((alert) => !pathOptionsData || alert.id !== pathOptionsData.alertId)
+        .map((alert) => {
           const isMission = alert.type === "MISSION_REQUEST";
           
           const borderClass = isMission
@@ -431,78 +432,7 @@ export function ApprovalQueue() {
         })}
       </div>
 
-      {/* DEBUG: Temporary Testing Controls */}
-      {import.meta.env.DEV && (
-        <div className="p-2 border-t border-white/10 flex gap-2 justify-center opacity-50 hover:opacity-100 transition-opacity flex-wrap">
-          <button
-            onClick={() =>
-              addAlert(
-                {
-                  id: Date.now().toString(),
-                  type: "MANUAL_CONTROL",
-                  message: "Pilot requested MANUAL CONTROL",
-                  timestamp: Date.now(),
-                }
-              )
-            }
-            className="text-[10px] bg-accent-orange/20 text-accent-orange px-2 py-1 rounded"
-          >
-            [TEST] Manual
-          </button>
-          <button
-            onClick={() =>
-              addAlert(
-                {
-                  id: Date.now().toString(),
-                  type: "EMERGENCY_STOP",
-                  message: "EMERGENCY STOP TRIGGERED",
-                  timestamp: Date.now(),
-                }
-              )
-            }
-            className="text-[10px] bg-red-500/20 text-red-500 px-2 py-1 rounded"
-          >
-            [TEST] Emergency
-          </button>
-          <button
-            onClick={() =>
-              addAlert(
-                {
-                  id: Date.now().toString(),
-                  type: "MISSION_REQUEST",
-                  flightNumber: "KE123",
-                  currentGate: "T1-105",
-                  activeRunway: "RUNWAY_34L",
-                  flightId: 101,
-                  timestamp: Date.now(),
-                }
-              )
-            }
-            className="text-[10px] bg-accent-cyan/20 text-accent-cyan px-2 py-1 rounded"
-          >
-            [TEST] Request
-          </button>
 
-          <button
-            onClick={() =>
-              setPathOptionsData({
-                flightId: 101,
-                flightNumber: "KE123",
-                departNode: "T1-105",
-                destNode: "RUNWAY_34L",
-                pathOptions: [
-                  { optionId: 1, label: "최적 경로", edgeIds: ["E1", "E2", "E3"] },
-                  { optionId: 2, label: "대안 경로 1", edgeIds: ["E1", "E4", "E5", "E3"] },
-                  { optionId: 3, label: "대안 경로 2", edgeIds: ["E6", "E7", "E8", "E9", "E3"] },
-                ],
-              })
-            }
-            className="text-[10px] bg-purple-500/20 text-purple-500 px-2 py-1 rounded"
-          >
-            [TEST] PathOptions
-          </button>
-        </div>
-      )}
     </div>
   );
 }

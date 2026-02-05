@@ -22,3 +22,12 @@ export interface AdminAlertDto {
   activeRunway?: string;
   pathOptions?: PathOptionDto[];
 }
+
+export interface PathOptionsResponseDto {
+  flightId: number;
+  flightNumber: string;
+  departNode: string;
+  destNode: string;
+  pathOptions: PathOptionDto[];
+  alertId: string;
+}
