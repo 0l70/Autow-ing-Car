@@ -105,18 +105,13 @@ public class MissionService {
         notifyMissionUpdate(savedMission);
 
         // [New Logic] Path Generation & MQTT
-        List<Edge> path = new ArrayList<>();
-        for (String edgeId : decision.getSelectedEdgeIds()) {
-            path.add(mapDBAdaptor.getEdgeByCode(edgeId));
-        }
-
-        List<Map<String, Object>> pathPayload = mapService.convertPathToPayload(path);
-
-        // [Standardized Payload]
+        // Payload simplification: Start, End, Edges, FinalAction
         Map<String, Object> data = new HashMap<>();
         data.put("carId", car.getCode());
-        data.put("waypoints", pathPayload);
-        data.put("finalAction", "STOP");
+        data.put("startNode", mission.getDepartNode());
+        data.put("endNode", mission.getDestNode());
+        data.put("edgeIds", decision.getSelectedEdgeIds());
+        data.put("finalAction", "UNDOCK"); // Pushback complete -> Undock
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("msgId", UUID.randomUUID().toString());
