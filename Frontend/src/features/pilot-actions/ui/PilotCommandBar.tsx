@@ -19,7 +19,7 @@ export function PilotCommandBar({ moveState, connState, moveLongPress, connLongP
             <div className="relative group flex-1">
                 <Button
                     {...moveLongPress}
-                    disabled={connState !== 'connected' || moveState === 'waiting'}
+                    disabled={connState !== 'connected' || moveState === 'waiting' || moveState === 'pushback' || moveState === 'moving'}
                     className={`w-full h-full text-base font-bold tracking-wider transition-all duration-300 border whitespace-normal leading-tight glass-panel
                         ${moveState === 'moving' || moveState === 'pushback'
                             ? 'bg-amber-500/10 border-amber-500 text-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.2)]'
@@ -27,14 +27,14 @@ export function PilotCommandBar({ moveState, connState, moveLongPress, connLongP
                                 ? 'bg-slate-800 border-slate-600 text-slate-500 cursor-wait'
                                 : 'border-white/10 text-slate-400 hover:bg-white/5 hover:border-cyan-500/50 hover:text-cyan-400'
                         }
-                        disabled:opacity-30 disabled:cursor-not-allowed
+                        disabled:cursor-not-allowed
                     `}
                 >
                     {moveState === 'stopped' ? 'REQUEST PUSHBACK' 
                         : moveState === 'waiting' ? 'WAITING...' 
-                        : 'STOP'}
+                        : 'MOVING'}
 
-                    {moveState !== 'waiting' && (
+                    {moveState === 'stopped' && connState === 'connected' && (
                         <div className="text-[9px] font-normal opacity-50 absolute bottom-2 font-mono w-full text-center tracking-widest">
                             HOLD 1S
                         </div>
@@ -52,11 +52,11 @@ export function PilotCommandBar({ moveState, connState, moveLongPress, connLongP
             <div className="relative group flex-1">
                 <Button
                     {...connLongPress}
-                    disabled={moveState === 'waiting'}
+                    disabled={moveState === 'waiting' || moveState === 'pushback' || moveState === 'moving'}
                     className={`w-full h-full text-base font-bold tracking-wider transition-all duration-300 border whitespace-normal leading-tight glass-panel
-                        ${connState === 'connected' && moveState !== 'waiting'
+                        ${connState === 'connected' && moveState === 'stopped'
                             ? 'bg-cyan-500/10 border-cyan-500 text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.2)]'
-                            : (connState === 'connecting' || connState === 'waiting' || moveState === 'waiting')
+                            : (connState === 'connecting' || connState === 'waiting' || moveState === 'waiting' || moveState === 'pushback' || moveState === 'moving')
                                 ? 'bg-slate-800 border-slate-600 text-slate-500 cursor-wait'
                                 : 'border-white/10 text-slate-400 hover:bg-white/5 hover:border-cyan-500/50 hover:text-cyan-400'
                         }
@@ -64,12 +64,13 @@ export function PilotCommandBar({ moveState, connState, moveLongPress, connLongP
                     `}
                 >
                     {moveState === 'waiting' ? 'WAITING APPROVAL...'
+                        : (moveState === 'pushback' || moveState === 'moving') ? 'HAVE A SAFE FLIGHT'
                         : connState === 'connected' ? 'DISCONNECT TUG'
                         : connState === 'waiting' ? 'WAITING...'
                             : connState === 'connecting' ? 'CONNECTING...'
                                 : 'CONNECT TUG'}
 
-                    {connState === 'connected' && moveState !== 'waiting' && (
+                    {connState === 'connected' && moveState === 'stopped' && (
                         <div className="text-[9px] font-normal opacity-50 absolute bottom-2 font-mono w-full text-center tracking-widest">
                             HOLD 1S
                         </div>

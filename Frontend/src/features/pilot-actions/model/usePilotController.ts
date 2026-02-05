@@ -282,42 +282,40 @@ export function usePilotController(initialCarId?: string) {
 
   // --- Actions ---
 
-  // 1. Movement Actions (Pushback / Stop)
+  // 1. Movement Actions (Pushback Request Only - Stop is via Emergency Stop)
   const moveLongPress = useLongPress(
     () => {
+      // Only allow pushback request when stopped
+      if (moveState !== "stopped") return;
+
       setConfirmModal({
         open: true,
-        action: moveState === "stopped" ? "REQUEST PUSHBACK" : "STOP VEHICLE",
+        action: "REQUEST PUSHBACK",
         onConfirm: () => {
-          if (moveState === "stopped") {
-            if (!flightInfo) {
-              addLog("error", "SYS: Flight Info not found");
-              return;
-            }
+          if (!flightInfo) {
+            addLog("error", "SYS: Flight Info not found");
+            return;
+          }
 
-            // Save to localStorage BEFORE sending request
-            localStorage.setItem(LS_PUSHBACK_WAITING, String(flightInfo.flightId));
-            setMoveState("waiting");
-            addLog("info", "REQ: Requesting Pushback Agreement...");
+          // Save to localStorage BEFORE sending request
+          localStorage.setItem(LS_PUSHBACK_WAITING, String(flightInfo.flightId));
+          setMoveState("waiting");
+          addLog("info", "REQ: Requesting Pushback Agreement...");
 
-            const sent = send(
-              "SEND",
-              { destination: "/app/car/move" },
-              JSON.stringify({
-                type: "PUSHBACK",
-                flightId: flightInfo.flightId,
-                carId: activeCarId,
-              }),
-            );
+          const sent = send(
+            "SEND",
+            { destination: "/app/car/move" },
+            JSON.stringify({
+              type: "PUSHBACK",
+              flightId: flightInfo.flightId,
+              carId: activeCarId,
+            }),
+          );
 
-            if (!sent) {
-              localStorage.removeItem(LS_PUSHBACK_WAITING);
-              setMoveState("stopped");
-              addLog("error", "SYS: Not Connected");
-            }
-          } else {
+          if (!sent) {
+            localStorage.removeItem(LS_PUSHBACK_WAITING);
             setMoveState("stopped");
-            addLog("info", "CMD: Vehicle Stopped");
+            addLog("error", "SYS: Not Connected");
           }
         },
       });
@@ -328,8 +326,9 @@ export function usePilotController(initialCarId?: string) {
   // 2. Connection Actions (Connect / Disconnect)
   const connLongPress = useLongPress(
     () => {
-      // Block action if connection is in progress OR waiting for pushback approval
-      if (connState === "waiting" || connState === "connecting" || moveState === "waiting") return;
+      // Block action if connection is in progress, waiting for approval, OR vehicle is moving
+      if (connState === "waiting" || connState === "connecting" || 
+          moveState === "waiting" || moveState === "pushback" || moveState === "moving") return;
 
       setConfirmModal({
         open: true,
