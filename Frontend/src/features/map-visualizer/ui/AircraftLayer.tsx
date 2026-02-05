@@ -27,11 +27,16 @@ const CLICK_RADIUS_SQ = 400; // 20px * 20px
 const ANIMATION_DURATION_MS = 300;
 const LABEL_OFFSET_Y = 35;
 
-export function AircraftLayer({ meta, mapWidth, mapHeight, pixelRatio = 1, onAircraftClick }: AircraftLayerProps) {
-    const aircraftList = useAircraftStore((state) => state.aircrafts);
+export function AircraftLayer({ meta, mapWidth, mapHeight, pixelRatio = 1, data, onAircraftClick }: AircraftLayerProps) {
+    const storeAircraftList = useAircraftStore((state) => state.aircrafts);
+    
+    // [Update] Data Injection Logic
+    // If external 'data' prop is provided (e.g., filtered list for Pilot), use it.
+    // Otherwise, fallback to the global store (for ATC).
+    const displayData = data || storeAircraftList;
     
     // Apply Smooth Animation (Interpolation)
-    const animatedList = useSmoothAnimation(aircraftList, ANIMATION_DURATION_MS);
+    const animatedList = useSmoothAnimation(displayData, ANIMATION_DURATION_MS);
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -159,5 +164,3 @@ export function AircraftLayer({ meta, mapWidth, mapHeight, pixelRatio = 1, onAir
         />
     );
 }
-
-
