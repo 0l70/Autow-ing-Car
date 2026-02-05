@@ -7,6 +7,8 @@ import { SocketProvider } from "@/shared/realtime/context/SocketProvider";
 import { RootLayout } from "@/shared/ui/layout/RootLayout";
 import { SocketBridge } from "@/app/providers/SocketBridge";
 
+
+
 function App() {
   const { isAuthenticated, user } = useAuthStore();
 

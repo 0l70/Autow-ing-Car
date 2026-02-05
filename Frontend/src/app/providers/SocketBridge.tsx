@@ -1,4 +1,5 @@
 import { useEffect, useCallback } from 'react';
+
 import { useSocket, WS_TOPICS } from '@/shared/realtime';
 import { useAircraftStore } from '@/entities/aircraft';
 import { useMissionStore } from '@/entities/mission';
@@ -135,7 +136,7 @@ export function SocketBridge() {
             }
         };
         fetchInitialMap();
-    }, [loadGraph, setCorners, setMapDimensions]);
+    }, [loadGraph, setCorners, setMapDimensions, setMapMeta]);
 
     useEffect(() => {
         if (!socket) return;
