@@ -295,7 +295,8 @@ public class MapService {
                 if (usageManager.isEdgeLocked(edge.getId()) || usageManager.isNodeLocked(neighbor.getId()))
                     continue;
 
-                double newG = gScore.getOrDefault(currentNode.getId(), Double.MAX_VALUE); // + edge.getTravelTime();
+                double newG = gScore.getOrDefault(currentNode.getId(), Double.MAX_VALUE)
+                        + (edge.getTravelTime() != null ? edge.getTravelTime() : edge.getDistance() / 10.0);
                 if (newG < gScore.getOrDefault(neighbor.getId(), Double.MAX_VALUE)) {
                     cameFrom.put(neighbor.getId(), edge);
                     gScore.put(neighbor.getId(), newG);
