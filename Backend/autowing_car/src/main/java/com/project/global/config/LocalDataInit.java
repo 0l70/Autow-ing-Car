@@ -218,7 +218,7 @@ public class LocalDataInit implements CommandLineRunner {
                 .assignedTowingCar(car) // Initial assignment
                 .pilot(pilot)
                 .aircraft(aircraft)
-                .nodeCode("G01")
+                .nodeCode("n2")
                 .departureDate(LocalDate.now())
                 .scheduledTime(LocalDateTime.now().plusHours(2))
                 .build();
