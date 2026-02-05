@@ -28,6 +28,9 @@ WORKDIR /app
 
 COPY --from=builder /app/build/libs/*.jar app.jar
 
+# 맵 데이터 JSON 파일 복사
+# COPY --from=builder /app/embedded/PathPlanner/maps /app/data/map
+
 EXPOSE 8080
 
 ENTRYPOINT ["sh", "-c", "java -jar -Dspring.profiles.active=${SPRING_PROFILES_ACTIVE} app.jar"]

@@ -26,6 +26,7 @@ public class MapResponse {
         private Double x;
         private Double y;
         private String status;
+        private String type;
     }
 
     @Getter

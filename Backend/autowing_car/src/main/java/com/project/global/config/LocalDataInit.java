@@ -100,15 +100,9 @@ public class LocalDataInit implements CommandLineRunner {
         Aircraft a320 = initAircraft("HL8888", "A320", 34.0, 37.0);
 
         // 3. 지도 데이터 초기화 (PathPlanner 기반 노드 및 간선 생성)
-        Node s01 = createNode("S01", -1.22, -0.13); // 시작 노드
-        Node g01 = createNode("G01", 0.33, -0.28); // 중간 게이트 노드
-        Node r02 = createNode("R01", 4.03, -0.08); // 활주로 인근 노드
-
-        // [Fix] Add missing nodes for path_S02_to_G02
-        Node s02 = createNode("S02", -0.02, -0.88);
-        Node g02 = createNode("G02", 4.03, -0.08);
-
-        nodeRepository.saveAll(List.of(s01, g01, r02, s02, g02));
+        // [Refactor] Load nodes/edges via MapLoadingService from resources
+        // Hardcoded node creation removed in favor of JSON files
+        // loadPaths(); // Moved to be called here or keeps its place below
 
         // [Refactored] Path Loading Logic using MapLoadingService
         loadPaths();

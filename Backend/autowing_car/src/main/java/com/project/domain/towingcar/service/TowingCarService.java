@@ -55,6 +55,7 @@ public class TowingCarService {
     private final TowingCarMapper towingCarMapper; // [NEW]
 
     // [Restored Configuration Fields]
+    private final String START_NODE = "n1";
     private boolean isAutoConnectEnabled = true;
     private boolean isAutoDisconnectEnabled = true;
     private static final double ARRIVAL_THRESHOLD = 2.0;
@@ -109,9 +110,7 @@ public class TowingCarService {
         final String nodeCode = flight.getNodeCode(); // Target Gate
 
         // [New Logic] Calculate Path on Server
-        Node carNode = mapService.findNearestNode(assignedCar.getLastPosX(), assignedCar.getLastPosY());
-        if (carNode == null)
-            carNode = mapDBAdaptor.getNodeByCode("base_node"); // Fallback
+        Node carNode = mapDBAdaptor.getNodeByCode(START_NODE); // Default Origin
 
         Node gateNode = mapDBAdaptor.getNodeByCode(nodeCode);
 

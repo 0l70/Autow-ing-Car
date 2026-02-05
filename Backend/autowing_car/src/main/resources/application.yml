@@ -20,6 +20,9 @@ app:
     mock: false
   map:
     locations:
-      - "file:/data/maps/path_*.json"
-      - "classpath:/maps/path_*.json"
-      - "classpath*:/maps/path_*.json"
+      - "file:/data/maps/node_*.json"
+      - "file:/data/maps/edge_*.json"
+      - "classpath:/maps/node_*.json"
+      - "classpath:/maps/edge_*.json"
+      - "classpath*:/maps/node_*.json"
+      - "classpath*:/maps/edge_*.json"

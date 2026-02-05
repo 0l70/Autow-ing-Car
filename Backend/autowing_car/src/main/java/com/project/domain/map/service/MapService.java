@@ -351,6 +351,7 @@ public class MapService {
                         .x(n.getPosX())
                         .y(n.getPosY())
                         .status(n.getStatus().name())
+                        .type(n.getNodeType().name())
                         .build()).toList())
                 .edges(dbEdges.stream().map(e -> {
                     List<MapResponse.PointDto> waypoints = new java.util.ArrayList<>();
