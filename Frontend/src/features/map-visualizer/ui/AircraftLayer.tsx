@@ -39,9 +39,15 @@ export function AircraftLayer({ meta, mapWidth, mapHeight, pixelRatio = 1, onAir
         if (!onAircraftClick || !canvasRef.current || !meta) return;
         
         const rect = canvasRef.current.getBoundingClientRect();
+        
+        // [Fix] Calculate Scale Factor (Logical Size / Visual Size)
+        // usage: visual_pixel * scale = logical_pixel
+        const scaleX = mapWidth / rect.width;
+        const scaleY = mapHeight / rect.height;
+
         // Mouse coordinates relative to logical size (CSS size)
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
+        const mouseX = (e.clientX - rect.left) * scaleX;
+        const mouseY = (e.clientY - rect.top) * scaleY;
 
         for (const ac of animatedList) {
              const pixel = worldToPixel(ac.position, meta, mapHeight);
@@ -148,7 +154,7 @@ export function AircraftLayer({ meta, mapWidth, mapHeight, pixelRatio = 1, onAir
             // But simple way is:
             width={mapWidth * pixelRatio} 
             height={mapHeight * pixelRatio}
-            className="absolute inset-0 z-20 cursor-pointer pointer-events-auto"
+            className="absolute inset-0 z-50 cursor-pointer pointer-events-auto"
             onClick={handleClick}
         />
     );
