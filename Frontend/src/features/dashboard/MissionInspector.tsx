@@ -76,38 +76,177 @@ export function MissionInspector({ selectedAircraftId }: MissionInspectorProps) 
                 </div>
             </div>
 
-            {/* Body: Movement Monitoring (Secondary) */}
-            <div className="grid grid-cols-2 gap-3 mt-auto">
-                {/* SPEED */}
-                <div className="relative p-3 rounded-xl border border-gray-600/50 bg-[hsl(var(--bg-tertiary)_/_0.3)] flex flex-col justify-between h-24">
-                    <div className="flex items-center gap-2 text-gray-500">
-                        <Gauge className="w-3 h-3" />
-                        <span className="text-[10px] font-bold tracking-wider uppercase">GS (kts)</span>
+            {/* Body: Mission Context & Diagnostics (V5 - Safe Layout) */}
+            <div className="flex-1 min-h-[140px] flex flex-col gap-4">
+                <div className="flex-1 glass-panel p-5 flex flex-col justify-between bg-white/5 border-white/5">
+                    {/* Top: Compact Diagnostics Row */}
+                    <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                        {/* Battery Compact */}
+                        <div className="flex items-center gap-3">
+                             <div className="flex items-center gap-1.5 text-xs text-gray-400 font-bold">
+                                <Battery className="w-3 h-3" />
+                                <span>BATTERY</span>
+                             </div>
+                             <div className="flex items-center gap-2">
+                                <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                                    <div 
+                                        className={`h-full ${battery < 20 ? 'bg-red-500' : 'bg-emerald-500'}`} 
+                                        style={{ width: `${battery}%` }} 
+                                    />
+                                </div>
+                                <span className={`text-xs font-mono font-bold ${battery < 20 ? 'text-red-500' : 'text-emerald-400'}`}>
+                                    {battery}%
+                                </span>
+                             </div>
+                        </div>
+
+                        {/* Signal Compact */}
+                        <div className="flex items-center gap-2">
+                            <Signal className="w-3 h-3 text-gray-500" />
+                            <div className="flex gap-0.5 items-end h-3">
+                                {[1, 2, 3, 4, 5].map((bar) => (
+                                    <div 
+                                        key={bar} 
+                                        className={`w-1 rounded-sm ${bar <= 4 ? 'bg-cyan-500' : 'bg-gray-800'}`}
+                                        style={{ height: `${bar * 20}%` }}
+                                    />
+                                ))}
+                            </div>
+                        </div>
                     </div>
-                    <div className="text-3xl font-mono font-bold text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.2)] mt-auto">
-                        {(speed * 1.94384).toFixed(0)} 
+
+                    {/* Bottom: Linear Mission Progress */}
+                    <div className="mt-2">
+                         <div className="flex justify-between text-[10px] text-gray-500 font-bold mb-3 px-1">
+                            {["READY", "LINK", "TOW", "RTB"].map((step, idx) => {
+                                // Simple mapping for demo
+                                const currentStepIdx = 
+                                    (status === 'IDLE' || status === 'STOP') ? 0 :
+                                    (status === 'MOVING_TO_LOAD' || status === 'LOADING') ? 1 :
+                                    (status === 'TOWING' || status === 'UNLOADING') ? 2 :
+                                    (status === 'MOVING_TO_IDLE') ? 3 : 0;
+                                
+                                const isActive = idx === currentStepIdx;
+                                const isPast = idx < currentStepIdx;
+
+                                return (
+                                    <span key={step} className={`${isActive ? 'text-accent-orange' : isPast ? 'text-white' : ''}`}>
+                                        {step}
+                                    </span>
+                                );
+                            })}
+                        </div>
+                        
+                        {/* Progress Line */}
+                        <div className="relative h-1 bg-gray-800 rounded-full">
+                            {/* Fill */}
+                            <div 
+                                className="absolute left-0 top-0 bottom-0 bg-accent-orange transition-all duration-500"
+                                style={{ 
+                                    width: `${((
+                                        (status === 'IDLE' || status === 'STOP') ? 0 :
+                                        (status === 'MOVING_TO_LOAD' || status === 'LOADING') ? 1 :
+                                        (status === 'TOWING' || status === 'UNLOADING') ? 2 :
+                                        (status === 'MOVING_TO_IDLE') ? 3 : 0
+                                    ) / 3) * 100}%` 
+                                }} 
+                            />
+                            
+                            {/* Dots */}
+                            {[0, 1, 2, 3].map((step) => {
+                                const currentStepIdx = 
+                                    (status === 'IDLE' || status === 'STOP') ? 0 :
+                                    (status === 'MOVING_TO_LOAD' || status === 'LOADING') ? 1 :
+                                    (status === 'TOWING' || status === 'UNLOADING') ? 2 :
+                                    (status === 'MOVING_TO_IDLE') ? 3 : 0;
+                                
+                                const isActive = step === currentStepIdx;
+                                const isPast = step < currentStepIdx;
+
+                                return (
+                                    <div 
+                                        key={step}
+                                        className={`absolute top-1/2 -translate-y-1/2 w-2 h-2 rounded-full border border-gray-900 transition-all ${
+                                            isActive ? 'bg-white ring-2 ring-accent-orange scale-125' : 
+                                            isPast ? 'bg-accent-orange' : 'bg-gray-700'
+                                        }`}
+                                        style={{ left: `${(step / 3) * 100}%` }}
+                                    />
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Footer: Telemetry Grid (Dense & Technical) */}
+            <div className="grid grid-cols-2 grid-rows-[1fr_auto] gap-4 shrink-0 h-48">
+                {/* SPEED */}
+                <div className="relative p-5 rounded-xl border border-gray-600/50 bg-[hsl(var(--bg-tertiary)_/_0.3)] flex flex-col justify-between h-full group hover:border-white/20 transition-colors">
+                    <div className="flex items-center justify-between text-gray-500">
+                        <div className="flex items-center gap-2">
+                            <Gauge className="w-4 h-4" />
+                            <span className="text-xs font-bold tracking-wider uppercase">GS (kts)</span>
+                        </div>
+                        {isLoaded && <span className="text-[10px] font-mono text-accent-cyan">AUTO</span>}
+                    </div>
+                    
+                    <div className="flex flex-col mt-auto">
+                         <div className="flex items-baseline gap-2">
+                             <span className="text-4xl font-mono font-bold text-white tracking-tighter drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]">
+                                {(speed * 1.94384).toFixed(0)}
+                             </span>
+                             <span className="text-xs font-mono text-gray-500 mb-1">
+                                / TGT {speed > 0 ? "15" : "0"}
+                             </span>
+                         </div>
+                         {/* Visual Bar for Speed */}
+                         <div className="w-full h-1 bg-gray-700 mt-2 rounded-full overflow-hidden">
+                            <div className="h-full bg-white w-0 transition-all duration-300" style={{ width: `${Math.min((speed * 1.94384) / 20 * 100, 100)}%` }} />
+                         </div>
                     </div>
                 </div>
 
                 {/* HEADING */}
-                <div className="relative p-3 rounded-xl border border-gray-600/50 bg-[hsl(var(--bg-tertiary)_/_0.3)] flex flex-col justify-between h-24">
+                <div className="relative p-5 rounded-xl border border-gray-600/50 bg-[hsl(var(--bg-tertiary)_/_0.3)] flex flex-col justify-between h-full group hover:border-white/20 transition-colors">
                     <div className="flex items-center gap-2 text-gray-500">
-                        <Navigation className="w-3 h-3" />
-                        <span className="text-[10px] font-bold tracking-wider uppercase">HDG</span>
+                        <Navigation className="w-4 h-4" />
+                        <span className="text-xs font-bold tracking-wider uppercase">HDG</span>
                     </div>
-                    <div className="text-3xl font-mono font-bold text-accent-cyan drop-shadow-[0_0_8px_rgba(0,255,255,0.4)] mt-auto">
-                        {normalizedHeading.toString().padStart(3, '0')}°
+
+                    <div className="flex flex-col mt-auto">
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-4xl font-mono font-bold text-accent-cyan tracking-tighter drop-shadow-[0_0_8px_rgba(0,255,255,0.4)]">
+                                {normalizedHeading.toString().padStart(3, '0')}°
+                            </span>
+                            <span className="text-xs font-mono text-gray-500 mb-1">
+                                MAG
+                            </span>
+                        </div>
+                        {/* Visual Compass Strip */}
+                        <div className="w-full h-1.5 bg-gray-800 mt-2 rounded-sm relative overflow-hidden flex items-center justify-center">
+                            <div className="w-0.5 h-full bg-accent-cyan" /> {/* Center Marker */}
+                            {/* Moving Strip (Mock) */}
+                            <div 
+                                className="absolute top-0 bottom-0 w-full flex justify-between px-1 opacity-30"
+                                style={{ transform: `translateX(${-((normalizedHeading % 90) / 90) * 10}px)` }}
+                            >
+                                <div className="w-[1px] h-full bg-white" />
+                                <div className="w-[1px] h-full bg-white" />
+                                <div className="w-[1px] h-full bg-white" />
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                {/* LOCATION (Consolidated) */}
-                <div className="col-span-2 relative p-3 rounded-xl border border-gray-600/30 bg-[hsl(var(--bg-tertiary)_/_0.2)] flex items-center justify-between h-16">
-                    <div className="flex items-center gap-2 text-gray-600">
-                        <MapPin className="w-3 h-3 opacity-50" />
-                        <span className="text-[10px] font-bold tracking-wider uppercase">LOCATION</span>
+                {/* LOCATION */}
+                <div className="col-span-2 relative p-4 rounded-xl border border-gray-600/30 bg-[hsl(var(--bg-tertiary)_/_0.2)] flex items-center justify-between h-16">
+                    <div className="flex items-center gap-3 text-gray-600">
+                        <MapPin className="w-4 h-4 opacity-50" />
+                        <span className="text-xs font-bold tracking-wider uppercase">LOCATION</span>
                     </div>
                     <div className="text-lg font-mono text-white/90 font-bold tracking-tight">
-                        X: {position.x.toFixed(0)} <span className="text-gray-600 mx-2">|</span> Y: {position.y.toFixed(0)}
+                        X: {position.x.toFixed(0)} <span className="text-gray-600 mx-3">|</span> Y: {position.y.toFixed(0)}
                     </div>
                 </div>
             </div>
