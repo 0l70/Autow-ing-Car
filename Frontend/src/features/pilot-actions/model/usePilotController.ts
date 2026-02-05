@@ -9,6 +9,7 @@ import {
 
 import { useFlightWelcome } from "./useFlightWelcome";
 import { useAircraftStore } from "@/entities/aircraft";
+import { useMissionStore } from "@/entities/mission";
 import { pilotApi } from "../api/pilotApi";
 import { AircraftStatus, Aircraft } from "@/entities/map/model/types";
 
@@ -21,7 +22,8 @@ export function usePilotController(initialCarId?: string) {
   const [moveState, setMoveState] = useState<MoveState>("stopped");
   const [connState, setConnState] = useState<ConnectionState>("idle");
   const [isAutoMode, setIsAutoMode] = useState(false);
-  const [flightInfo, setFlightInfo] = useState<FlightInfo | null>(null);
+  const flightInfo = useMissionStore((state) => state.flightInfo);
+  const setFlightInfo = useMissionStore((state) => state.setFlightInfo);
   const [fetchedCarId, setFetchedCarId] = useState<string | undefined>(
     undefined,
   );
@@ -50,50 +52,7 @@ export function usePilotController(initialCarId?: string) {
         ? initialCarId || fetchedCarId
         : undefined;
 
-  // --- Initial State Sync (REST API) ---
-  useEffect(() => {
-    if (hasFetchedStatus.current) return;
-
-    const syncStatus = async () => {
-      try {
-        // Fetch Current Status from Backend (Token handled by apiClient)
-        const statusData = await pilotApi.getTowingCarStatus();
-        console.log("[StateSync] Fetched Initial Status:", statusData);
-
-        if (statusData.code && statusData.status !== "NONE") {
-          const status = statusData.status as AircraftStatus;
-          setFetchedCarId(statusData.code); // [NEW] Store car ID from API
-          ingestAircraft({
-            id: statusData.code,
-            callsign: statusData.code,
-            type: "TUG",
-            status: status,
-            position: {
-              x: statusData.posX,
-              y: statusData.posY,
-              r: statusData.heading,
-            },
-            battery: statusData.battery,
-            speed: statusData.velocity,
-            isLoaded: status === "TOWING" || status === "UNLOADING",
-          } as Aircraft);
-
-          // [FIX] Map fetched status to connState immediately to prevent "Connect Tug" flicker
-          if (status === "TOWING") {
-            setConnState("connected");
-          } else if (status === "LOADING" || status === "MOVING_TO_LOAD") {
-            setConnState("connecting");
-          }
-
-          hasFetchedStatus.current = true;
-        }
-      } catch (err) {
-        console.warn("[StateSync] Failed to sync initial status:", err);
-      }
-    };
-
-    syncStatus();
-  }, [ingestAircraft]);
+  // --- Initial State Sync (REST API handled by SocketBridge) ---
 
   // [REMOVED] Redundant SafeSync that causes UI state flicker by overriding WebSocket data with stale REST API data.
   // We now rely purely on WebSocket (Telemetry + Reply) for real-time updates after initial load.
@@ -184,20 +143,13 @@ export function usePilotController(initialCarId?: string) {
       myCar.status === "MOVING_TO_IDLE" ||
       myCar.status === "UNLOADING"
     ) {
-      // Only reset to DISCONNECTED if we were currently in a connected-related state
+      // Reset to idle if we were in any active connection state
       if (
         connState === "connected" ||
         connState === "connecting" ||
         connState === "waiting"
       ) {
-        // [Race Condition Fix] If 'waiting' (Just clicked Connect), and status is IDLE...
-        // Ideally, backend receives request and sets MOVING_TO_LOAD.
-        // If we receive IDLE *after* clicking (delayed packet), we might flicker.
-        // But usually, receiving IDLE means "Job Done" or "Reset".
-        // We will trust the backend status for now.
-
         console.log(`[Sync] Status: ${myCar.status} -> UI: idle`);
-        // Only log if we were connected
         if (connState === "connected") addLog("info", "Tug disconnected.");
         setConnState("idle");
       }

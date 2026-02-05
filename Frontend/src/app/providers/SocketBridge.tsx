@@ -185,8 +185,7 @@ export function SocketBridge() {
 
                 // 3.4. Load Pilot Info if applicable
                 if (isPilot && pilotData) {
-                    // Note: Here we update Pilot-specific store or state if needed
-                    // For now, we just mark it as loaded for the gate.
+                    useMissionStore.getState().setFlightInfo(pilotData);
                     setPilotInfoLoaded(true);
                 }
 
@@ -208,12 +207,8 @@ export function SocketBridge() {
         };
 
         syncInitialData();
-    }, [
-        user, loadGraph, setCorners, setMapDimensions, setMapMeta, 
-        setAllMissions, setAllAircrafts, 
-        setMapLoaded, setMissionLoaded, setAircraftLoaded, setPilotInfoLoaded, setSyncComplete,
-        processRealtimeMessage
-    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
 
     // 4. WebSocket Subscription Management
@@ -223,7 +218,13 @@ export function SocketBridge() {
         
         if (socket.isConnected) {
             console.log("[SocketBridge] 📡 Subscribing to topics...");
-            socket.send("SUBSCRIBE", { id: "sub-monitoring-all", destination: WS_TOPICS.MONITORING('*') });
+            
+            // Pilot already subscribes to individual car via usePilotSocket, skip wildcard
+            const isPilot = user?.role === 'PILOT';
+            if (!isPilot) {
+                socket.send("SUBSCRIBE", { id: "sub-monitoring-all", destination: WS_TOPICS.MONITORING('*') });
+            }
+            
             socket.send("SUBSCRIBE", { id: "sub-mission-updates", destination: WS_TOPICS.MISSION_UPDATES });
             socket.send("SUBSCRIBE", { id: "sub-map-info-global", destination: WS_TOPICS.MAP_INFO });
             socket.send("SUBSCRIBE", { id: "sub-app-responses-global", destination: WS_TOPICS.APP_RESPONSES });
@@ -234,7 +235,7 @@ export function SocketBridge() {
             console.log("[SocketBridge] 🔌 Cleaning up subscriptions...");
             unsubscribe();
         };
-    }, [socket, handleMessage]);
+    }, [socket, handleMessage, user?.role]);
 
     return null;
 }

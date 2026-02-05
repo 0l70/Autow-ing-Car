@@ -141,5 +141,9 @@ public class MissionService {
         missionWebSocketService.broadcastMissionUpdate(response);
     }
 
-    // sendMqttAfterCommit removed
+    public List<MissionResponseDto> getAllActiveMissions() {
+        return missionDBAdaptor.findActiveMissions().stream()
+                .map(MissionResponseDto::from)
+                .collect(java.util.stream.Collectors.toList());
+    }
 }
