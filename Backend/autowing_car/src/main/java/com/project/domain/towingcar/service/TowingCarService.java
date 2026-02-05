@@ -56,6 +56,7 @@ public class TowingCarService {
 
     // [Restored Configuration Fields]
     private final String START_NODE = "n1";
+    private final String FINISH_NODE = "n8";
     private boolean isAutoConnectEnabled = true;
     private boolean isAutoDisconnectEnabled = true;
     private static final double ARRIVAL_THRESHOLD = 2.0;
@@ -215,7 +216,7 @@ public class TowingCarService {
         // Node baseNode = mapService.findNearestNode(car.getLastPosX(),
         // car.getLastPosY()); // 임시
 
-        Node baseNode = mapDBAdaptor.getNodeByCode("S01");
+        Node baseNode = mapDBAdaptor.getNodeByCode(FINISH_NODE);
         if (baseNode == null) {
             baseNode = mapService.findNearestNode(0, 0); // Default Origin
         }
