@@ -7,8 +7,9 @@ interface AircraftState {
   
   // Ingest: Pure update interface for the infrastructure
   ingest: (data: Aircraft) => void;
-  setAircrafts: (list: Aircraft[]) => void;
+  setAllAircrafts: (list: Aircraft[]) => void;
 }
+
 
 export const useAircraftStore = create<AircraftState>((set) => ({
   aircrafts: [],
@@ -32,5 +33,6 @@ export const useAircraftStore = create<AircraftState>((set) => ({
     }
   }),
 
-  setAircrafts: (list) => set({ aircrafts: list, lastUpdate: Date.now() }),
+  setAllAircrafts: (list) => set({ aircrafts: list, lastUpdate: Date.now() }),
 }));
+

@@ -12,8 +12,10 @@ interface MissionState {
   
   // Ingest: Pure update interface
   ingest: (towingCarCode: string, info: MissionInfo) => void;
+  setAllMissions: (missions: Record<string, MissionInfo>) => void;
   clearMission: (towingCarCode: string) => void;
 }
+
 
 export const useMissionStore = create<MissionState>((set) => ({
   activeMissions: {},
@@ -25,7 +27,10 @@ export const useMissionStore = create<MissionState>((set) => ({
     }
   })),
 
+  setAllMissions: (missions) => set({ activeMissions: missions }),
+
   clearMission: (towingCarCode) => set((state) => {
+
     const next = { ...state.activeMissions };
     delete next[towingCarCode];
     return { activeMissions: next };
