@@ -282,9 +282,33 @@ export function usePilotController(initialCarId?: string) {
 
   // --- Actions ---
 
-  // 1. Movement Actions (Pushback Request Only - Stop is via Emergency Stop)
+  // 1. Movement Actions (Pushback Request + Resume)
   const moveLongPress = useLongPress(
     () => {
+      // [NEW] Resume Pushback when paused
+      if (moveState === "paused") {
+        setConfirmModal({
+          open: true,
+          action: "RESUME PUSHBACK",
+          onConfirm: () => {
+            if (!activeCarId) {
+              addLog("error", "SYS: No Active Car to resume");
+              return;
+            }
+
+            send(
+              "SEND",
+              { destination: "/app/car/resume" },
+              JSON.stringify({ carId: activeCarId }),
+            );
+            
+            setMoveState("pushback");
+            addLog("info", "CMD: Resuming Pushback...");
+          },
+        });
+        return;
+      }
+
       // Only allow pushback request when stopped
       if (moveState !== "stopped") return;
 
@@ -393,7 +417,10 @@ export function usePilotController(initialCarId?: string) {
 
   // 4. Emergency Stop
   const handleEmergencyStop = useCallback(() => {
-    setMoveState("stopped");
+    // [NEW] 이동 중이었으면 paused, 아니면 stopped
+    setMoveState(prev => 
+      (prev === "pushback" || prev === "moving") ? "paused" : "stopped"
+    );
     setIsAutoMode(false);
 
     // [REVERT] Only allow E-Stop if there is an ACTIVE car (moving/connected)

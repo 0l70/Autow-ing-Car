@@ -198,9 +198,9 @@ export function ApprovalQueue() {
         type: "CONFIRM",
         message:
           target.type === "EMERGENCY_STOP"
-            ? "EMERGENCY STOP CONFIRMED"
-            : "MANUAL CONTROL CONFIRMED",
-        subMessage: target.message || "Situational awareness confirmed.",
+            ? "EMERGENCY STOP ACKNOWLEDGED"
+            : "MANUAL CONTROL ACKNOWLEDGED",
+        subMessage: target.message || "ACKNOWLEDGED.",
         actor: "ATC-Controller",
       });
     }
@@ -409,7 +409,7 @@ export function ApprovalQueue() {
                     onClick={() => handleConfirm(alert.id)}
                     className="flex-1 py-1.5 bg-accent-orange/10 border border-accent-orange/50 text-accent-orange text-[10px] font-bold rounded hover:bg-accent-orange hover:text-black transition-all uppercase"
                   >
-                    Confirm
+                    Acknowledged
                   </button>
                 )}
               </div>

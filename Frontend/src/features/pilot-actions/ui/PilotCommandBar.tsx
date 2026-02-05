@@ -23,18 +23,21 @@ export function PilotCommandBar({ moveState, connState, moveLongPress, connLongP
                     className={`w-full h-full text-base font-bold tracking-wider transition-all duration-300 border whitespace-normal leading-tight glass-panel
                         ${moveState === 'moving' || moveState === 'pushback'
                             ? 'bg-amber-500/10 border-amber-500 text-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.2)]'
-                            : moveState === 'waiting'
-                                ? 'bg-slate-800 border-slate-600 text-slate-500 cursor-wait'
-                                : 'border-white/10 text-slate-400 hover:bg-white/5 hover:border-cyan-500/50 hover:text-cyan-400'
+                            : moveState === 'paused'
+                                ? 'bg-red-500/10 border-red-500 text-red-400 shadow-[0_0_20px_rgba(239,68,68,0.2)] hover:bg-red-500/20'
+                                : moveState === 'waiting'
+                                    ? 'bg-slate-800 border-slate-600 text-slate-500 cursor-wait'
+                                    : 'border-white/10 text-slate-400 hover:bg-white/5 hover:border-cyan-500/50 hover:text-cyan-400'
                         }
                         disabled:cursor-not-allowed
                     `}
                 >
                     {moveState === 'stopped' ? 'REQUEST PUSHBACK' 
                         : moveState === 'waiting' ? 'WAITING...' 
+                        : moveState === 'paused' ? 'RESUME PUSHBACK'
                         : 'MOVING'}
 
-                    {moveState === 'stopped' && connState === 'connected' && (
+                    {(moveState === 'stopped' || moveState === 'paused') && connState === 'connected' && (
                         <div className="text-[9px] font-normal opacity-50 absolute bottom-2 font-mono w-full text-center tracking-widest">
                             HOLD 1S
                         </div>
@@ -52,11 +55,11 @@ export function PilotCommandBar({ moveState, connState, moveLongPress, connLongP
             <div className="relative group flex-1">
                 <Button
                     {...connLongPress}
-                    disabled={moveState === 'waiting' || moveState === 'pushback' || moveState === 'moving'}
+                    disabled={moveState === 'waiting' || moveState === 'pushback' || moveState === 'moving' || moveState === 'paused'}
                     className={`w-full h-full text-base font-bold tracking-wider transition-all duration-300 border whitespace-normal leading-tight glass-panel
                         ${connState === 'connected' && moveState === 'stopped'
                             ? 'bg-cyan-500/10 border-cyan-500 text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.2)]'
-                            : (connState === 'connecting' || connState === 'waiting' || moveState === 'waiting' || moveState === 'pushback' || moveState === 'moving')
+                            : (connState === 'connecting' || connState === 'waiting' || moveState === 'waiting' || moveState === 'pushback' || moveState === 'moving' || moveState === 'paused')
                                 ? 'bg-slate-800 border-slate-600 text-slate-500 cursor-wait'
                                 : 'border-white/10 text-slate-400 hover:bg-white/5 hover:border-cyan-500/50 hover:text-cyan-400'
                         }
@@ -64,6 +67,7 @@ export function PilotCommandBar({ moveState, connState, moveLongPress, connLongP
                     `}
                 >
                     {moveState === 'waiting' ? 'WAITING APPROVAL...'
+                        : moveState === 'paused' ? 'EMERGENCY STOPPED'
                         : (moveState === 'pushback' || moveState === 'moving') ? 'HAVE A SAFE FLIGHT'
                         : connState === 'connected' ? 'DISCONNECT TUG'
                         : connState === 'waiting' ? 'WAITING...'
