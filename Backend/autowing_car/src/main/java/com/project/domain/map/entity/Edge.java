@@ -50,9 +50,10 @@ public class Edge {
     @Column(name = "travel_time")
     private Double travelTime; // 해당 간선 통과 예상 시간 (단위: 초)
 
-    public void updatePath(String waypoints, Double distance) {
+    public void updatePath(String waypoints, Double distance, Double travelTime) {
         this.waypoints = waypoints;
         this.distance = distance;
+        this.travelTime = travelTime;
     }
 
 }
