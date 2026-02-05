@@ -20,3 +20,4 @@ app:
     mock: false
   map:
     path-planner-root: ./embedded/PathPlanner/maps
+    init-file-path: ${MAP_INIT_FILE_PATH:/app/data/map.json}
