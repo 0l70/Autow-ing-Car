@@ -8,6 +8,7 @@ import lombok.*;
 @Entity
 @Table(name = "node")
 @Getter
+@Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
@@ -33,4 +34,8 @@ public class Node {
 
     @Column(name = "restriction_info", length = 50)
     private String restrictionInfo;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private NodeType nodeType;
 }

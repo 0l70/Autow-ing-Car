@@ -55,6 +55,7 @@ public class TowingCarService {
     private final TowingCarMapper towingCarMapper; // [NEW]
 
     // [Restored Configuration Fields]
+    private final String START_NODE = "n1";
     private boolean isAutoConnectEnabled = true;
     private boolean isAutoDisconnectEnabled = true;
     private static final double ARRIVAL_THRESHOLD = 2.0;
@@ -109,9 +110,7 @@ public class TowingCarService {
         final String nodeCode = flight.getNodeCode(); // Target Gate
 
         // [New Logic] Calculate Path on Server
-        Node carNode = mapService.findNearestNode(assignedCar.getLastPosX(), assignedCar.getLastPosY());
-        if (carNode == null)
-            carNode = mapDBAdaptor.getNodeByCode("base_node"); // Fallback
+        Node carNode = mapDBAdaptor.getNodeByCode(START_NODE); // Default Origin
 
         Node gateNode = mapDBAdaptor.getNodeByCode(nodeCode);
 
@@ -336,12 +335,43 @@ public class TowingCarService {
     public void emergencyStop(String pilotId, CarEmergencyRequestDto request) {
         log.info("[WS] EMERGENCY STOP: Pilot={}, Car={}", pilotId, request.getCarId());
 
-        // 1. MQTT (커밋 후 전송 - 즉시 정지)
         final String carCode = request.getCarId();
+
+        // [NEW] Mission 상태를 PAUSED로 변경
+        missionDBAdaptor.findByCarCodeAndStatus(carCode, MissionStatus.RUNNING)
+                .ifPresent(mission -> {
+                    mission.updateStatus(MissionStatus.PAUSED);
+                    missionDBAdaptor.save(mission);
+                    log.info("[Mission] Status changed to PAUSED: missionId={}", mission.getId());
+                });
+
+        // 1. MQTT (커밋 후 전송 - 즉시 정지)
         TxUtil.executeAfterCommit(() -> towingCarMqttService.emergencyStop(carCode));
 
         // 2. 알림 (Helper) - 관제사에게 알림 추가
         notifyEmergencyStop(pilotId, request.getCarId());
+    }
+
+    /**
+     * [NEW] 푸시백 재개
+     */
+    @Transactional
+    public void resumePushback(String pilotId, CarEmergencyRequestDto request) {
+        String carCode = request.getCarId();
+        log.info("[WS] RESUME PUSHBACK: Pilot={}, Car={}", pilotId, carCode);
+
+        // 1. PAUSED 상태의 Mission 찾기
+        Mission mission = missionDBAdaptor.findByCarCodeAndStatus(carCode, MissionStatus.PAUSED)
+                .orElseThrow(() -> new IllegalStateException("No paused mission for car: " + carCode));
+
+        // 2. Mission 상태를 RUNNING으로 변경
+        mission.updateStatus(MissionStatus.RUNNING);
+        missionDBAdaptor.save(mission);
+
+        // 3. MQTT 재개 명령
+        TxUtil.executeAfterCommit(() -> towingCarMqttService.resumeCar(carCode));
+
+        log.info("[Mission] Resumed: missionId={}", mission.getId());
     }
 
     // =========================================================================
@@ -448,5 +478,12 @@ public class TowingCarService {
                         .status("SUCCESS")
                         .message("Towing Connected (Ready for Mission)")
                         .build());
+    }
+
+    @Transactional(readOnly = true)
+    public List<TowingCarStatusResponse> getAllTowingCars() {
+        return towingCarDBAdaptor.findAllCars().stream()
+                .map(towingCarMapper::toResponseDTO)
+                .collect(java.util.stream.Collectors.toList());
     }
 }

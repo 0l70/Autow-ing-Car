@@ -12,6 +12,7 @@ import com.project.domain.towingcar.entity.TowingCar;
 import com.project.domain.towingcar.service.TowingCarMqttService;
 import com.project.global.error.domain.car.TowingCarNotAssignedException;
 import com.project.domain.map.entity.Node;
+import com.project.domain.map.entity.NodeType;
 import com.project.domain.map.entity.Edge; // [NEW]
 
 import lombok.RequiredArgsConstructor;
@@ -52,10 +53,10 @@ public class MissionService {
         String currentGate = flight.getNodeCode();
         // [DB 연동] 'R'로 시작하는 노드(활주로)를 동적으로 찾습니다.
         String activeRunway = mapDBAdaptor.findAllNodes().stream()
-                .map(Node::getNodeCode)
-                .filter(code -> code.startsWith("R"))
+                .filter(node -> node.getNodeType() == NodeType.RUNWAY)
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("사용 가능한 활주로 노드가 없습니다."));
+                .orElseThrow(() -> new IllegalArgumentException("사용 가능한 활주로 노드가 없습니다."))
+                .getNodeCode();
 
         Node startNode = mapDBAdaptor.getNodeByCode(currentGate);
         Node endNode = mapDBAdaptor.getNodeByCode(activeRunway);
@@ -141,5 +142,9 @@ public class MissionService {
         missionWebSocketService.broadcastMissionUpdate(response);
     }
 
-    // sendMqttAfterCommit removed
+    public List<MissionResponseDto> getAllActiveMissions() {
+        return missionDBAdaptor.findActiveMissions().stream()
+                .map(MissionResponseDto::from)
+                .collect(java.util.stream.Collectors.toList());
+    }
 }

@@ -48,4 +48,9 @@ public class TowingCarMqttService {
         String topic = MqttTopics.cmdDrive(carCode);
         mqttService.publish(topic, payload);
     }
+
+    // [NEW] 푸시백 재개 명령
+    public void resumeCar(String carCode) {
+        publishControl(carCode, Map.of("cmd", CarCommand.RESUME.getCmd()));
+    }
 }

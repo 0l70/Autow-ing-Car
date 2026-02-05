@@ -1,0 +1,12 @@
+{
+  "frame_id": "map",
+  "nodes": [
+    {
+      "id": "n1",
+      "x": -0.895,
+      "y": 2.495,
+      "yaw": -1.5708,
+      "type": "PARKING_LOT"
+    }
+  ]
+}

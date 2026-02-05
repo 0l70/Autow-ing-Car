@@ -19,5 +19,10 @@ app:
   mqtt:
     mock: false
   map:
-    path-planner-root: ./embedded/PathPlanner/maps
-    init-file-path: ${MAP_INIT_FILE_PATH:/app/data/map.json}
+    locations:
+      - "file:/data/maps/node_*.json"
+      - "file:/data/maps/edge_*.json"
+      - "classpath:/maps/node_*.json"
+      - "classpath:/maps/edge_*.json"
+      - "classpath*:/maps/node_*.json"
+      - "classpath*:/maps/edge_*.json"

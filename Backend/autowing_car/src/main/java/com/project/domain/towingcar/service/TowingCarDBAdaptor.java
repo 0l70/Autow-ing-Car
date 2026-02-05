@@ -70,4 +70,8 @@ public class TowingCarDBAdaptor {
     public List<DrivingLog> findAllDrivingLogsByCarId(Long carId) {
         return drivingLogRepository.findAllByTowingCarIdOrderByCreatedAtDesc(carId);
     }
+
+    public List<TowingCar> findAllCars() {
+        return towingCarRepository.findAll();
+    }
 }

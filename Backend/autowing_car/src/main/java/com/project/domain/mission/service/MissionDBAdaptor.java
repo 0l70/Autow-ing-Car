@@ -49,4 +49,16 @@ public class MissionDBAdaptor {
     public Mission findActiveMissionByCar(com.project.domain.towingcar.entity.TowingCar car) {
         return missionRepository.findActiveMissionByCar(car).orElse(null);
     }
+
+    public List<Mission> findActiveMissions() {
+        return missionRepository.findAllByStatusIn(List.of(
+                com.project.domain.common.MissionStatus.RUNNING,
+                com.project.domain.common.MissionStatus.PAUSED));
+    }
+
+    // [NEW] 차량 코드와 상태로 미션 조회 (Resume용)
+    public java.util.Optional<Mission> findByCarCodeAndStatus(String carCode,
+            com.project.domain.common.MissionStatus status) {
+        return missionRepository.findByCarCodeAndStatus(carCode, status);
+    }
 }

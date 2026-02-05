@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { FlightInfo } from '@/features/dashboard/model/dashboardTypes';
 
 export interface MissionInfo {
   flightNumber: string;
@@ -9,16 +10,19 @@ export interface MissionInfo {
 
 interface MissionState {
   activeMissions: Record<string, MissionInfo>;
+  flightInfo: FlightInfo | null;
   
-  // Ingest: Pure update interface
+  // Actions
   ingest: (towingCarCode: string, info: MissionInfo) => void;
   setAllMissions: (missions: Record<string, MissionInfo>) => void;
   clearMission: (towingCarCode: string) => void;
+  setFlightInfo: (info: FlightInfo | null) => void;
 }
 
 
 export const useMissionStore = create<MissionState>((set) => ({
   activeMissions: {},
+  flightInfo: null,
 
   ingest: (towingCarCode, info) => set((state) => ({
     activeMissions: {
@@ -30,9 +34,10 @@ export const useMissionStore = create<MissionState>((set) => ({
   setAllMissions: (missions) => set({ activeMissions: missions }),
 
   clearMission: (towingCarCode) => set((state) => {
-
     const next = { ...state.activeMissions };
     delete next[towingCarCode];
     return { activeMissions: next };
   }),
+
+  setFlightInfo: (info) => set({ flightInfo: info }),
 }));
