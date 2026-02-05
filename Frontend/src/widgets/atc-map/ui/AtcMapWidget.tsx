@@ -13,12 +13,10 @@ import { useMapData } from "@/features/map-visualizer/model/useMapData";
 
 interface AtcMapWidgetProps {
     className?: string;
-    // ATC sees ALL aircrafts, so we might pass them as props or use a global store hook inside
-    // For now, let's assume we use the same hook but it returns all data in a real app
-    // or we pass additional data props if needed.
+    onAircraftSelect?: (aircraftId: string | null) => void;
 }
 
-export function AtcMapWidget({ className }: AtcMapWidgetProps) {
+export function AtcMapWidget({ className, onAircraftSelect }: AtcMapWidgetProps) {
     // --- Data Loading ---
     const { meta, mapImage, dimensions } = useMapData(); // Use a distinct key or same if shared
     
@@ -63,7 +61,9 @@ export function AtcMapWidget({ className }: AtcMapWidgetProps) {
 
     const handleAircraftClick = (ac: Aircraft) => {
         console.log("ATC Selected Aircraft:", ac.id);
-        // TODO: Open detailed control modal for ATC
+        if (onAircraftSelect) {
+            onAircraftSelect(ac.id);
+        }
     };
 
     return (
