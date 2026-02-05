@@ -18,10 +18,19 @@ const TelemetrySchema = z.object({
   car_id: z.string().optional(),
   carId: z.string().optional(),
   code: z.string().optional(),
+  
+  // Frontend/MQTT standard
   x: z.number().default(0),
   y: z.number().default(0),
   yaw: z.number().default(0),
   v: z.number().default(0),
+  
+  // Backend DTO standard (Incoming Payload)
+  posX: z.number().optional(),
+  posY: z.number().optional(),
+  heading: z.number().optional(),
+  velocity: z.number().optional(),
+
   status: z.string().optional(),
   mode: z.string().optional(),
   battery: z.number().default(0),
@@ -55,12 +64,12 @@ export function SocketBridge() {
   // 1. Unified Message Handler
   const handleMessage = useCallback(
     (msg: any) => {
+      // [DEBUG] Check Entry Point
+      // console.log(`[SocketBridge] 📨 Msg Received from ${msg.destination}. SyncComplete: ${isInitialSyncComplete}`);
+
       // [Buffering Logic] If sync not complete, push to buffer
       if (!isInitialSyncComplete) {
-        console.log(
-          "[SocketBridge] 📥 Buffering message during sync:",
-          msg.destination,
-        );
+        // console.warn("[SocketBridge] ⏳ Buffering (Sync Incomplete)...");
         messageBuffer.current.push(msg);
         return;
       }
@@ -114,6 +123,12 @@ export function SocketBridge() {
 
         const data = result.data;
         const rawId = data.car_id || data.carId || data.code;
+        
+        // [Fix] Map Backend fields (posX, posY...) to Internal fields
+        const finalX = data.posX ?? data.x;
+        const finalY = data.posY ?? data.y;
+        const finalYaw = data.heading ?? data.yaw;
+        const finalV = data.velocity ?? data.v;
 
         if (rawId) {
           const aircraft: Aircraft = {
@@ -121,13 +136,13 @@ export function SocketBridge() {
             callsign: rawId,
             type: "TUG",
             position: {
-              x: data.x,
-              y: data.y,
-              r: data.yaw * (Math.PI / 180),
+              x: finalX,
+              y: finalY,
+              r: finalYaw * (Math.PI / 180), // Convert Deg to Rad
             },
             status: (data.status || data.mode || "IDLE") as any,
             battery: data.battery,
-            speed: data.v,
+            speed: finalV,
             currentMission: data.currentMission,
             isLoaded: data.is_loaded,
           };
