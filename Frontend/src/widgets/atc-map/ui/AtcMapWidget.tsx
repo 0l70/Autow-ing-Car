@@ -73,10 +73,7 @@ export function AtcMapWidget({ className, onAircraftSelect }: AtcMapWidgetProps)
                     <MapIcon className="w-4 h-4 text-emerald-500" /> {/* Emerald for ATC/Ground */}
                     GROUND TRAFFIC CONTROL
                 </CardTitle>
-                <button className="text-xs text-white/50 hover:text-white flex items-center gap-1 transition-colors">
-                    <Maximize2 className="w-3 h-3" />
-                    Expand
-                </button>
+
             </CardHeader>
             <div className="flex-1 relative bg-[#0a0a0f] overflow-hidden">
                 <MapCanvas
@@ -127,12 +124,7 @@ export function AtcMapWidget({ className, onAircraftSelect }: AtcMapWidgetProps)
                 </MapCanvas>
             </div>
             
-            {/* Overlay Status Bar */}
-            <div className="absolute bottom-0 left-0 right-0 h-8 bg-black/60 backdrop-blur border-t border-white/5 flex items-center px-4 text-[10px] text-white/40 gap-4">
-                <span>ZOOM: 100%</span>
-                <span>LAT/LON: 36.123, 128.456</span>
-                <span className="ml-auto text-emerald-400/80">LIVE UPDATES ACTIVE</span>
-            </div>
+
         </Card>
     );
 }
