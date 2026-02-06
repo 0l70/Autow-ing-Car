@@ -109,8 +109,9 @@ export function AircraftLayer({ meta, mapHeight, mapWidth, pixelRatio = 1, data,
             ctx.save();
             ctx.translate(pixel.x, pixel.y);
             
-            // 회전 보정:
-            ctx.rotate(-ac.position.r); 
+            // 회전 보정 (Canvas는 Radian 사용, Store는 Degree 저장)
+            // r(Degree) * PI / 180 = Radian
+            ctx.rotate(-ac.position.r * (Math.PI / 180)); 
 
             // 바디 그리기 (스케일 불변? 아니요, 지금은 맵과 함께 스케일되도록 둡니다.)
             // 하지만 고해상도(5배) 상태에서 기본 5px 크기는 너무 작게 보일 수 있습니다.

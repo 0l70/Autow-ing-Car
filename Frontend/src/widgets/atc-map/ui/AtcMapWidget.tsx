@@ -86,7 +86,7 @@ export function AtcMapWidget({ className, onAircraftSelect }: AtcMapWidgetProps)
             <CardHeader className="py-3 border-b border-white/10 z-10 bg-black/20 backdrop-blur justify-between flex-row items-center">
                 <CardTitle className="text-sm font-bold tracking-wide text-slate-400 flex items-center gap-2">
                     <MapIcon className="w-4 h-4 text-emerald-500" /> {/* Emerald for ATC/Ground */}
-                    GROUND TRAFFIC CONTROL
+                    Map
                 </CardTitle>
 
             </CardHeader>

@@ -4,10 +4,10 @@ import { Aircraft } from '@/entities/map/model/types';
 // Interpolation Logic
 const lerp = (start: number, end: number, t: number) => start * (1 - t) + end * t;
 
-// Angle Interpolation (Shortest path)
+// Angle Interpolation (Shortest path for Degrees)
 const lerpAngle = (start: number, end: number, t: number) => {
-    const da = (end - start) % (2 * Math.PI);
-    const shortestAngle = (2 * da % (2 * Math.PI)) - da;
+    const da = (end - start) % 360;
+    const shortestAngle = (2 * da % 360) - da;
     return start + (shortestAngle * t);
 };
 

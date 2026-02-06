@@ -13,15 +13,8 @@ export function TowingCarInfo({ moveState, aircraft }: TowingCarInfoProps) {
     // Speed: m/s -> km/h
     const speedKmh = aircraft ? (aircraft.speed * 3.6).toFixed(1) : (moveState !== 'stopped' ? '15' : '0');
     
-    // Heading: Radian -> Degree (0-360)
-    let headingDeg = 0;
-    if (aircraft) {
-        let deg = aircraft.position.r * (180 / Math.PI);
-        if (deg < 0) deg += 360;
-        headingDeg = Math.round(deg);
-    } else {
-        headingDeg = 0; // Changed from NAVIGATION_DATA.heading
-    }
+    // Heading: Use pre-calculated Degree (Stored in position.r)
+    const headingDeg = aircraft ? Math.round(aircraft.position.r) : 0;
 
     // Destination
     const destination = aircraft?.currentMission ? `MISSION #${aircraft.currentMission}` : "STANDBY"; // Changed from NAVIGATION_DATA.destination
