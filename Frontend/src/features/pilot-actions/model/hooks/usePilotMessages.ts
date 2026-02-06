@@ -132,6 +132,7 @@ function handleMissionUpdate(
 
     // Update aircraft mission path
     if (payload.edgeIds && payload.towingCarCode) {
+      // 1. Update AircraftStore (Live Map)
       const aircraftStore = useAircraftStore.getState();
       const existing = aircraftStore.aircrafts.find((a) => a.id === payload.towingCarCode);
 
@@ -146,6 +147,16 @@ function handleMissionUpdate(
         };
         aircraftStore.ingest(updatedAircraft);
       }
+
+      // 2. Update MissionStore (Sync with other widgets)
+      const missionStore = useMissionStore.getState();
+      missionStore.ingest(payload.towingCarCode, {
+        flightNumber: payload.flightNumber,
+        status: payload.status,
+        departNode: payload.departNode,
+        destNode: payload.destNode,
+        edgeIds: payload.edgeIds,
+      });
     }
 
     if (payload.destNode) {

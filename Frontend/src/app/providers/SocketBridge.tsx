@@ -92,6 +92,7 @@ export function SocketBridge() {
             destNode: body.destNode,
             status: body.status,
             departNode: body.departNode,
+            edgeIds: body.edgeIds, // 보강: 경로 정보 포함
           });
         }
         return;
@@ -148,7 +149,10 @@ export function SocketBridge() {
               status: (data.status || data.mode || "IDLE") as any,
               battery: data.battery,
               speed: finalV,
-              currentMission: data.currentMission,
+              // [Fix] 텔레메트리에 미션 정보가 없을 경우 기존 정보를 유지하도록 store의 병합 기능 활용
+              // 여기서는 Aircraft 객체를 만들어 ingest에 전달하므로, 
+              // 페이로드에 정보가 있을 때만 포함시킵니다.
+              ...(data.currentMission ? { currentMission: data.currentMission } : {}),
               isLoaded: data.is_loaded,
             };
           ingestAircraft(aircraft);
