@@ -58,12 +58,16 @@ export const MAP_CONFIG = {
             WIDTH: {
                 //일반도로
                 GLOW: 10,          // 최하단 발광 (가장 넓음)
+                ACTIVE_GLOW: 5,    // [NEW] 활성 경로 발광 (색이 들어가므로 조금 얇게)
                 CORE: 4,           // 최상단 도로
                 OUTLINE: 5,        // 중간 테두리 (코어보다 아주 약간 넓음 - 얇은 선)
                 //활성화 도로
                 ATC_ROUTE: 3,      // 미리보기 경로 두께 (중심선)
                 ATC_ROUTE_GLOW: 3, // 미리보기 경로 발광 두께 (테두리 빛)
             },
+            ACTIVE_DASH_ARRAY: "10 10", // [Deprecated]
+            FLOW_DASH_ARRAY: "80 80",   // [NEW] 흐름 효과 패턴 (선 40px + 공백 40px)
+            FLOW_ANIMATION_SPEED: "1.5s", // [NEW] 흐름 속도 (작을수록 빠름: 1s, 2s, 5s...)
             CORNER_RADIUS: 20, // 경로 모서리 둥글기 (Fillet Radius)
         },
         NODE: {
@@ -84,6 +88,11 @@ export const MAP_CONFIG = {
             LENGTH: 10,       // 기수 길이 (앞으로 튀어나온 정도)
             WING_SPAN_HALF: 7.5, // 날개 반폭 (좌우 7.5씩, 전체 15)
             TAIL_INDENT: 4,   // 꼬리 부분 파임 깊이
+            WING_WIDTH: 6,    // [NEW] 날개 너비 (Y축 방향)
+        },
+        COLOR: {
+            TOWING_GLOW: '#00FF00', // [NEW] 견인 중일 때 네온 그린 광채
+            DEFAULT_BODY: '#FFFFFF', // [NEW] 기본 바디 색상 (흰색)
         },
         ANIMATION_DURATION: 300, // 이동 애니메이션 시간 (ms)
         CLICK_RADIUS_SQ: 400,    // 클릭 인식 반경 제곱 (20px * 20px)
