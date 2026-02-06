@@ -22,7 +22,7 @@ export function PilotDashboard() {
     const assignedAircraft = activeCarId ? aircrafts.find(a => a.id === activeCarId) || null : null;
     const myAircraft = (assignedAircraft && 
                         assignedAircraft.status !== 'IDLE' && 
-                        assignedAircraft.status !== 'UNLOADING') 
+                        assignedAircraft.status !== 'UNDOCKING') 
                         ? assignedAircraft 
                         : null;
 
