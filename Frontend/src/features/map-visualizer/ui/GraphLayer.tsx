@@ -143,12 +143,33 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
 
                 return (
                 <g key={`road-${edge.id}`}>
-                    {/* 단일 경로: 도로 느낌 (투명한 회색) */}
+                    {/* 1. Neon Glow (Bottom Layer - Blurred) */}
+                    <path
+                        d={getRoundedPath(points)}
+                        fill="none"
+                        stroke={MAP_CONFIG.GRAPH.COLOR.NEON_GLOW} 
+                        strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.GLOW} 
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={{ filter: "blur(4px)", opacity: 0.6 }} 
+                    />
+
+                    {/* 2. Crisp Outline (Middle Layer - Solid) */}
+                    <path
+                        d={getRoundedPath(points)}
+                        fill="none"
+                        stroke={MAP_CONFIG.GRAPH.COLOR.OUTLINE} 
+                        strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.OUTLINE} 
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    />
+                    
+                    {/* 3. Road Core (Top Layer - Dark & Solid) */}
                     <path
                         d={getRoundedPath(points)}
                         fill="none"
                         stroke={MAP_CONFIG.GRAPH.COLOR.DEFAULT} 
-                        strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.GLOW} 
+                        strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.CORE} 
                         strokeLinecap="round"
                         strokeLinejoin="round"
                     />
@@ -175,10 +196,12 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
 
             return (
                 <g key={`node-${node.id}`} transform={`translate(${pos.x}, ${pos.y})`}>
-                    {/* 노드 포인트 */}
+                    {/* 노드 포인트 (Achromatic with Border) */}
                     <circle 
                         r={radius} 
                         fill={isSelected ? MAP_CONFIG.GRAPH.COLOR.ACTIVE : typeColor} 
+                        stroke={isSelected ? 'none' : MAP_CONFIG.GRAPH.COLOR.NODE_BORDER}
+                        strokeWidth={isSelected ? 0 : MAP_CONFIG.GRAPH.NODE.STROKE_WIDTH}
                         style={isSelected ? { filter: "drop-shadow(0 0 5px #fff)" } : undefined}
                     />
                 </g>
