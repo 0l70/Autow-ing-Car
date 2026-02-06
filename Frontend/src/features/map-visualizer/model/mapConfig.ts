@@ -38,6 +38,9 @@ export const MAP_CONFIG = {
             OUTLINE: '#cbd5e1', // Slate-300 (Crisp Border Line)
             NEON_GLOW: 'rgba(148, 163, 184, 0.5)', // Slate-400 with opacity (Soft Outer Glow)
             ACTIVE: '#FFFFFF',  // White (활성 경로 코어)
+            // [ATC] Controller Preview Colors
+            ATC_HIGHLIGHT: '#FF6D28',       // 네온 주황색 (밝음)
+            ATC_GLOW: 'rgba(255, 109, 40, 0.6)', // 네온 주황색 발광 (은은함)
             NODE: '#334155',    // Slate-700 (Dark Gray Fill)
             NODE_BORDER: '#94a3b8', // Slate-400 (Light Gray Border)
             NODE_TYPE: {
@@ -52,12 +55,14 @@ export const MAP_CONFIG = {
         },
         EDGE: {
             WIDTH: {
-                GLOW: 12,          // 최하단 발광 (가장 넓음)
-                OUTLINE: 7,        // 중간 테두리 (코어보다 아주 약간 넓음 - 얇은 선)
-                CORE: 6,           // 최상단 도로
-                ACTIVE_GLOW: 16,   // 활성 경로 발광
-                ACTIVE_BEAM: 8,    // 활성 경로 빔
-                ACTIVE_CORE: 4,    // 활성 경로 코어
+                GLOW: 10,          // 최하단 발광 (가장 넓음)
+                CORE: 4,           // 최상단 도로
+                OUTLINE: 5,        // 중간 테두리 (코어보다 아주 약간 넓음 - 얇은 선)
+                ACTIVE_GLOW: 1,   // 활성 경로 발광
+                ACTIVE_BEAM: 1,    // 활성 경로 빔
+                ACTIVE_CORE: 1,    // 활성 경로 코어
+                ATC_ROUTE: 1,      // 미리보기 경로 두께 (중심선)
+                ATC_ROUTE_GLOW: 1, // 미리보기 경로 발광 두께 (테두리 빛)
             },
             CORNER_RADIUS: 20, // 경로 모서리 둥글기 (Fillet Radius)
         },

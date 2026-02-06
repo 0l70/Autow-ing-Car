@@ -19,6 +19,7 @@ import { AdminAlertDto, PathOptionDto, PathOptionsResponseDto } from "./model/al
 
 // [NEW] Use Aircraft Store for State Sync
 import { useAircraftStore } from "@/entities/aircraft/model/store";
+import { useGraphStore } from "@/entities/map/model/store";
 
 export function ApprovalQueue() {
   const { onMessage, send, isConnected } = useSocket() || {};
@@ -205,6 +206,7 @@ export function ApprovalQueue() {
 
     setPathOptionsData(null);
     setSelectedPath(null);
+    useGraphStore.getState().setHighlightedPath([]); // [NEW] Clear Highlight
   };
 
   const handleConfirm = (id: string) => {
@@ -259,7 +261,10 @@ export function ApprovalQueue() {
                 CONFIRM ROUTE
               </h3>
               <button
-                onClick={() => setPathOptionsData(null)}
+                onClick={() => {
+                    setPathOptionsData(null);
+                    useGraphStore.getState().setHighlightedPath([]); // [NEW] Clear Highlight
+                }}
                 className="text-gray-400 hover:text-white"
               >
                 <X className="w-4 h-4" />
@@ -279,7 +284,11 @@ export function ApprovalQueue() {
               {pathOptionsData.pathOptions.map((option) => (
                 <button
                   key={option.optionId}
-                  onClick={() => setSelectedPath(option)}
+                  onClick={() => {
+                      setSelectedPath(option);
+                      // [NEW] Trigger Map Highlight
+                      useGraphStore.getState().setHighlightedPath(option.edgeIds || []);
+                  }}
                   className={cn(
                     "w-full p-2 text-left rounded border transition-all",
                     selectedPath?.optionId === option.optionId

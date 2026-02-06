@@ -101,17 +101,13 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
     return [p1, ...waypoints, p2];
   };
 
-  const selectedEdge = edges.find(e => e.id === selectedId);
-
   // [Deduplication Logic] 양방향 간선 중복 제거
   const uniqueEdges = useMemo(() => {
     const activeKeys = new Set<string>();
     const result: typeof edges = [];
 
     edges.forEach(edge => {
-        // ID 정렬을 통해 방향과 관계없이 동일한 연결로 취급 (A-B == B-A)
         const key = [edge.fromId, edge.toId].sort().join('-');
-        
         if (!activeKeys.has(key)) {
             activeKeys.add(key);
             result.push(edge);
@@ -121,50 +117,161 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
     return result;
   }, [edges]);
 
+    // [Path Merging Logic] 경로 병합 로직
+    const mergedPathData = useMemo(() => {
+        const highlightedPath = useGraphStore.getState().highlightedPath || [];
+        if (highlightedPath.length === 0) return null;
+
+        // 1. 순서대로 Edge 가져오기
+        const pathEdges = highlightedPath
+            .map(id => edges.find(e => e.id === id))
+            .filter((e): e is typeof edges[number] => !!e);
+
+        if (pathEdges.length === 0) return null;
+
+        const points: WorldCoord[] = [];
+        
+        // Helper: 웨이포인트(곡선 정보)를 픽셀 좌표로 변환
+        const getPixelWaypoints = (edge: typeof edges[number]) => 
+            edge.waypoints?.map(wp => getPixel(wp)) || [];
+
+        // 단일 Edge인 경우 처리
+        if (pathEdges.length === 1) {
+            const e = pathEdges[0];
+            if (!e) return null;
+
+            const n1 = nodes.find(n => n.id === e.fromId);
+            const n2 = nodes.find(n => n.id === e.toId);
+            if (n1 && n2) {
+                points.push(getPixel(n1));
+                points.push(...getPixelWaypoints(e)); // 웨이포인트 포함
+                points.push(getPixel(n2));
+            }
+        } 
+        // 다중 Edge인 경우 처리 (연결 방향 고려)
+        else {
+            const e0 = pathEdges[0];
+            const e1 = pathEdges[1];
+            if (!e0 || !e1) return null;
+
+            // 공통 노드를 찾아 진행 방향(Direction) 추론
+            const commonId = (e0.toId === e1.fromId || e0.toId === e1.toId) ? e0.toId 
+                           : (e0.fromId === e1.fromId || e0.fromId === e1.toId) ? e0.fromId : null;
+
+            let currentId = "";
+
+            // --- 첫 번째 Edge 처리 ---
+            if (commonId) {
+                // 시작 노드 결정
+                const startNodeId = (e0.fromId === commonId) ? e0.toId : e0.fromId;
+                const startNode = nodes.find(n => n.id === startNodeId);
+                const commonNode = nodes.find(n => n.id === commonId);
+
+                if (startNode && commonNode) {
+                    points.push(getPixel(startNode));
+                    
+                    // 웨이포인트 추가 (역방향 진행 시 뒤집기)
+                    const wps = getPixelWaypoints(e0);
+                    if (e0.toId === startNodeId) { // To -> From (역방향)
+                         points.push(...wps.reverse());
+                    } else { // From -> To (정방향)
+                         points.push(...wps);
+                    }
+                    
+                    points.push(getPixel(commonNode));
+                    currentId = commonId;
+                }
+            } else {
+                // 연결 끊김 (예외 케이스)
+                const n1 = nodes.find(n => n.id === e0.fromId);
+                const n2 = nodes.find(n => n.id === e0.toId);
+                if(n1 && n2) {
+                    points.push(getPixel(n1));
+                    points.push(...getPixelWaypoints(e0));
+                    points.push(getPixel(n2));
+                    currentId = e0.toId; 
+                }
+            }
+
+            // --- 나머지 Edge 처리 ---
+            for (let i = 1; i < pathEdges.length; i++) {
+                const edge = pathEdges[i];
+                if (!edge) continue;
+
+                // 다음 노드 결정 (currentId가 아닌 쪽)
+                const nextId = (edge.fromId === currentId) ? edge.toId : edge.fromId;
+                const nextNode = nodes.find(n => n.id === nextId);
+                
+                if (nextNode) {
+                    // 웨이포인트 추가
+                    const wps = getPixelWaypoints(edge);
+                    if (edge.toId === currentId) { // Current(From) -> Next(To) : 정방향
+                         points.push(...wps);
+                    } else { // Current(To) -> Next(From) : 역방향
+                         points.push(...wps.reverse());
+                    }
+
+                    points.push(getPixel(nextNode));
+                    currentId = nextId;
+                }
+            }
+        }
+
+        // [Straight Line Requirement]
+        // User asked for "일자로 그려" (Straight) => 노드간 직각 연결을 위해 Radius 0 적용
+        return getRoundedPath(points, 0);
+    }, [edges, nodes, useGraphStore.getState().highlightedPath, meta, mapHeight]);
+
+
   return (
     <div className="absolute inset-0 pointer-events-none z-30">
       <svg className="absolute inset-0 w-full h-full overflow-visible">
         <defs>
-          <filter id="neon-sharp" x="-50%" y="-50%" width="200%" height="200%">
-             <feGaussianBlur stdDeviation="1.5" result="tightBlur" />
+          <filter id="neon-strong" x="-50%" y="-50%" width="200%" height="200%">
+             <feGaussianBlur stdDeviation="2.5" result="coloredBlur" />
              <feMerge>
-                <feMergeNode in="tightBlur" />
+                <feMergeNode in="coloredBlur" />
                 <feMergeNode in="SourceGraphic" />
              </feMerge>
           </filter>
         </defs>
 
         <g transform={`translate(${offset.x}, ${offset.y}) scale(${scale})`}>
-            {/* --- Layer 1: Road Network (Unique Paths) --- */}
-            <g>
+            {/* --- Layer 1: Base Roads --- */}
+            <g className="roads-layer">
             {uniqueEdges.map((edge) => { 
+                // [Optimization Removed] We draw base roads always, so the neon path sits "on top" or "in blend"
+                // const highlightedPath = useGraphStore.getState().highlightedPath || [];
+                // if (highlightedPath.includes(edge.id)) return null;
+
                 const points = getPoints(edge);
                 if (!points) return null;
 
+                // Standard Road
                 return (
                 <g key={`road-${edge.id}`}>
-                    {/* 1. Neon Glow (Bottom Layer - Blurred) */}
+                    {/* Layer 1: Glow (Backlight) */}
                     <path
                         d={getRoundedPath(points)}
                         fill="none"
-                        stroke={MAP_CONFIG.GRAPH.COLOR.NEON_GLOW} 
-                        strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.GLOW} 
+                        stroke={MAP_CONFIG.GRAPH.COLOR.NEON_GLOW}
+                        strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.GLOW}
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        style={{ filter: "blur(4px)", opacity: 0.6 }} 
-                    />
-
-                    {/* 2. Crisp Outline (Middle Layer - Solid) */}
-                    <path
-                        d={getRoundedPath(points)}
-                        fill="none"
-                        stroke={MAP_CONFIG.GRAPH.COLOR.OUTLINE} 
-                        strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.OUTLINE} 
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
+                        style={{ filter: "blur(4px)", opacity: 0.6 }}
                     />
                     
-                    {/* 3. Road Core (Top Layer - Dark & Solid) */}
+                    {/* Layer 2: Outline (Border) */}
+                    <path
+                        d={getRoundedPath(points)}
+                        fill="none"
+                        stroke={MAP_CONFIG.GRAPH.COLOR.OUTLINE}
+                        strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.OUTLINE}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    />
+
+                    {/* Layer 3: Core (Asphalt) */}
                     <path
                         d={getRoundedPath(points)}
                         fill="none"
@@ -178,76 +285,54 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
             })}
             </g>
 
-            {/* --- Layer 2: Nodes (Points) --- */}
+            {/* --- Layer 2: Nodes --- */}
             {nodes.map(node => {
-            // "WAYPOINT"는 시각적으로 숨기고 싶은 경우 아래 주석 해제 (지금은 모두 표시)
-            // if (node.type === "WAYPOINT") return null; 
+                const pos = getPixel(node);
+                const isSelected = selectedId === node.id;
+                const radius = isSelected ? MAP_CONFIG.GRAPH.NODE.RADIUS.SELECTED_CORE : MAP_CONFIG.GRAPH.NODE.RADIUS.NORMAL_CORE;
+                const typeColor = MAP_CONFIG.GRAPH.COLOR.NODE_TYPE[node.type as keyof typeof MAP_CONFIG.GRAPH.COLOR.NODE_TYPE] || MAP_CONFIG.GRAPH.COLOR.NODE;
 
-            const pos = getPixel(node);
-            const isSelected = selectedId === node.id;
-            
-            const radius = isSelected 
-                ? MAP_CONFIG.GRAPH.NODE.RADIUS.SELECTED_CORE 
-                : MAP_CONFIG.GRAPH.NODE.RADIUS.NORMAL_CORE;
-
-            // 타입별 색상 결정
-            const typeColor = MAP_CONFIG.GRAPH.COLOR.NODE_TYPE[node.type as keyof typeof MAP_CONFIG.GRAPH.COLOR.NODE_TYPE] 
-                              || MAP_CONFIG.GRAPH.COLOR.NODE;
-
-            return (
-                <g key={`node-${node.id}`} transform={`translate(${pos.x}, ${pos.y})`}>
-                    {/* 노드 포인트 (Achromatic with Border) */}
-                    <circle 
-                        r={radius} 
-                        fill={isSelected ? MAP_CONFIG.GRAPH.COLOR.ACTIVE : typeColor} 
-                        stroke={isSelected ? 'none' : MAP_CONFIG.GRAPH.COLOR.NODE_BORDER}
-                        strokeWidth={isSelected ? 0 : MAP_CONFIG.GRAPH.NODE.STROKE_WIDTH}
-                        style={isSelected ? { filter: "drop-shadow(0 0 5px #fff)" } : undefined}
-                    />
-                </g>
-            );
+                return (
+                    <g key={`node-${node.id}`} transform={`translate(${pos.x}, ${pos.y})`}>
+                        <circle 
+                            r={radius} 
+                            fill={isSelected ? MAP_CONFIG.GRAPH.COLOR.ACTIVE : typeColor} 
+                            stroke={isSelected ? 'none' : MAP_CONFIG.GRAPH.COLOR.NODE_BORDER}
+                            strokeWidth={isSelected ? 0 : MAP_CONFIG.GRAPH.NODE.STROKE_WIDTH}
+                        />
+                    </g>
+                );
             })}
 
-            {/* --- Layer 3: Active Path (Laser Beam) --- */}
-            {selectedEdge && (() => {
-            const points = getPoints(selectedEdge);
-            if (!points) return null;
-            return (
-                <g key={`tech-active-${selectedEdge.id}`}>
-                {/* 1. Massive Flood Glow */}
-                <path
-                    d={getRoundedPath(points)}
-                    fill="none"
-                    stroke={MAP_CONFIG.GRAPH.COLOR.DEFAULT} 
-                    strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.ACTIVE_GLOW}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    opacity={0.3}
-                    style={{ filter: "blur(5px)" }}
-                />
-                {/* 2. Intense Beam */}
-                <path
-                    d={getRoundedPath(points)}
-                    fill="none"
-                    stroke={MAP_CONFIG.GRAPH.COLOR.DEFAULT}
-                    strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.ACTIVE_BEAM}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    style={{ filter: "blur(1px)" }}
-                />
-                {/* 3. White Hot Core - Solid */}
-                <path
-                    d={getRoundedPath(points)}
-                    fill="none"
-                    stroke={MAP_CONFIG.GRAPH.COLOR.ACTIVE} 
-                    strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.ACTIVE_CORE}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    opacity={1}
-                />
-                </g>
-            );
-            })()}
+            {/* --- Layer 3: ATC Merged Neon Path (Top Most) --- */}
+            {mergedPathData && (
+                 <g className="atc-flow-layer">
+                     {/* 3.1 Outer Glow (Neon Effect) */}
+                     <path
+                        d={mergedPathData}
+                        fill="none"
+                        stroke={MAP_CONFIG.GRAPH.COLOR.ATC_GLOW}
+                        strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.ATC_ROUTE_GLOW} // [Fix] Use dedicated glow width
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        opacity={0.8}
+                        style={{ filter: "url(#neon-strong)" }}
+                     />
+                     
+                    {/* 3.2 Main Solid Line */}
+                    <path
+                        d={mergedPathData}
+                        fill="none"
+                        stroke={MAP_CONFIG.GRAPH.COLOR.ATC_HIGHLIGHT} 
+                        strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.ATC_ROUTE}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={{ filter: `drop-shadow(0 0 2px ${MAP_CONFIG.GRAPH.COLOR.ATC_HIGHLIGHT})` }}
+                    />
+
+
+                 </g>
+            )}
         </g>
       </svg>
     </div>
