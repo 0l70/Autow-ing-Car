@@ -50,8 +50,8 @@ export function PilotDashboard() {
                 <PilotStatusPanel aircraft={myAircraft} /> 
                 <TowingCarInfo moveState={state.move} aircraft={myAircraft} />
                 <PilotSafetyLock 
-                    isAutoMode={state.isAutoMode}
-                    modeLongPress={controls.modeLongPress}
+                    moveState={state.move}
+                    handleResume={controls.handleResume}
                     handleEmergencyStop={controls.handleEmergencyStop}
                 />
             </div>

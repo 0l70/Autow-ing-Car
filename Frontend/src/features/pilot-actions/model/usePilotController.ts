@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import useLongPress from "@/shared/lib/useLongPress";
 import { usePilotSocket } from "./usePilotSocket";
+import { WS_TOPICS } from "@/shared/realtime/config/topics"; // [NEW]
 import { MoveState, ConnectionState, PilotLog } from "./pilot.types"; // [UPDATED] Import from new file
 import { usePilotStore } from "./usePilotStore"; // [NEW] Import Store
 import {
@@ -408,41 +409,59 @@ export function usePilotController(initialCarId?: string) {
     () => {},
   );
 
-  // 3. Mode Switch
-  const modeLongPress = useLongPress(
-    () => {
-      setConfirmModal({
+  // 3. Resume Pushback Action
+  // [NEW] Defined as a standard function (not long press) for the dedicated Resume button
+  const handleResume = useCallback(() => {
+    if (moveState !== "paused") return;
+    
+    setConfirmModal({
         open: true,
-        action: !isAutoMode ? "SWITCH TO AUTO" : "SWITCH TO MANUAL",
+        action: "RESUME PUSHBACK",
         onConfirm: () => {
-          setIsAutoMode(!isAutoMode);
-          addLog(
-            "info",
-            !isAutoMode
-              ? "SYS: Auto Pilot Engaged"
-              : "SYS: Manual Control Engaged",
-          );
+            if (!activeCarId) {
+                addLog("error", "SYS: No Active Car to resume");
+                return;
+            }
+
+            if (!send) {
+                addLog("error", "SYS: Socket Not Connected");
+                return;
+            }
+
+            send(
+                "SEND",
+                { destination: WS_TOPICS.PILOT.RESUME },
+                JSON.stringify({ carId: activeCarId }),
+            );
+            
+            setMoveState("pushback");
+            addLog("info", "CMD: Resuming Pushback...");
         },
-      });
-    },
-    () => {},
-  );
+    });
+  }, [moveState, activeCarId, send, addLog]);
+
+  /* 
+  // [REMOVED] Mode Switch Logic (Auto/Manual)
+  // Replaced by dedicated Resume Button logic as per user request
+  const modeLongPress = ...
+  */
 
   // 4. Emergency Stop
   const handleEmergencyStop = useCallback(() => {
-    // [NEW] 이동 중이었으면 paused, 아니면 stopped
-    // [NEW] 이동 중이었으면 paused, 아니면 stopped
-    const newState = (moveState === "pushback" || moveState === "moving") ? "paused" : "stopped";
-    setMoveState(newState);
-    setIsAutoMode(false);
+    // [Updated Logic] Only effective during movement
+    if (moveState !== "moving" && moveState !== "pushback") {
+        return; 
+    }
 
-    // [REVERT] Only allow E-Stop if there is an ACTIVE car (moving/connected)
-    // As per user request, we revert the test logic.
+    const newState = "paused";
+    setMoveState(newState);
+    // setIsAutoMode(false); // [REMOVED]
+
     if (activeCarId) {
       if (send) {
         send(
             "SEND",
-            { destination: "/app/car/emergency" },
+            { destination: WS_TOPICS.PILOT.EMERGENCY },
             JSON.stringify({
               carId: activeCarId,
             }),
@@ -452,8 +471,6 @@ export function usePilotController(initialCarId?: string) {
         addLog("error", "!!! EMERGENCY STOP (Socket Error) !!!");
       }
     } else {
-      // Now this will only trigger if user manages to click the button while IDLE
-      // (though button might be disabled, this safety check remains)
       addLog("error", "!!! EMERGENCY STOP (Local Only - No Active Car) !!!");
     }
 
@@ -475,7 +492,7 @@ export function usePilotController(initialCarId?: string) {
       logs,
       move: moveState,
       connection: connState,
-      isAutoMode,
+      // isAutoMode, // [REMOVED]
       flightInfo,
       isConnected,
       confirmModal,
@@ -484,7 +501,8 @@ export function usePilotController(initialCarId?: string) {
     controls: {
       moveLongPress,
       connLongPress,
-      modeLongPress,
+      // modeLongPress, // [REMOVED]
+      handleResume, // [NEW]
       handleEmergencyStop,
       handleConfirm,
       closeConfirmModal,
