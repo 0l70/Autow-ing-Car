@@ -129,7 +129,12 @@ class TowingCarServiceTest {
                 Flight flight = transactionTemplate.execute(status -> {
                         Flight f = flightDBAdaptor.getFlightByFlightNumber("KE001");
                         TowingCar car = f.getAssignedTowingCar();
-                        car.updateStatus(0.0, 0.0, 0.0, 0.0, 100, CarStatus.MOVING_TO_LOAD);
+                        // MOVING_TO_GATE
+                        car.updateStatus(0.0, 0.0, 0.0, 0.0, 100, CarStatus.MOVING_TO_GATE);
+                        // DOCKING
+                        car.updateStatus(0.0, 0.0, 0.0, 0.0, 100, CarStatus.DOCKING);
+                        // RETURNING
+                        car.updateStatus(0.0, 0.0, 0.0, 0.0, 100, CarStatus.RETURNING);
                         towingCarDBAdaptor.save(car);
                         return f;
                 });
@@ -143,7 +148,7 @@ class TowingCarServiceTest {
                         verify(towingCarMqttService).connectCar(eq(car.getCode()), eq(flight.getId()));
 
                         TowingCar updated = towingCarDBAdaptor.getCarById(car.getId());
-                        assertEquals(CarStatus.LOADING, updated.getCarStatus());
+                        assertEquals(CarStatus.DOCKING, updated.getCarStatus());
 
                         // Cleanup
                         car.updateStatus(0.0, 0.0, 0.0, 0.0, 100, CarStatus.IDLE);
@@ -190,7 +195,7 @@ class TowingCarServiceTest {
 
                         // 2. Verify Status Transition (Final state should be MOVING_TO_IDLE)
                         TowingCar updated = towingCarDBAdaptor.getCarById(car.getId());
-                        assertEquals(CarStatus.MOVING_TO_IDLE, updated.getCarStatus());
+                        assertEquals(CarStatus.RETURNING, updated.getCarStatus());
 
                         // Cleanup
                         car.updateStatus(0.0, 0.0, 0.0, 0.0, 100, CarStatus.IDLE);

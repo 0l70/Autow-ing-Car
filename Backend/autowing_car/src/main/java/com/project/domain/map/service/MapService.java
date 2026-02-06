@@ -320,8 +320,33 @@ public class MapService {
     /**
      * 특정 좌표(x, y)에서 가장 가까운 노드를 찾습니다.
      */
+    /**
+     * 특정 좌표(x, y)에서 가장 가까운 노드를 찾습니다.
+     * contextNode가 주어지면, 해당 노드와 그 이웃 노드들 중에서만 검색합니다. (Topological Tracking)
+     */
     public Node findNearestNode(double x, double y) {
-        return mapDBAdaptor.findAllNodes().stream()
+        return findNearestNode(x, y, null);
+    }
+
+    public Node findNearestNode(double x, double y, Node contextNode) {
+        List<Node> candidates;
+
+        if (contextNode == null) {
+            candidates = mapDBAdaptor.findAllNodes();
+        } else {
+            // ContextNode + Neighbors
+            candidates = new ArrayList<>();
+            candidates.add(contextNode);
+
+            List<Edge> edges = graphCache.getEdges(contextNode);
+            if (edges != null) {
+                for (Edge edge : edges) {
+                    candidates.add(edge.getDstNode());
+                }
+            }
+        }
+
+        return candidates.stream()
                 .min(Comparator.comparingDouble(n -> Math.pow(n.getPosX() - x, 2) + Math.pow(n.getPosY() - y, 2)))
                 .orElse(null);
     }
@@ -387,5 +412,19 @@ public class MapService {
                 .orElse(10.0);
 
         return distance / maxSpeed;
+    }
+
+    public double calculateDistance(Node n1, Node n2) {
+        if (n1 == null || n2 == null)
+            return Double.MAX_VALUE;
+        return calculateDistance(n1, n2.getPosX(), n2.getPosY());
+    }
+
+    public double calculateDistance(Node n1, double x, double y) {
+        if (n1 == null)
+            return Double.MAX_VALUE;
+        double dx = n1.getPosX() - x;
+        double dy = n1.getPosY() - y;
+        return Math.sqrt(dx * dx + dy * dy);
     }
 }

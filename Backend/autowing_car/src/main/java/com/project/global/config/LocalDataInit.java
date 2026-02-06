@@ -11,6 +11,7 @@ import com.project.domain.map.entity.Node;
 import com.project.domain.map.entity.MapInfo;
 import com.project.domain.map.repository.MapInfoRepository;
 import com.project.domain.map.repository.NodeRepository;
+import com.project.domain.map.service.MapDBAdaptor;
 import com.project.domain.towingcar.entity.TowingCar;
 import com.project.domain.towingcar.repository.TowingCarRepository;
 import com.project.domain.user.entity.User;
@@ -53,7 +54,10 @@ public class LocalDataInit implements CommandLineRunner {
     private final MapProperties mapProperties;
     private final ResourcePatternResolver resourceResolver;
     private final MapLoadingService mapLoadingService;
+    private final MapDBAdaptor mapDBAdaptor;
 
+    private final String GATE_CODE = "n2";
+    private final String START_CODE = "n1";
     // Use a default path or properties for map metadata if needed, but keeping
     // existing logic for MapInfo
     // Assuming mapBasePath is still needed for parseYaml/parsePgmHeader if not
@@ -106,8 +110,9 @@ public class LocalDataInit implements CommandLineRunner {
         // [Refactored] Path Loading Logic using MapLoadingService
         loadPaths();
 
+        Node node = mapDBAdaptor.getNodeByCode(START_CODE);
         // 4. 차량(Towing Car) 초기화
-        TowingCar tc1 = createAndSaveCar("TC01", -1.22, -0.13, 100);
+        TowingCar tc1 = createAndSaveCar("TC01", node.getPosX(), node.getPosY(), 100);
 
         // 5. 비행 정보 및 스케줄 초기화
         createAndSaveFlight("KE001", pilot, tc1, b737);
@@ -215,7 +220,7 @@ public class LocalDataInit implements CommandLineRunner {
                 .assignedTowingCar(car) // Initial assignment
                 .pilot(pilot)
                 .aircraft(aircraft)
-                .nodeCode("n2")
+                .nodeCode(GATE_CODE)
                 .departureDate(LocalDate.now())
                 .scheduledTime(LocalDateTime.now().plusHours(2))
                 .build();

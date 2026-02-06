@@ -94,7 +94,7 @@ public class MockTrafficScheduler {
         boolean forceGatePos = false;
 
         // 2. Logic for MOVING_TO_LOAD -> Arrive at Gate (Trigger Auto Connect)
-        if (currentStatus == CarStatus.MOVING_TO_LOAD) {
+        if (currentStatus == CarStatus.MOVING_TO_GATE) {
             int count = loadingCounters.getOrDefault(carId, 0);
             count++;
             loadingCounters.put(carId, count);
@@ -107,7 +107,7 @@ public class MockTrafficScheduler {
             }
         }
         // 3. Logic for LOADING -> TOWING (Connect)
-        else if (currentStatus == CarStatus.LOADING) {
+        else if (currentStatus == CarStatus.DOCKING) {
             int count = loadingCounters.getOrDefault(carId, 0);
             count++;
             loadingCounters.put(carId, count);
@@ -123,21 +123,21 @@ public class MockTrafficScheduler {
                                     .build());
                 }
             } else {
-                modeToSend = "LOADING";
+                modeToSend = "DOCKING";
             }
         }
-        // 4. Logic for UNLOADING -> IDLE (Disconnect)
-        else if (currentStatus == CarStatus.UNLOADING) {
+        // 4. Logic for UNDOCKING -> IDLE (Disconnect)
+        else if (currentStatus == CarStatus.UNDOCKING) {
             int count = loadingCounters.getOrDefault(carId, 0);
             count++;
             loadingCounters.put(carId, count);
 
             if (count > 30) {
-                modeToSend = "IDLE";
+                modeToSend = "WAITING_FOR_RETURN";
                 if (count == 31)
                     log.info("✅ [Mock] {} Disconnected", carId);
             } else {
-                modeToSend = "UNLOADING";
+                modeToSend = "UNDOCKING";
             }
         } else {
             loadingCounters.remove(carId);

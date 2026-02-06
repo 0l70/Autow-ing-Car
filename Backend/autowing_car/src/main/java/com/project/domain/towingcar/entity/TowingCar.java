@@ -1,6 +1,8 @@
 package com.project.domain.towingcar.entity;
 
 import com.project.domain.common.CarStatus;
+import com.project.domain.map.entity.Node;
+
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -45,6 +47,10 @@ public class TowingCar {
     @Column(name = "last_velocity")
     private Double lastVelocity;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "last_node_id")
+    private Node lastNode;
+
     // [비즈니스 로직] 상태 업데이트 메서드
     @Builder
     public TowingCar(String code, Integer battery, CarStatus carStatus) {
@@ -61,6 +67,10 @@ public class TowingCar {
         this.lastVelocity = velocity;
         this.battery = battery;
         this.carStatus = status;
+    }
+
+    public void updateLastNode(Node node) {
+        this.lastNode = node;
     }
 
     // 미션 시작 시 호출
