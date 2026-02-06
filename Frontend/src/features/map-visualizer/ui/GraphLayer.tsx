@@ -18,169 +18,215 @@ interface GraphLayerProps {
 export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
   const { nodes, edges, selectedId } = useGraphStore();
 
-  if (!meta || mapHeight === 0) return null;
+  // --- Engineered Path: Straight Lines with Rounded Corners (Fillets) ---
+  const getRoundedPath = (rawPoints: { x: number; y: number }[], radius: number = 20) => {
+    // 1. Strict Input Validation (Filter NaNs)
+    if (!rawPoints) return "";
+    const points = rawPoints.filter(p => p && !isNaN(p.x) && !isNaN(p.y));
 
-  // Local non-null meta for TS and performance
-  const activeMeta = meta;
-  const getPixel = (world: WorldCoord) =>
-    worldToPixel(world, activeMeta, mapHeight);
-
-  // [Catmull-Rom Spline] 모든 점을 정확히 통과하는 매끄러운 곡선 생성
-  const getCatmullRomPath = (points: { x: number; y: number }[]) => {
-    if (!points || points.length < 2) return "";
-
-    const p0 = points[0];
-    const last = points[points.length - 1];
-    if (!p0 || !last) return "";
-
-    // 점이 2개뿐이면 단순 직선 연결
+    // Safety check
+    if (points.length < 2) return "";
+    
+    // Simple line for 2 points
     if (points.length === 2) {
-      return `M ${p0.x} ${p0.y} L ${last.x} ${last.y}`;
+        return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
     }
 
-    // Catmull-Rom to Bezier 변환 (tension = 0.5)
-    const tension = 0.5;
-    let d = `M ${p0.x} ${p0.y}`;
+    // Start Path
+    let d = `M ${points[0].x} ${points[0].y}`;
 
-    for (let i = 0; i < points.length - 1; i++) {
-      const p0i = points[Math.max(0, i - 1)];
-      const p1 = points[i];
-      const p2 = points[Math.min(points.length - 1, i + 1)];
-      const p3 = points[Math.min(points.length - 1, i + 2)];
+    for (let i = 1; i < points.length - 1; i++) {
+        const p0 = points[i - 1]; // Previous
+        const p1 = points[i];     // Current (Corner)
+        const p2 = points[i + 1]; // Next
 
-      if (!p0i || !p1 || !p2 || !p3) continue;
+        // Validation to prevent "undefined" errors
+        if (!p0 || !p1 || !p2) continue;
 
-      // Control points for cubic bezier
-      const cp1x = p1.x + ((p2.x - p0i.x) * tension) / 3;
-      const cp1y = p1.y + ((p2.y - p0i.y) * tension) / 3;
-      const cp2x = p2.x - ((p3.x - p1.x) * tension) / 3;
-      const cp2y = p2.y - ((p3.y - p1.y) * tension) / 3;
+        // Vectors
+        const v1 = { x: p0.x - p1.x, y: p0.y - p1.y };
+        const v2 = { x: p2.x - p1.x, y: p2.y - p1.y };
 
-      d += ` C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${p2.x} ${p2.y}`;
+        const len1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+        const len2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+
+        // Prevent division by zero
+        if (len1 === 0 || len2 === 0) {
+            d += ` L ${p1.x} ${p1.y}`;
+            continue;
+        }
+
+        // Clamped Radius: Ensure we don't eat more than 45% of the segment
+        // (Leaving a bit of gap prevents artifacts)
+        const r = Math.min(radius, len1 * 0.45, len2 * 0.45);
+
+        // Normalize & Scale to find Start/End of Curve
+        const o1 = { x: p1.x + (v1.x / len1) * r, y: p1.y + (v1.y / len1) * r };
+        const o2 = { x: p1.x + (v2.x / len2) * r, y: p1.y + (v2.y / len2) * r };
+
+        if (isNaN(o1.x) || isNaN(o1.y) || isNaN(o2.x) || isNaN(o2.y)) {
+             d += ` L ${p1.x} ${p1.y}`;
+             continue;
+        }
+
+        d += ` L ${o1.x} ${o1.y}`;
+        d += ` Q ${p1.x} ${p1.y} ${o2.x} ${o2.y}`;
+    }
+
+    // Connect to Final Point
+    const last = points[points.length - 1];
+    if (last) {
+        d += ` L ${last.x} ${last.y}`;
     }
 
     return d;
   };
 
+  if (!meta || mapHeight === 0) return null;
+
+  const activeMeta = meta;
+  const getPixel = (world: WorldCoord) =>
+    worldToPixel(world, activeMeta, mapHeight);
+
+  // Helper function to get all points for an edge
+  const getPoints = (edge: typeof edges[number]) => {
+    const fromNode = nodes.find((n) => n.id === edge.fromId);
+    const toNode = nodes.find((n) => n.id === edge.toId);
+    if (!fromNode || !toNode) return null;
+
+    const p1 = getPixel(fromNode);
+    const p2 = getPixel(toNode);
+    const waypoints = edge.waypoints?.map((wp) => getPixel(wp)) || [];
+    return [p1, ...waypoints, p2];
+  };
+
+  const unselectedEdges = edges.filter(e => e.id !== selectedId);
+  const selectedEdge = edges.find(e => e.id === selectedId);
+
   return (
     <div className="absolute inset-0 pointer-events-none z-30">
-      {/* 간선(Edge) 시각화를 위한 SVG 레이어 */}
       <svg className="absolute inset-0 w-full h-full overflow-visible">
-        {/* 도로 그라데이션 정의 */}
         <defs>
-          <linearGradient id="roadGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#5a5a5a" />
-            <stop offset="50%" stopColor="#7a7a7a" />
-            <stop offset="100%" stopColor="#5a5a5a" />
-          </linearGradient>
-          <linearGradient
-            id="roadGradientSelected"
-            x1="0%"
-            y1="0%"
-            x2="0%"
-            y2="100%"
-          >
-            <stop offset="0%" stopColor="#00aaaa" />
-            <stop offset="50%" stopColor="#00ffff" />
-            <stop offset="100%" stopColor="#00aaaa" />
-          </linearGradient>
+          {/* Neon Glow Filter - Tighter & Brighter */}
+          <filter id="neon-sharp" x="-50%" y="-50%" width="200%" height="200%">
+             <feGaussianBlur stdDeviation="1.5" result="tightBlur" />
+             <feMerge>
+                <feMergeNode in="tightBlur" />
+                <feMergeNode in="SourceGraphic" />
+             </feMerge>
+          </filter>
         </defs>
 
-        {edges.map((edge) => {
-          const fromNode = nodes.find((n) => n.id === edge.fromId);
-          const toNode = nodes.find((n) => n.id === edge.toId);
-          if (!fromNode || !toNode) return null;
+        {/* --- Layer 1: Base Network (Fused Tech Lines) --- */}
+        <g>
+          {edges.map((edge) => { // Render ALL edges as base (safety)
+            const points = getPoints(edge);
+            if (!points) return null;
 
-          const p1 = getPixel(fromNode);
-          const p2 = getPixel(toNode);
+            return (
+              <g key={`tech-bg-${edge.id}`}>
+                 {/* 1. Glow Aura (Backing) - Transparent Glow */}
+                 <path
+                  d={getRoundedPath(points)}
+                  fill="none"
+                  stroke="#f97316" // Orange
+                  strokeWidth={5} // Wider Glow
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={0.3}
+                  style={{ filter: "blur(3px)" }}
+                />
+                {/* 2. Sharp Core (Line) - SOLID (No Opacity) for Fusion */}
+                <path
+                  d={getRoundedPath(points)}
+                  fill="none"
+                  stroke="#f97316"
+                  strokeWidth={1.5} 
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={1} // Solid!
+                  style={{ filter: "url(#neon-sharp)" }}
+                />
+              </g>
+            );
+          })}
+        </g>
 
-          // 하이라이트 여부
-          const isSelected = selectedId === edge.id;
-
-          // Construct Full Point List: FromNode -> Waypoints -> ToNode
-          const waypoints = edge.waypoints?.map((wp) => getPixel(wp)) || [];
-          const allPoints = [p1, ...waypoints, p2];
-
-          return (
-            <g key={edge.id}>
-              {/* 도로 배경 (넓은 폭) */}
-              <path
-                d={getCatmullRomPath(allPoints)}
-                fill="none"
-                stroke={
-                  isSelected
-                    ? "url(#roadGradientSelected)"
-                    : "url(#roadGradient)"
-                }
-                strokeWidth={isSelected ? 14 : 10}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                opacity={0.9}
-                className="transition-all duration-300"
-              />
-              {/* 도로 중앙선 (노란색 점선) */}
-              <path
-                d={getCatmullRomPath(allPoints)}
-                fill="none"
-                stroke={isSelected ? "#ffffff" : "#FFD700"}
-                strokeWidth={1}
-                strokeDasharray="4 6"
-                strokeLinecap="round"
-                opacity={0.7}
-              />
-            </g>
-          );
+        {/* --- Layer 2: Seamless Joints (Nodes) --- */}
+        {nodes.map(node => {
+           if (node.type === "NODE" || node.type === "WAYPOINT") return null; 
+           const pos = getPixel(node);
+           const isSelected = selectedId === node.id;
+           
+           return (
+             <g key={`node-${node.id}`} transform={`translate(${pos.x}, ${pos.y})`}>
+               {/* Fused Joint Circle - Matches Core Line Exactly */}
+               
+               {/* 1. Glow Backing */}
+               <circle 
+                 r={isSelected ? 8 : 4} 
+                 fill="#f97316"
+                 opacity={0.3}
+                 style={{ filter: "blur(3px)" }}
+               />
+               
+               {/* 2. Solid Core - Matches Line Width Fusion */}
+               <circle 
+                 r={isSelected ? 6 : 1.5} // r=1.5 matches strokeWidth=3 diameter... actually strokeWidth 1.5 is r=0.75? No, line width is total thickness.
+                 // Correction: Line StrokeWidth = 1.5. Radius should be 0.75 to match exactly flush, 
+                 // BUT covering the join usually requires slightly larger or just matching caps.
+                 // Round LineCap already handles the end. 
+                 // We only need the circle if it's a Station (Intersection).
+                 // Let's make it slightly larger (r=2) to be a "Joint" visual.
+                 fill={isSelected ? "#FFFFFF" : "#f97316"} 
+                 opacity={1}
+                 style={{ filter: isSelected ? "drop-shadow(0 0 5px #fff)" : "url(#neon-sharp)" }}
+               />
+             </g>
+           );
         })}
+
+        {/* --- Layer 3: Active Path (Laser Beam) --- */}
+        {selectedEdge && (() => {
+           const points = getPoints(selectedEdge);
+           if (!points) return null;
+           return (
+             <g key={`tech-active-${selectedEdge.id}`}>
+               {/* 1. Massive Flood Glow */}
+               <path
+                 d={getRoundedPath(points)}
+                 fill="none"
+                 stroke="#f97316" 
+                 strokeWidth={12}
+                 strokeLinecap="round"
+                 strokeLinejoin="round"
+                 opacity={0.3}
+                 style={{ filter: "blur(5px)" }}
+               />
+               {/* 2. Intense Beam */}
+               <path
+                 d={getRoundedPath(points)}
+                 fill="none"
+                 stroke="#f97316"
+                 strokeWidth={4}
+                 strokeLinecap="round"
+                 strokeLinejoin="round"
+                 style={{ filter: "blur(1px)" }}
+               />
+               {/* 3. White Hot Core - Solid */}
+               <path
+                 d={getRoundedPath(points)}
+                 fill="none"
+                 stroke="#FFFFFF" 
+                 strokeWidth={2}
+                 strokeLinecap="round"
+                 strokeLinejoin="round"
+                 opacity={1}
+               />
+             </g>
+           );
+        })()}
       </svg>
-
-      {/* HTML Layer for Nodes */}
-      <div className="absolute inset-0 w-full h-full">
-        {nodes.map((node) => {
-          // [Debug] Check actual type
-          // console.log(`[GraphLayer] Node ${node.id} Type:`, node.type);
-
-          // [Filter] NODE 타입은 렌더링하지 않음 (단순 교차점 등)
-          if (node.type === "NODE" || node.type === "WAYPOINT") return null;
-
-          const pos = getPixel(node);
-          const isSelected = selectedId === node.id;
-
-          // 타입별 스타일
-          const getNodeColor = (type: string) => {
-            switch (type) {
-              case "RUNWAY":
-                return "bg-blue-500 border-blue-300";
-              case "GATE":
-                return "bg-green-500 border-green-300";
-              case "CHARGER":
-                return "bg-yellow-500 border-yellow-300";
-              case "INTERSECTION":
-                return "bg-gray-400 border-gray-300";
-              default:
-                return "bg-accent-orange border-black";
-            }
-          };
-
-          const sizeClass =
-            node.type === "RUNWAY"
-              ? "w-2.5 h-2.5"
-              : node.type === "GATE" || node.type === "CHARGER"
-                ? "w-2.5 h-2.5"
-                : "w-2 h-2";
-
-          const activeClass = isSelected
-            ? "bg-accent-cyan scale-125 shadow-[0_0_10px_cyan] z-40 ring-1 ring-white"
-            : `${getNodeColor(node.type)} z-30`;
-
-          return (
-            <div
-              key={node.id}
-              className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border transition-all duration-200 ${sizeClass} ${activeClass}`}
-              style={{ left: pos.x, top: pos.y }}
-            />
-          );
-        })}
-      </div>
     </div>
   );
 }

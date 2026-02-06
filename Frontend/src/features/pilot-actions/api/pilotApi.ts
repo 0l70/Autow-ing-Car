@@ -2,7 +2,7 @@ import { apiClient } from '@/shared/api/apiClient';
 
 export interface TowingCarStatusDTO {
     code: string | null;
-    status: string; // 'IDLE' | 'MOVING_TO_LOAD' | 'LOADING' | 'CONNECTED' etc
+    status: string; // 'IDLE' | 'MOVING_TO_GATE' | 'DOCKING' | 'CONNECTED' etc
     battery: number;
     posX: number;
     posY: number;
