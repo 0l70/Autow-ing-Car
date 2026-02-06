@@ -45,9 +45,67 @@ export function TowingCarInfo({ moveState, aircraft }: TowingCarInfoProps) {
                         <span className="text-slate-200 font-bold text-xs font-mono">{destination}</span>
                     </div>
                 </div>
-                {/* Progress Bar (Full Width) */}
-                <div className="col-span-2 relative h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                    <div className="absolute top-0 left-0 h-full bg-amber-500 w-[75%] shadow-[0_0_10px_rgba(245,158,11,0.5)]"></div>
+                {/* Mission Progress Steps (Replaces simple bar) */}
+                <div className="col-span-2 mt-2">
+                     <div className="flex justify-between text-[10px] text-gray-500 font-bold mb-2 px-1">
+                        {["READY", "LINK", "TOW", "RTB"].map((step, idx) => {
+                            const status = aircraft?.status || 'IDLE';
+                            const currentStepIdx = 
+                                (status === 'IDLE' || status === 'STOP') ? 0 :
+                                (status === 'MOVING_TO_GATE' || status === 'DOCKING') ? 1 :
+                                (status === 'TOWING' || status === 'UNDOCKING') ? 2 :
+                                (status === 'RETURNING' || status === 'WAITING_FOR_RETURN') ? 3 : 0;
+                            
+                            const isActive = idx === currentStepIdx;
+                            const isPast = idx < currentStepIdx;
+
+                            return (
+                                <span key={step} className={`${isActive ? 'text-amber-500' : isPast ? 'text-white' : ''}`}>
+                                    {step}
+                                </span>
+                            );
+                        })}
+                    </div>
+                    
+                    {/* Progress Line */}
+                    <div className="relative h-1 bg-slate-800 rounded-full">
+                        {/* Fill */}
+                        <div 
+                            className="absolute left-0 top-0 bottom-0 bg-amber-500 transition-all duration-500"
+                            style={{ 
+                                width: `${((
+                                    (!aircraft || aircraft.status === 'IDLE' || aircraft.status === 'STOP') ? 0 :
+                                    (aircraft.status === 'MOVING_TO_GATE' || aircraft.status === 'DOCKING') ? 1 :
+                                    (aircraft.status === 'TOWING' || aircraft.status === 'UNDOCKING') ? 2 :
+                                    (aircraft.status === 'RETURNING' || aircraft.status === 'WAITING_FOR_RETURN') ? 3 : 0
+                                ) / 3) * 100}%` 
+                            }} 
+                        />
+                        
+                        {/* Dots */}
+                        {[0, 1, 2, 3].map((step) => {
+                             const status = aircraft?.status || 'IDLE';
+                             const currentStepIdx = 
+                                (status === 'IDLE' || status === 'STOP') ? 0 :
+                                (status === 'MOVING_TO_GATE' || status === 'DOCKING') ? 1 :
+                                (status === 'TOWING' || status === 'UNDOCKING') ? 2 :
+                                (status === 'RETURNING' || status === 'WAITING_FOR_RETURN') ? 3 : 0;
+                            
+                            const isActive = step === currentStepIdx;
+                            const isPast = step < currentStepIdx;
+
+                            return (
+                                <div 
+                                    key={step}
+                                    className={`absolute top-1/2 -translate-y-1/2 w-2 h-2 rounded-full border border-gray-900 transition-all ${
+                                        isActive ? 'bg-white ring-2 ring-amber-500 scale-125' : 
+                                        isPast ? 'bg-amber-500' : 'bg-slate-700'
+                                    }`}
+                                    style={{ left: `${(step / 3) * 100}%` }}
+                                />
+                            );
+                        })}
+                    </div>
                 </div>
             </CardContent>
         </Card>
