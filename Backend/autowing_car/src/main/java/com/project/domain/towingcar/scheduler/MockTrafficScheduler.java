@@ -52,7 +52,7 @@ public class MockTrafficScheduler {
     private final Map<String, Integer> loadingCounters = new HashMap<>();
 
     // 시뮬레이션 메인 루프 (1초마다 실행)
-    @Scheduled(fixedRate = 1000) // 1Hz for quieter debugging
+    // @Scheduled(fixedRate = 1000) // 1Hz for quieter debugging
     @Transactional(readOnly = true)
     public void simulate() {
         try {

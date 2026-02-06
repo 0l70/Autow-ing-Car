@@ -33,7 +33,7 @@ logging:
 
 app:
   mqtt:
-    mock: false
+    mock: true
 
 springwolf:
   enabled: true
