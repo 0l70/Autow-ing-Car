@@ -22,13 +22,18 @@ export function usePilotController(initialCarId?: string) {
   const ingestAircraft = useAircraftStore((state) => state.ingest);
 
   // --- State (Replaced with Store) ---
-  const { 
-      moveState, setMoveState, 
-      connState, setConnState, 
-      isAutoMode, setIsAutoMode,
-      logs, addLog: addStoreLog, clearLogs
+  const {
+    moveState,
+    setMoveState,
+    connState,
+    setConnState,
+    isAutoMode,
+    setIsAutoMode,
+    logs,
+    addLog: addStoreLog,
+    clearLogs,
   } = usePilotStore();
-  
+
   // const [logs, setLogs] = useState<PilotLog[]>([]); // Removed
   // const [moveState, setMoveState] = useState<MoveState>("stopped"); // Removed
   // const [connState, setConnState] = useState<ConnectionState>("idle"); // Removed
@@ -72,15 +77,15 @@ export function usePilotController(initialCarId?: string) {
   // --- Initial State Sync ---
   // Store handles persistence, but we might want to check MISSION status to override local state if backend says otherwise.
   const activeMissions = useMissionStore((state) => state.activeMissions);
-  
+
   useEffect(() => {
     // Priority 1: Check if there's a RUNNING mission for assigned car
     const carId = flightInfo?.assignedCarId;
     if (carId && activeMissions[carId]) {
       const missionStatus = activeMissions[carId].status;
-      if (missionStatus === 'RUNNING') {
-        console.log('[Restore] Found RUNNING mission -> pushback');
-        if (moveState !== 'pushback') setMoveState('pushback');
+      if (missionStatus === "RUNNING") {
+        console.log("[Restore] Found RUNNING mission -> pushback");
+        if (moveState !== "pushback") setMoveState("pushback");
         return;
       }
     }
@@ -110,7 +115,7 @@ export function usePilotController(initialCarId?: string) {
   // Using useCallback to match existing signature, but delegating to store
   const addLog = useCallback(
     (type: "info" | "success" | "warning" | "error", message: string) => {
-        addStoreLog({ type, message });
+      addStoreLog({ type, message });
     },
     [addStoreLog],
   );
@@ -181,13 +186,17 @@ export function usePilotController(initialCarId?: string) {
         setConnState("idle");
       }
 
-      // [FIX] Force stop if we were moving/pushing back
-      if (moveState !== 'stopped') {
-          console.log(`[Sync] Status: ${myCar.status} -> Force Stop`);
-          setMoveState("stopped");
+      // [FIX] Force stop if we were moving/pushing back, BUT only if no mission is running
+      // (Prevent conflict with Restore Logic which sets 'pushback' for RUNNING missions)
+      const isMissionRunning =
+        targetId && activeMissions[targetId]?.status === "RUNNING";
+
+      if (moveState !== "stopped" && !isMissionRunning) {
+        console.log(`[Sync] Status: ${myCar.status} -> Force Stop`);
+        setMoveState("stopped");
       }
     }
-  }, [aircrafts, socketCarId, connState, addLog, moveState]);
+  }, [aircrafts, socketCarId, connState, addLog, moveState, activeMissions]);
 
   // --- Message Handler ---
   useEffect(() => {
@@ -309,8 +318,8 @@ export function usePilotController(initialCarId?: string) {
             }
 
             if (!send) {
-                addLog("error", "SYS: Socket Not Connected");
-                return;
+              addLog("error", "SYS: Socket Not Connected");
+              return;
             }
 
             send(
@@ -318,7 +327,7 @@ export function usePilotController(initialCarId?: string) {
               { destination: "/app/car/resume" },
               JSON.stringify({ carId: activeCarId }),
             );
-            
+
             setMoveState("pushback");
             addLog("info", "CMD: Resuming Pushback...");
           },
@@ -339,8 +348,8 @@ export function usePilotController(initialCarId?: string) {
           }
 
           if (!send) {
-             addLog("error", "SYS: Socket Not Connected");
-             return;
+            addLog("error", "SYS: Socket Not Connected");
+            return;
           }
 
           // Save to localStorage handled by Store Persist automatically when we setState
@@ -371,8 +380,14 @@ export function usePilotController(initialCarId?: string) {
   const connLongPress = useLongPress(
     () => {
       // Block action if connection is in progress, waiting for approval, OR vehicle is moving
-      if (connState === "waiting" || connState === "connecting" || 
-          moveState === "waiting" || moveState === "pushback" || moveState === "moving") return;
+      if (
+        connState === "waiting" ||
+        connState === "connecting" ||
+        moveState === "waiting" ||
+        moveState === "pushback" ||
+        moveState === "moving"
+      )
+        return;
 
       setConfirmModal({
         open: true,
@@ -384,8 +399,8 @@ export function usePilotController(initialCarId?: string) {
           }
 
           if (!send) {
-             addLog("error", "SYS: Socket Not Connected");
-             return;
+            addLog("error", "SYS: Socket Not Connected");
+            return;
           }
 
           const isConnecting = connState === "idle";
@@ -425,30 +440,30 @@ export function usePilotController(initialCarId?: string) {
   // [NEW] Defined as a standard function (not long press) for the dedicated Resume button
   const handleResume = useCallback(() => {
     if (moveState !== "paused") return;
-    
+
     setConfirmModal({
-        open: true,
-        action: "RESUME PUSHBACK",
-        onConfirm: () => {
-            if (!activeCarId) {
-                addLog("error", "SYS: No Active Car to resume");
-                return;
-            }
+      open: true,
+      action: "RESUME PUSHBACK",
+      onConfirm: () => {
+        if (!activeCarId) {
+          addLog("error", "SYS: No Active Car to resume");
+          return;
+        }
 
-            if (!send) {
-                addLog("error", "SYS: Socket Not Connected");
-                return;
-            }
+        if (!send) {
+          addLog("error", "SYS: Socket Not Connected");
+          return;
+        }
 
-            send(
-                "SEND",
-                { destination: WS_TOPICS.PILOT.RESUME },
-                JSON.stringify({ carId: activeCarId }),
-            );
-            
-            setMoveState("pushback");
-            addLog("info", "CMD: Resuming Pushback...");
-        },
+        send(
+          "SEND",
+          { destination: WS_TOPICS.PILOT.RESUME },
+          JSON.stringify({ carId: activeCarId }),
+        );
+
+        setMoveState("pushback");
+        addLog("info", "CMD: Resuming Pushback...");
+      },
     });
   }, [moveState, activeCarId, send, addLog]);
 
@@ -462,7 +477,7 @@ export function usePilotController(initialCarId?: string) {
   const handleEmergencyStop = useCallback(() => {
     // [Updated Logic] Only effective during movement
     if (moveState !== "moving" && moveState !== "pushback") {
-        return; 
+      return;
     }
 
     const newState = "paused";
@@ -472,13 +487,13 @@ export function usePilotController(initialCarId?: string) {
     if (activeCarId) {
       if (send) {
         send(
-            "SEND",
-            { destination: WS_TOPICS.PILOT.EMERGENCY },
-            JSON.stringify({
-              carId: activeCarId,
-            }),
-          );
-          addLog("error", "!!! REQ: EMERGENCY STOP SENT !!!");
+          "SEND",
+          { destination: WS_TOPICS.PILOT.EMERGENCY },
+          JSON.stringify({
+            carId: activeCarId,
+          }),
+        );
+        addLog("error", "!!! REQ: EMERGENCY STOP SENT !!!");
       } else {
         addLog("error", "!!! EMERGENCY STOP (Socket Error) !!!");
       }

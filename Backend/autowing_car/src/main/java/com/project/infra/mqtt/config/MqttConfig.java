@@ -44,6 +44,7 @@ public class MqttConfig {
         options.setCleanSession(true); // 서버는 보통 true로 씁니다 (메시지 쌓아둘 필요 없음)
         options.setConnectionTimeout(10);
         options.setKeepAliveInterval(30);
+        options.setMaxInflight(1000); // 👈 고주하 데이터 전송을 위해 최대 발행 대기수 증가
 
         factory.setConnectionOptions(options); // 👈 공장에 옵션 주입 완료
         return factory;
