@@ -11,6 +11,14 @@ spring:
     broker:
       url: ssl://${MQTT_HOST}:${MQTT_PORT}
       # url: tcp://localhost:1883
+
+  datasource:
+    hikari:
+      maximum-pool-size: 50
+      minimum-idle: 10
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
 jwt:
   secret: ${JWT_SECRET}
   expiration: ${JWT_EXPIRATION}

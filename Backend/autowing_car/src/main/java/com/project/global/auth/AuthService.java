@@ -23,7 +23,8 @@ public class AuthService {
 
         private static final long REFRESH_TOKEN_VALIDITY = 604_800_000L; // 7일
 
-        @Transactional
+        // @Transactional (Removed for Performance: DB Connection holding time
+        // optimization)
         public AuthDtos.TokenResponse login(AuthDtos.LoginRequest request) {
                 // 1. Login ID/PW 기반으로 Authentication 객체 생성
                 // 이때 authentication 은 인증 여부를 확인하는 authenticated 값이 false
