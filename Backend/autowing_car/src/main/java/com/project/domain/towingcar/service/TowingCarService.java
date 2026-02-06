@@ -99,7 +99,7 @@ public class TowingCarService {
 
         // 이동 중 상태로 변경
         assignedCar.updateStatus(assignedCar.getLastPosX(), assignedCar.getLastPosY(), assignedCar.getLastHeading(),
-                assignedCar.getLastVelocity(), assignedCar.getBattery(), CarStatus.MOVING_TO_LOAD);
+                assignedCar.getLastVelocity(), assignedCar.getBattery(), CarStatus.MOVING_TO_GATE);
 
         log.info("🚗 [Dispatch] {} -> {}", assignedCar.getCode(), flightNumber);
 
@@ -154,7 +154,7 @@ public class TowingCarService {
         // ✅ 비즈니스 로직: 상태 변경만
         assignedCar.updateStatus(assignedCar.getLastPosX(), assignedCar.getLastPosY(),
                 assignedCar.getLastHeading(), assignedCar.getLastVelocity(),
-                assignedCar.getBattery(), CarStatus.LOADING);
+                assignedCar.getBattery(), CarStatus.DOCKING);
 
         // ✅ 알림: WebSocket (Helper 메서드로 위임)
         notifyCarConnected(assignedCar, pilotId);
@@ -180,7 +180,7 @@ public class TowingCarService {
         // 1. 상태 변경: UNLOADING
         assignedCar.updateStatus(assignedCar.getLastPosX(), assignedCar.getLastPosY(),
                 assignedCar.getLastHeading(), assignedCar.getLastVelocity(),
-                assignedCar.getBattery(), CarStatus.UNLOADING);
+                assignedCar.getBattery(), CarStatus.UNDOCKING);
         towingCarDBAdaptor.save(assignedCar); // Intermediate save
 
         // 2. 미션 완료 처리
@@ -209,34 +209,37 @@ public class TowingCarService {
     }
 
     private void returnToBase(TowingCar car) {
-        // 1. Find Base Node
-        // "base_node" 혹은 적절한 IDLE 노드 찾기
-        // Node baseNode = mapDBAdaptor.getNodeByCode("base_node");
-        // [Fallback] 만약 base_node가 없다면, 현재 위치에서 가장 가까운 IDLE 노드 혹은 그냥 멈춤
-        // Node baseNode = mapService.findNearestNode(car.getLastPosX(),
-        // car.getLastPosY()); // 임시
-
-        Node baseNode = mapDBAdaptor.getNodeByCode(FINISH_NODE);
-        if (baseNode == null) {
-            baseNode = mapService.findNearestNode(0, 0); // Default Origin
+        // 1. Find Base Entrance (n8)
+        Node baseEntrance = mapDBAdaptor.getNodeByCode(FINISH_NODE); // "n8"
+        if (baseEntrance == null) {
+            baseEntrance = mapService.findNearestNode(0, 0);
         }
 
-        Node carNode = mapService.findNearestNode(car.getLastPosX(), car.getLastPosY());
-        if (carNode == null)
-            carNode = baseNode;
+        // Use LastNode if available
+        Node carNode = car.getLastNode();
+        if (carNode == null) {
+            carNode = mapService.findNearestNode(car.getLastPosX(), car.getLastPosY());
+        }
 
         // 2. Calculate Path
-        List<Edge> path = mapService.findOptimalPath(carNode, baseNode);
-        // List<Map<String, Object>> pathPayload =
-        // mapService.convertPathToPayload(path);
+        List<Edge> path = mapService.findOptimalPath(carNode, baseEntrance);
+
+        // [Safeguard] If already at n8 (or path empty/very close), we might need to
+        // Trigger Hop immediately
+        // But usually, we send the Drive command even if short.
+
+        if (path.isEmpty() && mapService.calculateDistance(carNode, baseEntrance) > 1.0) {
+            log.warn("❌ [Return] No path found from {} to {}", carNode.getNodeCode(), baseEntrance.getNodeCode());
+            return;
+        }
 
         // 3. Construct Payload
         Map<String, Object> data = new HashMap<>();
         data.put("carId", car.getCode());
         data.put("startNode", carNode.getNodeCode());
-        data.put("endNode", baseNode.getNodeCode());
+        data.put("endNode", baseEntrance.getNodeCode());
         data.put("edgeIds", path.stream().map(Edge::getEdgeCode).toList());
-        data.put("finalAction", "PARK"); // 도착 시 IDLE로 전환
+        data.put("finalAction", "PARK");
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("msgId", UUID.randomUUID().toString());
@@ -250,7 +253,7 @@ public class TowingCarService {
 
         // 5. Update Status
         car.updateStatus(car.getLastPosX(), car.getLastPosY(), car.getLastHeading(),
-                car.getLastVelocity(), car.getBattery(), CarStatus.MOVING_TO_IDLE);
+                car.getLastVelocity(), car.getBattery(), CarStatus.RETURNING);
         towingCarDBAdaptor.save(car);
     }
 
@@ -270,12 +273,20 @@ public class TowingCarService {
         CarStatus status = CarStatus.from(payload.path("mode").asText());
         int battery = payload.get("battery").asInt();
 
-        // [Auto Trigger] 로봇이 멈췄을 때(IDLE) 자동 연결/해제 체크
+        // [Topological Tracking] Update LastNode within context
+        Node nearestNode = mapService.findNearestNode(x, y, assignedCar.getLastNode());
+        if (nearestNode != null) {
+            // Only update if very close (e.g., 2.0m)
+            if (mapService.calculateDistance(nearestNode, x, y) <= ARRIVAL_THRESHOLD) {
+                assignedCar.updateLastNode(nearestNode);
+            }
+        }
+
+        // [Auto Trigger]
         checkAndTriggerAutoActions(assignedCar, x, y, status);
 
         // DB Update & Log
-        // DB Update & Log
-        CarStatus oldStatus = assignedCar.getCarStatus(); // Check previous status
+        CarStatus oldStatus = assignedCar.getCarStatus();
         assignedCar.updateStatus(x, y, heading, velocity, battery, status);
 
         // [New Logic] 1-4. 토잉카가 토잉 완료(TOWING) 상태를 보냈을 때 -> 기장에게 즉시 알림
@@ -310,23 +321,60 @@ public class TowingCarService {
     }
 
     private void checkAndTriggerAutoActions(TowingCar assignedCar, double x, double y, CarStatus status) {
-        // [Fix] Allow checking auto actions even if status is not IDLE (e.g.
-        // MOVING_TO_LOAD)
-        // if (status != CarStatus.IDLE) return;
-
-        // Auto Connect
-        if (isAutoConnectEnabled && assignedCar.getCarStatus() == CarStatus.MOVING_TO_LOAD) { // DB상 배차이동중
+        // 1. Auto Connect (Moving to Load -> Arrived at Gate -> Connect)
+        if (isAutoConnectEnabled && assignedCar.getCarStatus() == CarStatus.MOVING_TO_GATE) {
             Flight flight = flightDBAdaptor.getFlightByAssignedCar(assignedCar);
+            // Use LastNode logic or Distance logic
             if (flight != null && isArrivedAt(x, y, flight.getNodeCode())) {
                 connectCar("SYSTEM", new CarConnectRequestDto(flight.getId()));
             }
         }
 
-        // Auto Disconnect
-        if (isAutoDisconnectEnabled && assignedCar.getCurrentMissionId() != null) {
-            Mission mission = missionDBAdaptor.getMissionById(assignedCar.getCurrentMissionId());
-            if (mission.getStatus() == MissionStatus.RUNNING && isArrivedAt(x, y, mission.getDestNode())) {
-                disconnectCar("SYSTEM", new CarDisconnectRequestDto(mission.getFlight().getId()));
+        // 2. Auto Disconnect / Return (Runway Undocking -> Return n8)
+        // Trigger specific transition: UNLOADING -> IDLE
+        if (isAutoDisconnectEnabled && status == CarStatus.WAITING_FOR_RETURN) {
+            if (assignedCar.getCurrentMissionId() != null) {
+                Mission mission = missionDBAdaptor.getMissionById(assignedCar.getCurrentMissionId());
+                Node destNode = mapDBAdaptor.getNodeByCode(mission.getDestNode());
+                Node lastNode = assignedCar.getLastNode();
+
+                if (lastNode != null && destNode != null &&
+                        lastNode.getId().equals(destNode.getId())) {
+
+                    log.info("🚩 [Auto Action] Car {} arrived at Dest {} ({}) -> Triggering Disconnect/Return",
+                            assignedCar.getCode(), destNode.getNodeCode(), status);
+
+                    disconnectCar("SYSTEM", new CarDisconnectRequestDto(mission.getFlight().getId()));
+                }
+            }
+        }
+
+        // 3. Mission Completion Check (Arrival at n1 + IDLE)
+        // Scenario: Car moves n8 -> n1 (physically, no edge). Reports IDLE when at n1.
+        if (status == CarStatus.IDLE) {
+            Node startNode = mapDBAdaptor.getNodeByCode(START_NODE); // "n1"
+            if (startNode != null && mapService.calculateDistance(startNode, assignedCar.getLastPosX(),
+                    assignedCar.getLastPosY()) <= ARRIVAL_THRESHOLD) {
+                // 1. Force update LastNode to n1
+                if (assignedCar.getLastNode() == null || !assignedCar.getLastNode().getNodeCode().equals(START_NODE)) {
+                    assignedCar.updateLastNode(startNode);
+                    log.info("📍 [Monitoring] Car {} Arrived at Base {} (Physical Check)", assignedCar.getCode(),
+                            START_NODE);
+                }
+
+                // 2. Complete Mission if exists
+                if (assignedCar.getCurrentMissionId() != null) {
+                    Mission mission = missionDBAdaptor.getMissionById(assignedCar.getCurrentMissionId());
+                    if (mission != null && mission.getStatus() == MissionStatus.RUNNING) {
+                        mission.updateStatus(MissionStatus.COMPLETED);
+                        missionDBAdaptor.save(mission);
+
+                        assignedCar.assignMission(null); // Clear Mission
+                        log.info("🎉 [Mission] Mission {} COMPLETED (Car at Base)", mission.getId());
+
+                        // Notify?
+                    }
+                }
             }
         }
     }
