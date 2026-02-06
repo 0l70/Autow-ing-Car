@@ -13,9 +13,7 @@ export function ActivityTimeline() {
                 <Activity className="w-5 h-5 text-accent-cyan" strokeWidth={3} />
                 ACTIVITY TIMELINE
             </h2>
-            <div className="text-[10px] text-[hsl(var(--gray-600))] mt-1 font-mono overflow-hidden whitespace-nowrap text-ellipsis opacity-50">
-                [Source: Real-time Store Subscription]
-            </div>
+
         </div>
         
         {/* Timeline List */}

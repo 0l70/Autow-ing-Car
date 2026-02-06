@@ -30,7 +30,7 @@ export function ControllerDashboard() {
                 </>
             }
         >
-            <div className="absolute inset-0 flex items-center justify-center p-8">
+            <div className="absolute inset-0 flex items-center justify-center p-4">
                 {/* Map Container */}
                 <div className="relative w-full h-full border border-white/5 rounded-lg flex items-center justify-center bg-black/20 overflow-hidden">
                     <AtcMapWidget 

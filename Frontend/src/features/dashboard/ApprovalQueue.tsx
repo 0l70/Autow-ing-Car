@@ -224,7 +224,7 @@ export function ApprovalQueue() {
   };
 
   return (
-    <div className="flex flex-col h-[65%] glass-panel rounded-xl p-0 relative overflow-hidden shrink-0 border-accent-red/20 shadow-[0_0_15px_rgba(255,0,0,0.05)]">
+    <div className="flex flex-col h-[50%] glass-panel rounded-xl p-0 relative overflow-hidden shrink-0 border-accent-red/20 shadow-[0_0_15px_rgba(255,0,0,0.05)]">
       {/* Header */}
       <div className="flex items-center justify-between p-4 pb-2 border-b border-white/10 bg-white/5">
         <h2 className="text-sm font-bold tracking-wider text-slate-200 uppercase flex items-center gap-2">
