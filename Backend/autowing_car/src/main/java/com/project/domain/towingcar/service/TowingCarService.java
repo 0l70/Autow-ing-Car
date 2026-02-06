@@ -244,7 +244,7 @@ public class TowingCarService {
         Map<String, Object> payload = new HashMap<>();
         payload.put("msgId", UUID.randomUUID().toString());
         payload.put("timestamp", System.currentTimeMillis());
-        payload.put("type", "Drive");
+        payload.put("type", "DRIVE");
         payload.put("taskId", "RETURN_" + car.getCode());
         payload.put("data", data);
 
