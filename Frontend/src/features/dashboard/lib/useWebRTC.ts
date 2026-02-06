@@ -39,6 +39,7 @@ interface UseWebRTCProps {
 export function useWebRTC({ enabled, carId, pilotId }: UseWebRTCProps) {
     const [stream, setStream] = useState<MediaStream | null>(null);
     const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>('new');
+    const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
     const pcRef = useRef<RTCPeerConnection | null>(null);
     // Keep track if we already sent START
     const isStartedRef = useRef(false);
@@ -103,6 +104,10 @@ export function useWebRTC({ enabled, carId, pilotId }: UseWebRTCProps) {
         pc.onconnectionstatechange = () => {
             console.log('[WebRTC] Connection State:', pc.connectionState);
             setConnectionState(pc.connectionState);
+            // 응답을 받았으므로 waiting 상태 해제
+            if (pc.connectionState === 'connected' || pc.connectionState === 'failed') {
+                setIsWaitingForResponse(false);
+            }
         };
 
         pc.onicecandidate = (event) => {
@@ -195,6 +200,7 @@ export function useWebRTC({ enabled, carId, pilotId }: UseWebRTCProps) {
             createPeerConnection();
 
             // 3. Send START to trigger Backend to send new OFFER
+            setIsWaitingForResponse(true);
             sendControl('START');
         } else {
             // Disable -> PAUSE
@@ -290,6 +296,7 @@ export function useWebRTC({ enabled, carId, pilotId }: UseWebRTCProps) {
 
     return {
         stream,
-        connectionState
+        connectionState,
+        isWaitingForResponse
     };
 }

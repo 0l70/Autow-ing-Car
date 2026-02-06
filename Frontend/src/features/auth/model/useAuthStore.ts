@@ -45,7 +45,8 @@ export const useAuthStore = create<AuthState>()(
                 set({ accessToken, refreshToken, socketToken });
             },
             logout: () => {
-                sessionStorage.clear(); // Clear session data (e.g. welcome flags) on logout
+                sessionStorage.clear();
+                localStorage.clear();
                 set({ 
                     accessToken: null, 
                     socketToken: null,

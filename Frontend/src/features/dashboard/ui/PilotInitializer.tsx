@@ -35,7 +35,13 @@ export function PilotInitializer({ children }: PilotInitializerProps) {
             destination: WS_TOPICS.PILOT_FLIGHT_INFO
         });
 
-        // 3. Request Flight Info (Explicit Request)
+        // 3. Subscribe to Mission Updates (Global broadcast for path data)
+        send("SUBSCRIBE", {
+            id: "sub-pilot-mission-updates",
+            destination: WS_TOPICS.MISSION_UPDATES
+        });
+
+        // 4. Request Flight Info (Explicit Request)
         console.log("[PilotInitializer] 📨 Requesting flight info...");
         send("SEND", {
             destination: "/app/flight/info/request"
@@ -45,6 +51,7 @@ export function PilotInitializer({ children }: PilotInitializerProps) {
             console.log("[PilotInitializer] 🔌 Cleaning up Global Pilot Session...");
             send("UNSUBSCRIBE", { id: "sub-pilot-private" });
             send("UNSUBSCRIBE", { id: "sub-pilot-flight-info" });
+            send("UNSUBSCRIBE", { id: "sub-pilot-mission-updates" });
         };
     }, [isConnected, send, socketToken]);
 

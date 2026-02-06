@@ -110,7 +110,8 @@ export function usePilotSocket(targetCarId?: string | null, enabled: boolean = t
                 status: finalStatus as any,
                 battery: data.battery,
                 speed: finalV,
-                currentMission: data.currentMission,
+                // [Fix] 텔레메트리 수신 시 미션 정보가 없으면 기존 정보를 유지
+                ...(data.currentMission ? { currentMission: data.currentMission } : {}),
                 isLoaded: data.is_loaded
             };
             ingestAircraft(aircraft);

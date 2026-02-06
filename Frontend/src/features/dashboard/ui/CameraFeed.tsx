@@ -12,7 +12,7 @@ interface CameraFeedProps {
 
 export function CameraFeed({ className, enabled, carId, pilotId = "PILOT_001" }: CameraFeedProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
-    const { stream, connectionState } = useWebRTC({ enabled, carId, pilotId });
+    const { stream, connectionState, isWaitingForResponse } = useWebRTC({ enabled, carId, pilotId });
 
     // Stream Binding: When stream is ready, attach to video element
     useEffect(() => {
@@ -23,8 +23,12 @@ export function CameraFeed({ className, enabled, carId, pilotId = "PILOT_001" }:
 
     // Derived Status for UI
     const isConnected = connectionState === 'connected';
-    const isConnecting = connectionState === 'connecting' || connectionState === 'new';
-    const isFailed = connectionState === 'failed' || connectionState === 'disconnected' || connectionState === 'closed';
+    
+    // UI 로직: 
+    // 1. 응답 대기 중이거나 초기 상태(new)면 "연결 중" 표시
+    // 2. 응답이 왔는데 연결이 안 됐거나(failed/disconnected), 수동으로 닫힌(closed) 경우 중 스트림이 있었으면 "연결 끊김" 표시
+    const isConnecting = isWaitingForResponse || connectionState === 'new' || connectionState === 'connecting';
+    const isFailed = !isWaitingForResponse && (connectionState === 'failed' || connectionState === 'disconnected' || connectionState === 'closed') && !isConnected;
 
     if (!enabled) {
         return (
