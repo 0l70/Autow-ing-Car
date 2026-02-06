@@ -33,25 +33,6 @@ const TelemetrySchema = z.object({
     is_loaded: z.boolean().default(false)
 });
 
-// ... (omitted)
-
-    const handleTelemetryMessage = useCallback((msg: any) => {
-        // ... (omitted)
-        
-        const finalStatus = data.status || data.mode;
-        const finalX = data.posX ?? data.x;
-        const finalY = data.posY ?? data.y;
-        const finalYaw = data.heading ?? data.yaw;
-        // Priority: velocity (DTO) -> speed (Common) -> v (Legacy)
-        const finalV = data.velocity ?? data.speed ?? data.v; 
-
-        // 내 차 정보만 업데이트
-        if (rawId && rawId === targetCarId) {
-             // ...
-             // [DEBUG] Log specifically if speed is 0 but car is moving state (optional)
-        }
-});
-
 // TODO: .env 파일로 이동 필요
 const WS_URL_DEV = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8080/ws-server/websocket';
 
@@ -141,7 +122,9 @@ export function usePilotSocket(targetCarId?: string | null, enabled: boolean = t
         const finalX = data.posX ?? data.x;
         const finalY = data.posY ?? data.y;
         const finalYaw = data.heading ?? data.yaw;
-        const finalV = data.velocity ?? data.v;
+                                                                           
+        // Priority: velocity (DTO) -> speed (Common) -> v (Legacy)
+        const finalV = data.velocity ?? data.speed ?? data.v; 
 
         // 내 차 정보만 업데이트
         if (rawId && rawId === targetCarId) {
