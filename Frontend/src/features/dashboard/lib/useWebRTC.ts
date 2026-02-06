@@ -86,10 +86,12 @@ export function useWebRTC({ enabled, carId, pilotId }: UseWebRTCProps) {
     }, [isConnected, send, pilotId, carId]);
 
     // Handle Enable/Disable (START/PAUSE/RESUME)
+    // Handle Enable/Disable (Smart Resume)
     useEffect(() => {
         if (!isConnected) {
             console.log('[useWebRTC] Socket Disconnected - Resetting START flag');
             isStartedRef.current = false;
+            setConnectionState('closed'); // Ensure UI reflects closed state
             return;
         }
 
@@ -100,16 +102,38 @@ export function useWebRTC({ enabled, carId, pilotId }: UseWebRTCProps) {
                 sendControl('START');
                 isStartedRef.current = true;
             } else {
-                // Subsequent -> RESUME
-                sendControl('RESUME');
+                // Subsequent -> CHECK CONNECTION STATE (Smart Resume)
+                const pc = pcRef.current;
+                const isAlive = pc && (pc.connectionState === 'connected' || pc.connectionState === 'completed' || pc.connectionState === 'checking'); // Checking included for safety
+
+                 if (isAlive) {
+                    console.log('[useWebRTC] Connection Healthy -> RESUME');
+                    sendControl('RESUME');
+                } else {
+                    console.log('[useWebRTC] Connection Dead/Unstable -> Full Restart');
+                    
+                    // Cleanup dead connection
+                    if (pc) {
+                        pc.close();
+                        pcRef.current = null;
+                        setConnectionState('closed');
+                    }
+                    
+                    // Re-initialize and START
+                    createPeerConnection();
+                    sendControl('START');
+                    isStartedRef.current = true;
+                }
             }
         } else {
             // Disabled -> PAUSE (only if we ever started)
             if (isStartedRef.current) {
+                console.log('[useWebRTC] Disabling -> Sending PAUSE');
                 sendControl('PAUSE');
+                // Note: We DO NOT close the PC here, hoping for a quick RESUME later.
             }
         }
-    }, [enabled, isConnected, sendControl]);
+    }, [enabled, isConnected, sendControl, createPeerConnection]);
 
     // --- 2. WebRTC Initialization ---
     const createPeerConnection = useCallback(() => {
@@ -148,6 +172,38 @@ export function useWebRTC({ enabled, carId, pilotId }: UseWebRTCProps) {
         pcRef.current = pc;
         return pc;
     }, [carId, pilotId, send]);
+
+    // Handle Enable/Disable (Always START / PAUSE)
+    useEffect(() => {
+        if (!isConnected) return;
+
+        if (enabled) {
+            // "Always Fresh Start" Strategy
+            console.log('[useWebRTC] Enabling -> Sending START (New Session)');
+            
+            // 1. Reset any existing PC to ensure clean state for new OFFER
+            if (pcRef.current) {
+                pcRef.current.close();
+                pcRef.current = null;
+            }
+            // 2. Initialize fresh PC
+            createPeerConnection();
+
+            // 3. Send START to trigger Backend to send new OFFER
+            sendControl('START');
+        } else {
+            // Disable -> PAUSE
+            console.log('[useWebRTC] Disabling -> Sending PAUSE');
+            sendControl('PAUSE');
+
+            // Cleanup PC locally to save resources and ensure next start is fresh
+            if (pcRef.current) {
+                pcRef.current.close();
+                pcRef.current = null;
+                setConnectionState('closed');
+            }
+        }
+    }, [enabled, isConnected, sendControl, createPeerConnection]);
 
     // --- 3. Signaling Handlers ---
     const handleOffer = useCallback(async (msg: SignalingMessage) => {
