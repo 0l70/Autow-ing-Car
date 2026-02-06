@@ -33,26 +33,16 @@
   }
 }
 
-/* [Animation] Neon Path Flow */
-@keyframes dash-flow {
+/* [Animation] Fill Loop (Continuous Filling) */
+@keyframes fill-loop {
   0% {
-    stroke-dashoffset:0;
+    stroke-dashoffset: 1; /* Empty (Before start) */
   }
-  100% {
-    stroke-dashoffset: -160; /* 흐름 방향 반전 (채워진 선이 앞으로 빠져나가는 느낌) */
+  85%{
+    stroke-dashoffset: 0; /* Full (Filled) */
   }
 }
 
-.animate-flow {
-  /* [주기 설정] 1s = 1초에 한 바퀴 (숫자가 작을수록 빠름, 클수록 느림) */
-  animation: dash-flow 2s linear infinite;
-}
-
-/* [Animation] Solid Pulse (공백 없는 깜빡임) */
-@keyframes pulse-glow {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1.0; }
-}
-.animate-pulse-glow {
-  animation: pulse-glow 2s ease-in-out infinite;
+.animate-fill-loop {
+  animation: fill-loop 1.3s linear infinite;
 }

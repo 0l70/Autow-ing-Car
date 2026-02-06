@@ -318,9 +318,18 @@ public class TowingCarService {
             }
         }
 
-        Mission mission = (assignedCar.getCurrentMissionId() != null)
-                ? missionDBAdaptor.getMissionById(assignedCar.getCurrentMissionId())
-                : null;
+        Mission mission = null;
+        if (assignedCar.getCurrentMissionId() != null) {
+            try {
+                mission = missionDBAdaptor.getMissionById(assignedCar.getCurrentMissionId());
+            } catch (Exception e) {
+                log.warn(
+                        "⚠️ [Monitoring] Orphan Mission detected! Car {} has missionId {} but it does not exist. Clearing...",
+                        carCode, assignedCar.getCurrentMissionId());
+                assignedCar.clearMission();
+                // Proceed with mission = null
+            }
+        }
 
         // [Status Tracking] Car status -> Mission status sync
         if (mission != null && mission.getStatus() == MissionStatus.RUNNING) {

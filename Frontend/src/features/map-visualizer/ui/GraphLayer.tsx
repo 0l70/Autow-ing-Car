@@ -312,12 +312,12 @@ export function GraphLayer({
                             strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.ACTIVE_GLOW}
                             strokeLinecap="round"
                             strokeLinejoin="round"
-                            strokeDasharray={MAP_CONFIG.GRAPH.EDGE.FLOW_DASH_ARRAY}
-                            className="animate-flow"
+                            strokeDasharray="1 1"
+                            pathLength={1}
+                            className="animate-fill-loop"
                             style={{ 
                                 filter: "blur(2px)", 
                                 opacity: 1.0, 
-                                animationDuration: MAP_CONFIG.GRAPH.EDGE.FLOW_ANIMATION_SPEED // [Config] 속도 조절
                             }} 
                         />
                     </g>
