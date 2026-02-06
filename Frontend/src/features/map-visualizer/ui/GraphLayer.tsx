@@ -28,11 +28,12 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
     if (points.length < 2) return "";
     
     // Simple line for 2 points
-    if (points.length === 2) {
+    if (points.length === 2 && points[0] && points[1]) {
         return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
     }
 
     // Start Path
+    if (!points[0]) return "";
     let d = `M ${points[0].x} ${points[0].y}`;
 
     for (let i = 1; i < points.length - 1; i++) {
