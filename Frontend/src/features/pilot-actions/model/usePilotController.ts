@@ -178,6 +178,9 @@ export function usePilotController(initialCarId?: string) {
 
   // --- Message Handler ---
   useEffect(() => {
+    // [FIX] Guard clause: If socket is not ready (onMessage undefined), do nothing
+    if (!onMessage) return;
+
     const unsubscribe = onMessage((msg) => {
       const payload = msg.body || msg; // Unwrap Stomp Message Wrapper
 
@@ -292,6 +295,11 @@ export function usePilotController(initialCarId?: string) {
               return;
             }
 
+            if (!send) {
+                addLog("error", "SYS: Socket Not Connected");
+                return;
+            }
+
             send(
               "SEND",
               { destination: "/app/car/resume" },
@@ -315,6 +323,11 @@ export function usePilotController(initialCarId?: string) {
           if (!flightInfo) {
             addLog("error", "SYS: Flight Info not found");
             return;
+          }
+
+          if (!send) {
+             addLog("error", "SYS: Socket Not Connected");
+             return;
           }
 
           // Save to localStorage handled by Store Persist automatically when we setState
@@ -356,6 +369,12 @@ export function usePilotController(initialCarId?: string) {
             addLog("error", "SYS: Flight Info not loaded yet");
             return;
           }
+
+          if (!send) {
+             addLog("error", "SYS: Socket Not Connected");
+             return;
+          }
+
           const isConnecting = connState === "idle";
           const endpoint = isConnecting
             ? "/app/car/dispatch"
@@ -420,14 +439,18 @@ export function usePilotController(initialCarId?: string) {
     // [REVERT] Only allow E-Stop if there is an ACTIVE car (moving/connected)
     // As per user request, we revert the test logic.
     if (activeCarId) {
-      send(
-        "SEND",
-        { destination: "/app/car/emergency" },
-        JSON.stringify({
-          carId: activeCarId,
-        }),
-      );
-      addLog("error", "!!! REQ: EMERGENCY STOP SENT !!!");
+      if (send) {
+        send(
+            "SEND",
+            { destination: "/app/car/emergency" },
+            JSON.stringify({
+              carId: activeCarId,
+            }),
+          );
+          addLog("error", "!!! REQ: EMERGENCY STOP SENT !!!");
+      } else {
+        addLog("error", "!!! EMERGENCY STOP (Socket Error) !!!");
+      }
     } else {
       // Now this will only trigger if user manages to click the button while IDLE
       // (though button might be disabled, this safety check remains)
@@ -435,7 +458,7 @@ export function usePilotController(initialCarId?: string) {
     }
 
     alert("EMERGENCY STOP! All Systems Halted.");
-  }, [addLog, activeCarId, send]);
+  }, [addLog, activeCarId, send, moveState]);
 
   // 5. Confirm Modal Handler
   const handleConfirm = useCallback(() => {

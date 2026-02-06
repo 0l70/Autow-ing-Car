@@ -4,7 +4,6 @@ import { Card, CardHeader, CardTitle } from "@/shared/ui/Card";
 import { useGraphStore } from "@/entities/map/model/store";
 import { Aircraft } from "@/entities/map/model/types";
 import { useAircraftStore } from "@/entities/aircraft"; 
-import { usePilotController } from "@/features/pilot-actions/model/usePilotController"; 
 
 // FSD Layers
 import { MapCanvas } from "@/features/map-visualizer/ui/MapCanvas";
@@ -16,17 +15,18 @@ import { useGridMetadata } from "@/features/map-visualizer/model/useGridMetadata
 
 interface PilotMapWidgetProps {
     className?: string;
+    assignedCarId?: string | null | undefined; // [UPDATED] Allow undefined for optional chain compatibility
     onAircraftSelect?: ((aircraft: Aircraft | null) => void) | undefined;
 }
 
-export function PilotMapWidget({ className, onAircraftSelect }: PilotMapWidgetProps) {
+export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: PilotMapWidgetProps) {
     // 1. Data Layer
     const { meta, mapImage } = useMapData();
     const { mapMeta: storeMeta, nodes } = useGraphStore(); 
     
-    // Pilot Context
-    const { state: pilotState } = usePilotController();
-    const assignedCarId = pilotState.flightInfo?.assignedCarId;
+    // Pilot Context (Removed Hook Call to prevent duplicate logs)
+    // const { state: pilotState } = usePilotController(); // REMOVED
+    // const assignedCarId = pilotState.flightInfo?.assignedCarId; // REMOVED
     const allAircrafts = useAircraftStore(state => state.aircrafts);
 
     // 2. Logic Layer

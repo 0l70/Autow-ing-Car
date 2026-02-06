@@ -33,7 +33,10 @@ export function PilotDashboard() {
                     className="col-span-5 h-full overflow-hidden" 
                     carId={state.flightInfo?.assignedCarId || ''} 
                 />
-                <PilotMapWidget className="col-span-5 h-full overflow-hidden" />
+                <PilotMapWidget 
+                    className="col-span-5 h-full overflow-hidden" 
+                    assignedCarId={state.flightInfo?.assignedCarId}
+                />
                 <PilotTimeline logs={state.logs} />
             </div>
 
