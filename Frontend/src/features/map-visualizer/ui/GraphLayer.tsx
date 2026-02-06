@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useGraphStore } from "@/entities/map/model/store";
 import { MapMeta, WorldCoord } from "@/entities/map/model/types";
 import { worldToPixel } from "@/entities/map/lib/coordinate";
@@ -102,6 +103,24 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
 
   const selectedEdge = edges.find(e => e.id === selectedId);
 
+  // [Deduplication Logic] 양방향 간선 중복 제거
+  const uniqueEdges = useMemo(() => {
+    const activeKeys = new Set<string>();
+    const result: typeof edges = [];
+
+    edges.forEach(edge => {
+        // ID 정렬을 통해 방향과 관계없이 동일한 연결로 취급 (A-B == B-A)
+        const key = [edge.fromId, edge.toId].sort().join('-');
+        
+        if (!activeKeys.has(key)) {
+            activeKeys.add(key);
+            result.push(edge);
+        }
+    });
+
+    return result;
+  }, [edges]);
+
   return (
     <div className="absolute inset-0 pointer-events-none z-30">
       <svg className="absolute inset-0 w-full h-full overflow-visible">
@@ -116,69 +135,52 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
         </defs>
 
         <g transform={`translate(${offset.x}, ${offset.y}) scale(${scale})`}>
-            {/* --- Layer 1: Base Network (Fused Tech Lines) --- */}
+            {/* --- Layer 1: Road Network (Unique Paths) --- */}
             <g>
-            {edges.map((edge) => { // Render ALL edges as base (safety)
+            {uniqueEdges.map((edge) => { 
                 const points = getPoints(edge);
                 if (!points) return null;
 
                 return (
-                <g key={`tech-bg-${edge.id}`}>
-                    {/* 1. Glow Aura (Backing) - Transparent Glow */}
+                <g key={`road-${edge.id}`}>
+                    {/* 단일 경로: 도로 느낌 (투명한 회색) */}
                     <path
-                    d={getRoundedPath(points)}
-                    fill="none"
-                    stroke={MAP_CONFIG.GRAPH.COLOR.DEFAULT} // Orange
-                    strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.GLOW} // Wider Glow
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    opacity={0.3}
-                    style={{ filter: "blur(3px)" }}
-                    />
-                    {/* 2. Sharp Core (Line) - SOLID (No Opacity) for Fusion */}
-                    <path
-                    d={getRoundedPath(points)}
-                    fill="none"
-                    stroke={MAP_CONFIG.GRAPH.COLOR.DEFAULT}
-                    strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.CORE} 
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    opacity={1} // Solid!
-                    style={{ filter: "url(#neon-sharp)" }}
+                        d={getRoundedPath(points)}
+                        fill="none"
+                        stroke={MAP_CONFIG.GRAPH.COLOR.DEFAULT} 
+                        strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.GLOW} 
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
                     />
                 </g>
                 );
             })}
             </g>
 
-            {/* --- Layer 2: Seamless Joints (Nodes) --- */}
+            {/* --- Layer 2: Nodes (Points) --- */}
             {nodes.map(node => {
-            if (node.type === "NODE" || node.type === "WAYPOINT") return null; 
+            // "WAYPOINT"는 시각적으로 숨기고 싶은 경우 아래 주석 해제 (지금은 모두 표시)
+            // if (node.type === "WAYPOINT") return null; 
+
             const pos = getPixel(node);
             const isSelected = selectedId === node.id;
             
-            const glowR = isSelected ? MAP_CONFIG.GRAPH.NODE.RADIUS.SELECTED_GLOW : MAP_CONFIG.GRAPH.NODE.RADIUS.NORMAL_GLOW;
-            const coreR = isSelected ? MAP_CONFIG.GRAPH.NODE.RADIUS.SELECTED_CORE : MAP_CONFIG.GRAPH.NODE.RADIUS.NORMAL_CORE;
+            const radius = isSelected 
+                ? MAP_CONFIG.GRAPH.NODE.RADIUS.SELECTED_CORE 
+                : MAP_CONFIG.GRAPH.NODE.RADIUS.NORMAL_CORE;
+
+            // 타입별 색상 결정
+            const typeColor = MAP_CONFIG.GRAPH.COLOR.NODE_TYPE[node.type as keyof typeof MAP_CONFIG.GRAPH.COLOR.NODE_TYPE] 
+                              || MAP_CONFIG.GRAPH.COLOR.NODE;
 
             return (
                 <g key={`node-${node.id}`} transform={`translate(${pos.x}, ${pos.y})`}>
-                {/* Fused Joint Circle - Matches Core Line Exactly */}
-                
-                {/* 1. Glow Backing */}
-                <circle 
-                    r={glowR} 
-                    fill={MAP_CONFIG.GRAPH.COLOR.DEFAULT}
-                    opacity={0.3}
-                    style={{ filter: "blur(3px)" }}
-                />
-                
-                {/* 2. Solid Core - Matches Line Width Fusion */}
-                <circle 
-                    r={coreR} 
-                    fill={isSelected ? MAP_CONFIG.GRAPH.COLOR.ACTIVE : MAP_CONFIG.GRAPH.COLOR.DEFAULT} 
-                    opacity={1}
-                    style={{ filter: isSelected ? "drop-shadow(0 0 5px #fff)" : "url(#neon-sharp)" }}
-                />
+                    {/* 노드 포인트 */}
+                    <circle 
+                        r={radius} 
+                        fill={isSelected ? MAP_CONFIG.GRAPH.COLOR.ACTIVE : typeColor} 
+                        style={isSelected ? { filter: "drop-shadow(0 0 5px #fff)" } : undefined}
+                    />
                 </g>
             );
             })}

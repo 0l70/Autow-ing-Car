@@ -34,25 +34,35 @@ export const MAP_CONFIG = {
     // 4. 그래프 레이어 스타일 (Graph Layer Colors & Dimensions)
     GRAPH: {
         COLOR: {
-            DEFAULT: '#f97316', // Orange (기본 경로)
+            DEFAULT: 'rgba(100, 100, 100, 0.7)', // Neutral Gray (Natural Asphalt Road)
             ACTIVE: '#FFFFFF',  // White (활성 경로 코어)
+            NODE: '#22d3ee',    // Cyan-400 (기본 노드 색상)
+            NODE_TYPE: {
+                WAYPOINT: '#94a3b8',      // Slate-400 (단순 경유지 - 덜 눈에 띄게)
+                CHARGER: '#22c55e',       // Green-500 (충전소 - 에너지)
+                GATE: '#facc15',          // Yellow-400 (게이트 - 목적지/중요)
+                RUNWAY: '#8b5cf6',        // Violet-500 (활주로 - 특수 구역)
+                INTERSECTION: '#f97316',  // Orange-500 (교차로 - 주의)
+                NODE: '#22d3ee',          // Cyan-400 (일반 노드)
+                PARKING_LOT: '#3b82f6',   // Blue-500 (주차장)
+            }
         },
         EDGE: {
             WIDTH: {
-                GLOW: 5,           // 기본 발광 두께
-                CORE: 1.5,         // 기본 코어 두께
-                ACTIVE_GLOW: 12,   // 활성 경로 발광 두께
-                ACTIVE_BEAM: 4,    // 활성 경로 빔 두께
-                ACTIVE_CORE: 2,    // 활성 경로 코어 두께
+                GLOW: 8,           // 도로 폭 (넓게)
+                CORE: 0,           // 코어 없음 (도로 느낌을 위해)
+                ACTIVE_GLOW: 12,   // 활성 경로 발광
+                ACTIVE_BEAM: 4,    // 활성 경로 빔
+                ACTIVE_CORE: 2,    // 활성 경로 코어
             },
             CORNER_RADIUS: 20, // 경로 모서리 둥글기 (Fillet Radius)
         },
         NODE: {
             RADIUS: {
-                NORMAL_GLOW: 4,    // 일반 노드 발광 반경
-                NORMAL_CORE: 1.5,  // 일반 노드 코어 반경
-                SELECTED_GLOW: 8,  // 선택된 노드 발광 반경
-                SELECTED_CORE: 6,  // 선택된 노드 코어 반경
+                NORMAL_GLOW: 0,    // 노드 발광 제거 (깔끔하게)
+                NORMAL_CORE: 2.5,  // 일반 노드 크기
+                SELECTED_GLOW: 8,  // 선택된 노드 발광
+                SELECTED_CORE: 6,  // 선택된 노드 크기
             }
         }
     },
