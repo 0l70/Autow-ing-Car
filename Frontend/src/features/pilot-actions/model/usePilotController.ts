@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import useLongPress from "@/shared/lib/useLongPress";
 import { usePilotSocket } from "./usePilotSocket";
+import { WS_TOPICS } from "@/shared/realtime/config/topics"; // [NEW]
 import { MoveState, ConnectionState, PilotLog } from "./pilot.types"; // [UPDATED] Import from new file
 import { usePilotStore } from "./usePilotStore"; // [NEW] Import Store
 import {
@@ -48,17 +49,22 @@ export function usePilotController(initialCarId?: string) {
     ? aircrafts.find((a) => a.id === flightInfo.assignedCarId)
     : null;
 
-  // Filter: Only show Tug if status is NOT IDLE/UNLOADING (i.e., actively dispatched or connected)
+  // Filter: Only show Tug if status is NOT IDLE/UNDOCKING (i.e., actively dispatched or connected)
   const activeCarId =
     assignedCar &&
     assignedCar.status !== "IDLE" &&
-    assignedCar.status !== "UNLOADING"
+    assignedCar.status !== "UNDOCKING" &&
+    assignedCar.status !== "RETURNING" &&
+    assignedCar.status !== "WAITING_FOR_RETURN"
       ? assignedCar.id
       : (initialCarId || fetchedCarId) &&
           aircrafts.find(
             (a) =>
               (a.id === initialCarId || a.id === fetchedCarId) &&
-              a.status !== "IDLE",
+              a.status !== "IDLE" &&
+              a.status !== "UNDOCKING" &&
+              a.status !== "RETURNING" &&
+              a.status !== "WAITING_FOR_RETURN",
           )
         ? initialCarId || fetchedCarId
         : undefined;
@@ -131,13 +137,13 @@ export function usePilotController(initialCarId?: string) {
 
     // [Logic Update] Map Backend Status to UI Button State
 
-    // 1. MOVING_TO_LOAD / LOADING => 'connecting' (User sees "Connecting...")
-    if (myCar.status === "MOVING_TO_LOAD" || myCar.status === "LOADING") {
+    // 1. MOVING_TO_GATE / DOCKING => 'connecting' (User sees "Connecting...")
+    if (myCar.status === "MOVING_TO_GATE" || myCar.status === "DOCKING") {
       if (connState !== "connecting") {
         console.log(`[Sync] Status: ${myCar.status} -> UI: connecting`);
         addLog(
           "info",
-          myCar.status === "MOVING_TO_LOAD"
+          myCar.status === "MOVING_TO_GATE"
             ? "Tug dispatching to gate..."
             : "Tug docking...",
         );
@@ -157,11 +163,12 @@ export function usePilotController(initialCarId?: string) {
       }
     }
 
-    // 3. IDLE / MOVING_TO_IDLE / UNLOADING => 'disconnected' (User sees "Connect Tug")
+    // 3. IDLE / RETURNING / UNDOCKING => 'disconnected' (User sees "Connect Tug")
     else if (
       myCar.status === "IDLE" ||
-      myCar.status === "MOVING_TO_IDLE" ||
-      myCar.status === "UNLOADING"
+      myCar.status === "RETURNING" ||
+      myCar.status === "WAITING_FOR_RETURN" ||
+      myCar.status === "UNDOCKING"
     ) {
       // Reset to idle if we were in any active connection state
       if (
@@ -173,11 +180,20 @@ export function usePilotController(initialCarId?: string) {
         if (connState === "connected") addLog("info", "Tug disconnected.");
         setConnState("idle");
       }
+
+      // [FIX] Force stop if we were moving/pushing back
+      if (moveState !== 'stopped') {
+          console.log(`[Sync] Status: ${myCar.status} -> Force Stop`);
+          setMoveState("stopped");
+      }
     }
   }, [aircrafts, socketCarId, connState, addLog, moveState]);
 
   // --- Message Handler ---
   useEffect(() => {
+    // [FIX] Guard clause: If socket is not ready (onMessage undefined), do nothing
+    if (!onMessage) return;
+
     const unsubscribe = onMessage((msg) => {
       const payload = msg.body || msg; // Unwrap Stomp Message Wrapper
 
@@ -292,6 +308,11 @@ export function usePilotController(initialCarId?: string) {
               return;
             }
 
+            if (!send) {
+                addLog("error", "SYS: Socket Not Connected");
+                return;
+            }
+
             send(
               "SEND",
               { destination: "/app/car/resume" },
@@ -315,6 +336,11 @@ export function usePilotController(initialCarId?: string) {
           if (!flightInfo) {
             addLog("error", "SYS: Flight Info not found");
             return;
+          }
+
+          if (!send) {
+             addLog("error", "SYS: Socket Not Connected");
+             return;
           }
 
           // Save to localStorage handled by Store Persist automatically when we setState
@@ -356,6 +382,12 @@ export function usePilotController(initialCarId?: string) {
             addLog("error", "SYS: Flight Info not loaded yet");
             return;
           }
+
+          if (!send) {
+             addLog("error", "SYS: Socket Not Connected");
+             return;
+          }
+
           const isConnecting = connState === "idle";
           const endpoint = isConnecting
             ? "/app/car/dispatch"
@@ -389,53 +421,73 @@ export function usePilotController(initialCarId?: string) {
     () => {},
   );
 
-  // 3. Mode Switch
-  const modeLongPress = useLongPress(
-    () => {
-      setConfirmModal({
+  // 3. Resume Pushback Action
+  // [NEW] Defined as a standard function (not long press) for the dedicated Resume button
+  const handleResume = useCallback(() => {
+    if (moveState !== "paused") return;
+    
+    setConfirmModal({
         open: true,
-        action: !isAutoMode ? "SWITCH TO AUTO" : "SWITCH TO MANUAL",
+        action: "RESUME PUSHBACK",
         onConfirm: () => {
-          setIsAutoMode(!isAutoMode);
-          addLog(
-            "info",
-            !isAutoMode
-              ? "SYS: Auto Pilot Engaged"
-              : "SYS: Manual Control Engaged",
-          );
+            if (!activeCarId) {
+                addLog("error", "SYS: No Active Car to resume");
+                return;
+            }
+
+            if (!send) {
+                addLog("error", "SYS: Socket Not Connected");
+                return;
+            }
+
+            send(
+                "SEND",
+                { destination: WS_TOPICS.PILOT.RESUME },
+                JSON.stringify({ carId: activeCarId }),
+            );
+            
+            setMoveState("pushback");
+            addLog("info", "CMD: Resuming Pushback...");
         },
-      });
-    },
-    () => {},
-  );
+    });
+  }, [moveState, activeCarId, send, addLog]);
+
+  /* 
+  // [REMOVED] Mode Switch Logic (Auto/Manual)
+  // Replaced by dedicated Resume Button logic as per user request
+  const modeLongPress = ...
+  */
 
   // 4. Emergency Stop
   const handleEmergencyStop = useCallback(() => {
-    // [NEW] 이동 중이었으면 paused, 아니면 stopped
-    // [NEW] 이동 중이었으면 paused, 아니면 stopped
-    const newState = (moveState === "pushback" || moveState === "moving") ? "paused" : "stopped";
-    setMoveState(newState);
-    setIsAutoMode(false);
+    // [Updated Logic] Only effective during movement
+    if (moveState !== "moving" && moveState !== "pushback") {
+        return; 
+    }
 
-    // [REVERT] Only allow E-Stop if there is an ACTIVE car (moving/connected)
-    // As per user request, we revert the test logic.
+    const newState = "paused";
+    setMoveState(newState);
+    // setIsAutoMode(false); // [REMOVED]
+
     if (activeCarId) {
-      send(
-        "SEND",
-        { destination: "/app/car/emergency" },
-        JSON.stringify({
-          carId: activeCarId,
-        }),
-      );
-      addLog("error", "!!! REQ: EMERGENCY STOP SENT !!!");
+      if (send) {
+        send(
+            "SEND",
+            { destination: WS_TOPICS.PILOT.EMERGENCY },
+            JSON.stringify({
+              carId: activeCarId,
+            }),
+          );
+          addLog("error", "!!! REQ: EMERGENCY STOP SENT !!!");
+      } else {
+        addLog("error", "!!! EMERGENCY STOP (Socket Error) !!!");
+      }
     } else {
-      // Now this will only trigger if user manages to click the button while IDLE
-      // (though button might be disabled, this safety check remains)
       addLog("error", "!!! EMERGENCY STOP (Local Only - No Active Car) !!!");
     }
 
     alert("EMERGENCY STOP! All Systems Halted.");
-  }, [addLog, activeCarId, send]);
+  }, [addLog, activeCarId, send, moveState]);
 
   // 5. Confirm Modal Handler
   const handleConfirm = useCallback(() => {
@@ -452,7 +504,7 @@ export function usePilotController(initialCarId?: string) {
       logs,
       move: moveState,
       connection: connState,
-      isAutoMode,
+      // isAutoMode, // [REMOVED]
       flightInfo,
       isConnected,
       confirmModal,
@@ -461,7 +513,8 @@ export function usePilotController(initialCarId?: string) {
     controls: {
       moveLongPress,
       connLongPress,
-      modeLongPress,
+      // modeLongPress, // [REMOVED]
+      handleResume, // [NEW]
       handleEmergencyStop,
       handleConfirm,
       closeConfirmModal,

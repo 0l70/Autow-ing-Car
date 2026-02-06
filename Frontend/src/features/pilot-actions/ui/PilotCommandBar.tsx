@@ -19,7 +19,7 @@ export function PilotCommandBar({ moveState, connState, moveLongPress, connLongP
             <div className="relative group flex-1">
                 <Button
                     {...moveLongPress}
-                    disabled={connState !== 'connected' || moveState === 'waiting' || moveState === 'pushback' || moveState === 'moving'}
+                    disabled={connState !== 'connected' || moveState === 'waiting' || moveState === 'pushback' || moveState === 'moving' || moveState === 'paused'}
                     className={`w-full h-full text-base font-bold tracking-wider transition-all duration-300 border whitespace-normal leading-tight glass-panel
                         ${moveState === 'moving' || moveState === 'pushback'
                             ? 'bg-amber-500/10 border-amber-500 text-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.2)]'
@@ -34,7 +34,7 @@ export function PilotCommandBar({ moveState, connState, moveLongPress, connLongP
                 >
                     {moveState === 'stopped' ? 'REQUEST PUSHBACK' 
                         : moveState === 'waiting' ? 'WAITING...' 
-                        : moveState === 'paused' ? 'RESUME PUSHBACK'
+                        : moveState === 'paused' ? 'PUSHBACK PAUSED'
                         : 'MOVING'}
 
                     {(moveState === 'stopped' || moveState === 'paused') && connState === 'connected' && (

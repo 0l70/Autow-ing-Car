@@ -22,7 +22,7 @@ export function PilotDashboard() {
     const assignedAircraft = activeCarId ? aircrafts.find(a => a.id === activeCarId) || null : null;
     const myAircraft = (assignedAircraft && 
                         assignedAircraft.status !== 'IDLE' && 
-                        assignedAircraft.status !== 'UNLOADING') 
+                        assignedAircraft.status !== 'UNDOCKING') 
                         ? assignedAircraft 
                         : null;
 
@@ -33,7 +33,10 @@ export function PilotDashboard() {
                     className="col-span-5 h-full overflow-hidden" 
                     carId={state.flightInfo?.assignedCarId || ''} 
                 />
-                <PilotMapWidget className="col-span-5 h-full overflow-hidden" />
+                <PilotMapWidget 
+                    className="col-span-5 h-full overflow-hidden" 
+                    assignedCarId={state.flightInfo?.assignedCarId}
+                />
                 <PilotTimeline logs={state.logs} />
             </div>
 
@@ -47,8 +50,8 @@ export function PilotDashboard() {
                 <PilotStatusPanel aircraft={myAircraft} /> 
                 <TowingCarInfo moveState={state.move} aircraft={myAircraft} />
                 <PilotSafetyLock 
-                    isAutoMode={state.isAutoMode}
-                    modeLongPress={controls.modeLongPress}
+                    moveState={state.move}
+                    handleResume={controls.handleResume}
                     handleEmergencyStop={controls.handleEmergencyStop}
                 />
             </div>

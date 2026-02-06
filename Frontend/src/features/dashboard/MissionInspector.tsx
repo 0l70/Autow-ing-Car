@@ -122,9 +122,9 @@ export function MissionInspector({ selectedAircraftId }: MissionInspectorProps) 
                                 // Simple mapping for demo
                                 const currentStepIdx = 
                                     (status === 'IDLE' || status === 'STOP') ? 0 :
-                                    (status === 'MOVING_TO_LOAD' || status === 'LOADING') ? 1 :
-                                    (status === 'TOWING' || status === 'UNLOADING') ? 2 :
-                                    (status === 'MOVING_TO_IDLE') ? 3 : 0;
+                                    (status === 'MOVING_TO_GATE' || status === 'DOCKING') ? 1 :
+                                    (status === 'TOWING' || status === 'UNDOCKING') ? 2 :
+                                    (status === 'RETURNING' || status === 'WAITING_FOR_RETURN') ? 3 : 0;
                                 
                                 const isActive = idx === currentStepIdx;
                                 const isPast = idx < currentStepIdx;
@@ -145,9 +145,9 @@ export function MissionInspector({ selectedAircraftId }: MissionInspectorProps) 
                                 style={{ 
                                     width: `${((
                                         (status === 'IDLE' || status === 'STOP') ? 0 :
-                                        (status === 'MOVING_TO_LOAD' || status === 'LOADING') ? 1 :
-                                        (status === 'TOWING' || status === 'UNLOADING') ? 2 :
-                                        (status === 'MOVING_TO_IDLE') ? 3 : 0
+                                        (status === 'MOVING_TO_GATE' || status === 'DOCKING') ? 1 :
+                                        (status === 'TOWING' || status === 'UNDOCKING') ? 2 :
+                                        (status === 'RETURNING' || status === 'WAITING_FOR_RETURN') ? 3 : 0
                                     ) / 3) * 100}%` 
                                 }} 
                             />
@@ -156,9 +156,9 @@ export function MissionInspector({ selectedAircraftId }: MissionInspectorProps) 
                             {[0, 1, 2, 3].map((step) => {
                                 const currentStepIdx = 
                                     (status === 'IDLE' || status === 'STOP') ? 0 :
-                                    (status === 'MOVING_TO_LOAD' || status === 'LOADING') ? 1 :
-                                    (status === 'TOWING' || status === 'UNLOADING') ? 2 :
-                                    (status === 'MOVING_TO_IDLE') ? 3 : 0;
+                                    (status === 'MOVING_TO_GATE' || status === 'DOCKING') ? 1 :
+                                    (status === 'TOWING' || status === 'UNDOCKING') ? 2 :
+                                    (status === 'RETURNING' || status === 'WAITING_FOR_RETURN') ? 3 : 0;
                                 
                                 const isActive = step === currentStepIdx;
                                 const isPast = step < currentStepIdx;
@@ -245,8 +245,16 @@ export function MissionInspector({ selectedAircraftId }: MissionInspectorProps) 
                         <MapPin className="w-4 h-4 opacity-50" />
                         <span className="text-xs font-bold tracking-wider uppercase">LOCATION</span>
                     </div>
-                    <div className="text-lg font-mono text-white/90 font-bold tracking-tight">
-                        X: {position.x.toFixed(0)} <span className="text-gray-600 mx-3">|</span> Y: {position.y.toFixed(0)}
+                    <div className="flex gap-4 text-lg font-mono text-white/90 font-bold tracking-tight">
+                        <div className="flex gap-2">
+                            <span className="text-gray-500 text-sm align-super">X</span>
+                            {position.x.toFixed(2)}
+                        </div>
+                        <div className="w-px bg-gray-700 mx-1" />
+                        <div className="flex gap-2">
+                             <span className="text-gray-500 text-sm align-super">Y</span>
+                            {position.y.toFixed(2)}
+                        </div>
                     </div>
                 </div>
             </div>

@@ -28,7 +28,7 @@ export const towingCarApi = {
             status: (car.status || 'IDLE') as Aircraft['status'],
             battery: car.battery ?? 0,
             speed: car.velocity ?? 0,
-            isLoaded: car.status === 'TOWING' || car.status === 'UNLOADING'
+            isLoaded: car.status === 'TOWING' || car.status === 'UNDOCKING'
         }));
     }
 };
