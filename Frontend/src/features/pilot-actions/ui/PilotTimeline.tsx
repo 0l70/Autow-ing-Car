@@ -8,7 +8,7 @@ interface PilotTimelineProps {
 
 export function PilotTimeline({ logs }: PilotTimelineProps) {
     return (
-        <Card className="col-span-2 glass-panel flex flex-col">
+        <Card className="col-span-2 glass-panel flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
             <CardHeader className="py-3 border-b border-white/10">
                 <CardTitle className="text-sm font-bold tracking-wide text-slate-200 flex items-center gap-2">
                     <Terminal className="w-4 h-4 text-cyan-400" />
