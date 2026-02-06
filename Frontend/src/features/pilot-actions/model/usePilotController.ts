@@ -312,38 +312,10 @@ export function usePilotController(initialCarId?: string) {
 
   // --- Actions ---
 
-  // 1. Movement Actions (Pushback Request + Resume)
+  // 1. Movement Actions (Pushback Request)
+  // Note: Resume logic moved to dedicated handleResume function (used by PilotSafetyLock)
   const moveLongPress = useLongPress(
     () => {
-      // [NEW] Resume Pushback when paused
-      if (moveState === "paused") {
-        setConfirmModal({
-          open: true,
-          action: "RESUME PUSHBACK",
-          onConfirm: () => {
-            if (!activeCarId) {
-              addLog("error", "SYS: No Active Car to resume");
-              return;
-            }
-
-            if (!send) {
-              addLog("error", "SYS: Socket Not Connected");
-              return;
-            }
-
-            send(
-              "SEND",
-              { destination: "/app/car/resume" },
-              JSON.stringify({ carId: activeCarId }),
-            );
-
-            setMoveState("pushback");
-            addLog("info", "CMD: Resuming Pushback...");
-          },
-        });
-        return;
-      }
-
       // Only allow pushback request when stopped
       if (moveState !== "stopped") return;
 
@@ -361,13 +333,12 @@ export function usePilotController(initialCarId?: string) {
             return;
           }
 
-          // Save to localStorage handled by Store Persist automatically when we setState
           setMoveState("waiting");
           addLog("info", "REQ: Requesting Pushback Agreement...");
 
           const sent = send(
             "SEND",
-            { destination: "/app/car/move" },
+            { destination: WS_TOPICS.PILOT.MOVE },
             JSON.stringify({
               type: "PUSHBACK",
               flightId: flightInfo.flightId,
@@ -414,8 +385,8 @@ export function usePilotController(initialCarId?: string) {
 
           const isConnecting = connState === "idle";
           const endpoint = isConnecting
-            ? "/app/car/dispatch"
-            : "/app/car/disconnect";
+            ? WS_TOPICS.PILOT.CONNECT
+            : WS_TOPICS.PILOT.DISCONNECT;
 
           setConnState("waiting");
           addLog(
