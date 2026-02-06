@@ -75,8 +75,10 @@ public class MissionWebSocketDtos {
         // ✅ [NEW] Context Fields for ATC UI
         private String flightNumber;
         private String towingCarCode;
+        private String deptNode; // Correcting field name if needed, but keeping existing context
         private String departNode;
         private String destNode;
+        private List<String> edgeIds; // ✅ [NEW] Path Edges for Visualization
 
         public static MissionResponseDto from(Mission mission) {
             return MissionResponseDto.builder()
@@ -88,6 +90,7 @@ public class MissionWebSocketDtos {
                     .towingCarCode(mission.getTowingCar().getCode())
                     .departNode(mission.getDepartNode())
                     .destNode(mission.getDestNode())
+                    .edgeIds(mission.getRouteEdgeIds()) // ✅ Map Path
                     .build();
         }
     }

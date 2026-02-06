@@ -168,7 +168,15 @@ export function usePilotController(initialCarId?: string) {
       }
     }
 
-    // 3. IDLE / RETURNING / UNDOCKING => 'disconnected' (User sees "Connect Tug")
+    // 3. STOP => 'paused' (Emergency Stop)
+    else if (myCar.status === "STOP") {
+      if (moveState !== "paused") {
+        console.log("[Sync] Status: STOP -> UI: paused");
+        setMoveState("paused");
+      }
+    }
+
+    // 4. IDLE / RETURNING / UNDOCKING => 'disconnected' (User sees "Connect Tug")
     else if (
       myCar.status === "IDLE" ||
       myCar.status === "RETURNING" ||
@@ -204,99 +212,100 @@ export function usePilotController(initialCarId?: string) {
     if (!onMessage) return;
 
     const unsubscribe = onMessage((msg) => {
-      const payload = msg.body || msg; // Unwrap Stomp Message Wrapper
+      const { destination, body } = msg;
+      const payload = body || msg; // Unwrap Stomp Message Wrapper
 
-      // 1. Flight Info
-      const flightParsed = FlightInfoSchema.safeParse(payload);
-      if (flightParsed.success) {
-        const data = flightParsed.data;
-        if (lastLoadedFlightId.current !== data.flightId) {
-          addLog("info", `Flight ${data.flightNumber} loaded`);
-          lastLoadedFlightId.current = data.flightId;
-
-          // Trigger Welcome Check using the hook
-          checkWelcome(data.flightId);
+      // [REFACTOR] Destination-based routing for cleaner message handling
+      // 1. Flight Info (Only from dedicated flight-info topic)
+      if (destination === WS_TOPICS.PILOT_FLIGHT_INFO) {
+        const flightParsed = FlightInfoSchema.safeParse(payload);
+        if (flightParsed.success) {
+          const data = flightParsed.data;
+          if (lastLoadedFlightId.current !== data.flightId) {
+            addLog("info", `Flight ${data.flightNumber} loaded`);
+            lastLoadedFlightId.current = data.flightId;
+            checkWelcome(data.flightId);
+          }
+          setFlightInfo(data);
+        } else {
+          console.warn("[PilotController] FlightInfo Parse Failed:", flightParsed.error);
         }
-        setFlightInfo(data);
-        return;
-      } else {
-        // [DEBUG LOG]
-        // Only log if it LOOKS like flight info (check some unique field) to avoid spamming on every misc message
-        if (payload.flightId || payload.flightNumber) {
-          console.warn(
-            "[PilotController] FlightInfo Parse Failed:",
-            flightParsed.error,
-          );
-        }
-      }
-
-      // 2-1. REJECTED 처리 (거절 시 message가 "Mission Updated"가 아님!)
-      if (payload.status === "REJECTED" && payload.message) {
-        console.log("[PilotController] 🚨 Mission REJECTED:", payload);
-        setMoveState("stopped"); // waiting → stopped (REQUEST PUSHBACK 버튼 다시 표시)
-        addLog("error", `✗ PUSHBACK REJECTED: ${payload.message}`);
         return;
       }
 
-      // 2-2. Mission Status Updates (승인/완료)
-      if (payload.message === "Mission Updated" && payload.status) {
-        console.log("[PilotController] 🚨 Mission Status Update:", payload);
+      // 2. Private Responses (User-specific replies)
+      if (destination === WS_TOPICS.PRIVATE_RESPONSES) {
+        // 2-1. REJECTED 처리
+        if (payload.status === "REJECTED" && payload.message) {
+          console.log("[PilotController] 🚨 Mission REJECTED:", payload);
+          setMoveState("stopped");
+          addLog("error", `✗ PUSHBACK REJECTED: ${payload.message}`);
+          return;
+        }
 
-        // RUNNING = 승인됨, 이동 시작
-        if (payload.status === "RUNNING") {
-          if (moveState === "waiting") {
+        // 2-2. Status / Response Messages
+        if (payload.status && payload.message) {
+          const type =
+            payload.status === "SUCCESS" || payload.status === "APPROVED"
+              ? "success"
+              : "error";
+          addLog(type, `[${payload.status}] ${payload.message}`);
+
+          if (payload.status === "APPROVED" && moveState === "waiting") {
+            setMoveState("pushback");
+            if (payload.data?.destNodeName) {
+              addLog("info", `PATH: To [${payload.data.destNodeName}] assigned`);
+            }
+          } else if (payload.status === "REJECTED" || payload.status === "FAIL") {
+            if (payload.message.includes("Connect")) setConnState("idle");
+            if (payload.message.includes("Disconnect")) setConnState("connected");
+            if (moveState === "waiting") setMoveState("stopped");
+          }
+        }
+        return;
+      }
+
+      // 3. Mission Updates (Broadcast topic)
+      if (destination === WS_TOPICS.MISSION_UPDATES) {
+        if (payload.message === "Mission Updated" && payload.status) {
+          console.log("[PilotController] 🚨 Mission Status Update:", payload);
+
+          if (payload.status === "RUNNING" && moveState === "waiting") {
             setMoveState("pushback");
             addLog("success", `✓ PUSHBACK APPROVED`);
+            
+            if (payload.edgeIds && payload.towingCarCode) {
+               const aircraftStore = useAircraftStore.getState();
+               const existing = aircraftStore.aircrafts.find(a => a.id === payload.towingCarCode);
+               
+               if (existing) {
+                   const updatedAircraft: Aircraft = {
+                       ...existing,
+                       currentMission: {
+                           id: payload.missionId?.toString() || "temp",
+                           status: "RUNNING",
+                           path: payload.edgeIds
+                       }
+                   };
+                   aircraftStore.ingest(updatedAircraft); 
+               }
+            }
+
             if (payload.destNode) {
               addLog("info", `Moving to: ${payload.destNode}`);
             }
+          } else if (payload.status === "COMPLETED") {
+            setMoveState("stopped");
+            addLog("success", `✓ Mission Completed`);
+          } else if (payload.status === "CANCELLED") {
+            setMoveState("stopped");
+            addLog("error", `✗ PUSHBACK CANCELLED`);
           }
         }
-        // COMPLETED = 완료
-        else if (payload.status === "COMPLETED") {
-          setMoveState("stopped");
-          addLog("success", `✓ Mission Completed`);
-        }
-        // CANCELLED = 반려됨
-        else if (payload.status === "CANCELLED") {
-          setMoveState("stopped"); // REQUEST PUSHBACK 버튼 다시 표시
-          addLog("error", `✗ PUSHBACK CANCELLED`);
-        }
-        return; // 처리 완료, 다른 핸들러로 넘어가지 않음
+        return;
       }
 
-      // 3. Status / Response Messages
-      if (payload.status && payload.message) {
-        const type =
-          payload.status === "SUCCESS" || payload.status === "APPROVED"
-            ? "success"
-            : "error";
-        addLog(type, `[${payload.status}] ${payload.message}`);
-
-        // State Transitions based on Server Response
-        if (payload.status === "SUCCESS") {
-          // We rely on Telemetry for Connection State, but we can trust explicit "Disconnected" msg
-          if (payload.message.includes("Disconnected Successfully")) {
-            // setConnState('disconnected'); // Let telemetry handle it
-          }
-        } else if (payload.status === "APPROVED") {
-          // Pushback Approved
-          if (moveState === "waiting") {
-            setMoveState("pushback");
-            if (payload.data && payload.data.destNodeName) {
-              addLog(
-                "info",
-                `PATH: To [${payload.data.destNodeName}] assigned`,
-              );
-            }
-          }
-        } else if (payload.status === "REJECTED" || payload.status === "FAIL") {
-          // Rejected or Failed
-          if (payload.message.includes("Connect")) setConnState("idle");
-          if (payload.message.includes("Disconnect")) setConnState("connected");
-          if (moveState === "waiting") setMoveState("stopped");
-        }
-      }
+      // 4. Fallback: Ignore other destinations (telemetry handled by usePilotSocket)
     });
     return () => unsubscribe();
   }, [onMessage, moveState, connState, addLog, checkWelcome]);
@@ -514,6 +523,15 @@ export function usePilotController(initialCarId?: string) {
     setConfirmModal((prev) => ({ ...prev, open: false }));
   }, []);
 
+  // --- Button Enable States ---
+  // Emergency Stop: Only when connected AND actively moving (pushback/moving)
+  const isEmergencyStopEnabled = 
+    connState === "connected" && 
+    (moveState === "pushback" || moveState === "moving");
+  
+  // Resume: Only when paused (after emergency stop)
+  const isResumeEnabled = moveState === "paused";
+
   return {
     state: {
       logs,
@@ -524,6 +542,9 @@ export function usePilotController(initialCarId?: string) {
       isConnected,
       confirmModal,
       welcomeModal: { open: isWelcomeOpen }, // [Refactored]
+      // [NEW] Button enable states
+      isEmergencyStopEnabled,
+      isResumeEnabled,
     },
     controls: {
       moveLongPress,
