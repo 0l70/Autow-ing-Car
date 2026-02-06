@@ -180,6 +180,12 @@ export function usePilotController(initialCarId?: string) {
         if (connState === "connected") addLog("info", "Tug disconnected.");
         setConnState("idle");
       }
+
+      // [FIX] Force stop if we were moving/pushing back
+      if (moveState !== 'stopped') {
+          console.log(`[Sync] Status: ${myCar.status} -> Force Stop`);
+          setMoveState("stopped");
+      }
     }
   }, [aircrafts, socketCarId, connState, addLog, moveState]);
 
