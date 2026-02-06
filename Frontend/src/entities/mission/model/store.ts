@@ -6,6 +6,7 @@ export interface MissionInfo {
   destNode: string;
   status: string;
   departNode?: string;
+  edgeIds?: string[];  // [NEW] Path edges for visualization
 }
 
 interface MissionState {
