@@ -129,23 +129,28 @@ export function SocketBridge() {
         const finalY = data.posY ?? data.y;
         const finalYaw = data.heading ?? data.yaw;
         const finalV = data.velocity ?? data.v;
-
         if (rawId) {
-          const aircraft: Aircraft = {
-            id: rawId,
-            callsign: rawId,
-            type: "TUG",
-            position: {
-              x: finalX,
-              y: finalY,
-              r: finalYaw * (Math.PI / 180), // Convert Deg to Rad
-            },
-            status: (data.status || data.mode || "IDLE") as any,
-            battery: data.battery,
-            speed: finalV,
-            currentMission: data.currentMission,
-            isLoaded: data.is_loaded,
-          };
+            // [Conversion]
+            // Input: finalYaw is Radians (from Backend/MQTT)
+            // Output: r -> Degrees (0-360) for UI & Store
+            const degrees = finalYaw * (180 / Math.PI);
+            const normalizedHeading = (degrees % 360 + 360) % 360; 
+
+            const aircraft: Aircraft = {
+              id: rawId,
+              callsign: rawId,
+              type: "TUG",
+              position: {
+                x: finalX,
+                y: finalY,
+                r: normalizedHeading, // [Changed] Stored as Degrees
+              },
+              status: (data.status || data.mode || "IDLE") as any,
+              battery: data.battery,
+              speed: finalV,
+              currentMission: data.currentMission,
+              isLoaded: data.is_loaded,
+            };
           ingestAircraft(aircraft);
         }
       }

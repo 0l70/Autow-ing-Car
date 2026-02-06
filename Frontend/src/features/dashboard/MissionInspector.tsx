@@ -23,9 +23,8 @@ export function MissionInspector({ selectedAircraftId }: MissionInspectorProps) 
     const { id, status, speed, position, battery, isLoaded } = selectedAircraft;
     const missionInfo = activeMissions[id]; // Lookup Flight Info
     
-    // Degrees from Radians
-    const headingDeg = Math.round((position.r * 180) / Math.PI);
-    const normalizedHeading = (headingDeg + 360) % 360; // 0-360
+    // Degrees (Stored in position.r)
+    const normalizedHeading = Math.round(position.r);
 
     return (
         <div className="h-full flex flex-col gap-4 min-h-0">

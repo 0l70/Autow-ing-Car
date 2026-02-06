@@ -37,7 +37,11 @@ export const MAP_CONFIG = {
             DEFAULT: '#1e293b', // Slate-800 (Dark Road Core)
             OUTLINE: '#cbd5e1', // Slate-300 (Crisp Border Line)
             NEON_GLOW: 'rgba(148, 163, 184, 0.5)', // Slate-400 with opacity (Soft Outer Glow)
-            ACTIVE: '#FFFFFF',  // White (활성 경로 코어)
+            ACTIVE: '#FFD0B0',  // Light Neon Orange (활성 노드 내부 - 가시성 위해 채도 높임)
+            ACTIVE_BORDER: '#FF6D28', // Neon Orange (활성 노드 테두리)
+            // [ATC] Controller Preview Colors
+            ATC_HIGHLIGHT: '#FF6D28',       // 네온 주황색 (밝음)
+            ATC_GLOW: 'rgba(255, 109, 40, 0.6)', // 네온 주황색 발광 (은은함)
             NODE: '#334155',    // Slate-700 (Dark Gray Fill)
             NODE_BORDER: '#94a3b8', // Slate-400 (Light Gray Border)
             NODE_TYPE: {
@@ -52,21 +56,26 @@ export const MAP_CONFIG = {
         },
         EDGE: {
             WIDTH: {
-                GLOW: 12,          // 최하단 발광 (가장 넓음)
-                OUTLINE: 7,        // 중간 테두리 (코어보다 아주 약간 넓음 - 얇은 선)
-                CORE: 6,           // 최상단 도로
-                ACTIVE_GLOW: 16,   // 활성 경로 발광
-                ACTIVE_BEAM: 8,    // 활성 경로 빔
-                ACTIVE_CORE: 4,    // 활성 경로 코어
+                //일반도로
+                GLOW: 10,          // 최하단 발광 (가장 넓음)
+                ACTIVE_GLOW: 5,    // [NEW] 활성 경로 발광 (색이 들어가므로 조금 얇게)
+                CORE: 4,           // 최상단 도로
+                OUTLINE: 5,        // 중간 테두리 (코어보다 아주 약간 넓음 - 얇은 선)
+                //활성화 도로
+                ATC_ROUTE: 3,      // 미리보기 경로 두께 (중심선)
+                ATC_ROUTE_GLOW: 3, // 미리보기 경로 발광 두께 (테두리 빛)
             },
+            ACTIVE_DASH_ARRAY: "10 10", // [Deprecated]
+            FLOW_DASH_ARRAY: "80 80",   // [NEW] 흐름 효과 패턴 (선 40px + 공백 40px)
+            FLOW_ANIMATION_SPEED: "1.5s", // [NEW] 흐름 속도 (작을수록 빠름: 1s, 2s, 5s...)
             CORNER_RADIUS: 20, // 경로 모서리 둥글기 (Fillet Radius)
         },
         NODE: {
             RADIUS: {
                 NORMAL_GLOW: 0,    // 노드 발광 제거
                 NORMAL_CORE: 2.5,  // 일반 노드 크기
-                SELECTED_GLOW: 8,  // 선택된 노드 발광
-                SELECTED_CORE: 6,  // 선택된 노드 크기
+                SELECTED_GLOW: 0,  // 선택된 노드 발광
+                SELECTED_CORE: 2.5,  // 선택된 노드 크기
             },
             STROKE_WIDTH: 1.5 // [NEW] 노드 테두리 두께
         }
@@ -79,6 +88,11 @@ export const MAP_CONFIG = {
             LENGTH: 10,       // 기수 길이 (앞으로 튀어나온 정도)
             WING_SPAN_HALF: 7.5, // 날개 반폭 (좌우 7.5씩, 전체 15)
             TAIL_INDENT: 4,   // 꼬리 부분 파임 깊이
+            WING_WIDTH: 6,    // [NEW] 날개 너비 (Y축 방향)
+        },
+        COLOR: {
+            TOWING_GLOW: '#00FF00', // [NEW] 견인 중일 때 네온 그린 광채
+            DEFAULT_BODY: '#FFFFFF', // [NEW] 기본 바디 색상 (흰색)
         },
         ANIMATION_DURATION: 300, // 이동 애니메이션 시간 (ms)
         CLICK_RADIUS_SQ: 400,    // 클릭 인식 반경 제곱 (20px * 20px)
@@ -104,5 +118,18 @@ export const MAP_CONFIG = {
             STOP: '#FF0000',             // 빨간색: 비상/정지
             ERROR: '#FF0000'             // 빨간색: 에러
         } as Record<string, string>
+    },
+
+    // 6. 레이어 Z-Index (Layer Stacking Order)
+    Z_INDEX: {
+        BASE_MAP: 0,
+        GRAPH_LAYER: 30,      // [Deprecated] Use granular layers below
+        LAYER_ROADS: 30,      // 도로 (가장 아래)
+        LAYER_ATC_PATH: 31,   // 관제 경로 
+        LAYER_NODES: 32,      // 노드
+        LAYER_ACTIVE_NODE: 33,// [Highlighted] 활성 노드
+        GRID_LAYER: 40,       // 그리드
+        AIRCRAFT_LAYER: 50,   // 항공기 및 차량 레이어 (가장 상위)
+        UI_OVERLAY: 100       // UI 컨트롤 등
     }
 } as const;

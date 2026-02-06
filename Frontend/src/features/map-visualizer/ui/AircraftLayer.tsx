@@ -109,8 +109,9 @@ export function AircraftLayer({ meta, mapHeight, mapWidth, pixelRatio = 1, data,
             ctx.save();
             ctx.translate(pixel.x, pixel.y);
             
-            // 회전 보정:
-            ctx.rotate(-ac.position.r); 
+            // 회전 보정 (Canvas는 Radian 사용, Store는 Degree 저장)
+            // r(Degree) * PI / 180 = Radian
+            ctx.rotate(-ac.position.r * (Math.PI / 180)); 
 
             // 바디 그리기 (스케일 불변? 아니요, 지금은 맵과 함께 스케일되도록 둡니다.)
             // 하지만 고해상도(5배) 상태에서 기본 5px 크기는 너무 작게 보일 수 있습니다.
@@ -130,8 +131,8 @@ export function AircraftLayer({ meta, mapHeight, mapWidth, pixelRatio = 1, data,
 
             // [ATC 시각화] 견인 상태 = 활성 광채
             if (ac.isLoaded) {
-                color = '#FFFFFF'; // 바디는 흰색
-                ctx.shadowColor = '#00FF00'; // 네온 그린 광채
+                color = MAP_CONFIG.AIRCRAFT.COLOR.DEFAULT_BODY; // 바디는 흰색
+                ctx.shadowColor = MAP_CONFIG.AIRCRAFT.COLOR.TOWING_GLOW; // 네온 그린 광채
                 blur = 30; // 강한 펄스
             } else {
                 ctx.shadowColor = color;
@@ -145,15 +146,12 @@ export function AircraftLayer({ meta, mapHeight, mapWidth, pixelRatio = 1, data,
             // SIZE.LENGTH = 10 (Nose)
             // SIZE.WING_SPAN_HALF = 7.5 (Width)
             // SIZE.TAIL_INDENT = 4 (Back)
-            // Nose: (LENGTH, 0)
-            // Right Wing: (-WING_SPAN_HALF, 6) -> 6 is slight angle back aspect ratio. Let's create specific ratio or constant.
-            // Actually hardcoded was (-7.5, 6). If WING_SPAN_HALF is 7.5, Y is 6. aspect ~0.8.
-            // Let's rely on constants.
+            // SIZE.WING_WIDTH = 6 (Wing Thickness/Angle)
             
             ctx.moveTo(SIZE.LENGTH, 0);      
-            ctx.lineTo(-SIZE.WING_SPAN_HALF, 6);  
+            ctx.lineTo(-SIZE.WING_SPAN_HALF, SIZE.WING_WIDTH);  
             ctx.lineTo(-SIZE.TAIL_INDENT, 0);     
-            ctx.lineTo(-SIZE.WING_SPAN_HALF, -6); 
+            ctx.lineTo(-SIZE.WING_SPAN_HALF, -SIZE.WING_WIDTH); 
             ctx.closePath();
             ctx.fill();
             
@@ -190,7 +188,8 @@ export function AircraftLayer({ meta, mapHeight, mapWidth, pixelRatio = 1, data,
     return (
         <canvas 
             ref={canvasRef}
-            className="absolute inset-0 z-50 cursor-pointer pointer-events-auto"
+            className="absolute inset-0 cursor-pointer pointer-events-auto"
+            style={{ zIndex: MAP_CONFIG.Z_INDEX.AIRCRAFT_LAYER }}
             onClick={handleClick}
         />
     );

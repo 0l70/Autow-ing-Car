@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useLayoutEffect, type MouseEvent } from "react";
 import { type MapMeta, type WorldCoord } from "@/entities/map/model/types";
 import { pixelToWorld } from "@/entities/map/lib/coordinate";
+import { MAP_CONFIG } from "@/features/map-visualizer/model/mapConfig";
 
 // --- Context for Children to sync with Camera ---
 export const MapCameraContext = React.createContext<{
@@ -340,6 +341,7 @@ export function MapCanvas({
                     className="absolute inset-0 pointer-events-none"
                     style={{ 
                         imageRendering: 'pixelated', // Keep it sharp
+                        zIndex: MAP_CONFIG.Z_INDEX.BASE_MAP
                         // Width/Height are set via JS to match parent
                     }} 
                 />
@@ -351,7 +353,10 @@ export function MapCanvas({
                 </div>
                 
                 {/* Debug HUD */}
-                <div className="absolute bottom-4 right-4 pointer-events-none bg-black/60 text-[10px] text-accent-cyan font-mono px-2 py-1 rounded border border-white/10 z-50">
+                <div 
+                    className="absolute bottom-4 right-4 pointer-events-none bg-black/60 text-[10px] text-accent-cyan font-mono px-2 py-1 rounded border border-white/10"
+                    style={{ zIndex: MAP_CONFIG.Z_INDEX.UI_OVERLAY }}
+                >
                     ZOOM: {(scale * 100).toFixed(0)}%
                 </div>
             </div>
