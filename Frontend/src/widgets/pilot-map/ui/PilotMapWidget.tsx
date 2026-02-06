@@ -4,6 +4,7 @@ import { Card, CardHeader, CardTitle } from "@/shared/ui/Card";
 import { useGraphStore } from "@/entities/map/model/store";
 import { Aircraft } from "@/entities/map/model/types";
 import { useAircraftStore } from "@/entities/aircraft"; 
+import { useMissionStore } from "@/entities/mission";
 
 // FSD 레이어
 import { MapCanvas } from "@/features/map-visualizer/ui/MapCanvas";
@@ -102,7 +103,6 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
         }
 
         // Priority 2: Check activeMissions[carId].edgeIds (from REST API)
-        const { useMissionStore } = require('@/entities/mission');
         const activeMissions = useMissionStore.getState().activeMissions;
         const missionInfo = activeMissions[assignedCarId];
         if(Array.isArray(missionInfo?.edgeIds)) {
