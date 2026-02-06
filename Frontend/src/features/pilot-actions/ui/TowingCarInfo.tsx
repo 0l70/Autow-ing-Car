@@ -2,6 +2,8 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/shared/ui/Card";
 // import { NAVIGATION_DATA } from "@/features/dashboard/MockData";
 import { MoveState } from "../model/types";
 import { Aircraft } from "@/entities/map/model/types";
+import { useDerivedMetrics } from "../model/hooks/useDerivedMetrics";
+import { msToKmh } from "@/shared/lib/math";
 
 interface TowingCarInfoProps {
     moveState: MoveState;
@@ -9,15 +11,13 @@ interface TowingCarInfoProps {
 }
 
 export function TowingCarInfo({ moveState, aircraft }: TowingCarInfoProps) {
-    // Data Calculation
-    // Speed: m/s -> km/h
-    const speedKmh = aircraft ? (aircraft.speed * 3.6).toFixed(1) : (moveState !== 'stopped' ? '15' : '0');
-    
-    // Heading: Use pre-calculated Degree (Stored in position.r)
-    const headingDeg = aircraft ? Math.round(aircraft.position.r) : 0;
+    // 1. Get Metrics from Domain Hook
+    const { calcSpeed, distRemain, destination } = useDerivedMetrics(aircraft);
 
-    // Destination
-    const destination = aircraft?.currentMission ? `MISSION #${aircraft.currentMission}` : "STANDBY"; // Changed from NAVIGATION_DATA.destination
+    // 2. Format Data for Display
+    const speedKmh = msToKmh(calcSpeed).toFixed(1);
+    const headingDeg = aircraft ? Math.round(aircraft.position.r) : 0;
+    const distText = distRemain !== null ? `${Math.round(distRemain)} m` : "---";
 
     return (
         <Card className="col-span-5 glass-panel flex flex-col">
@@ -26,7 +26,7 @@ export function TowingCarInfo({ moveState, aircraft }: TowingCarInfoProps) {
             </CardHeader>
             <CardContent className="flex-1 p-4 grid grid-cols-2 gap-4 items-center">
                 <div className="bg-black/40 p-4 rounded border border-white/10 h-full flex flex-col justify-center">
-                    <span className="text-slate-500 text-xs font-bold block mb-1 tracking-wider">GROUND SPEED</span>
+                    <span className="text-slate-500 text-xs font-bold block mb-1 tracking-wider uppercase">Ground Speed (calc)</span>
                     <span className="text-4xl font-bold text-slate-200 font-mono tracking-tighter">
                         {speedKmh} <span className="text-sm text-slate-500 font-normal">km/h</span>
                     </span>
@@ -37,12 +37,12 @@ export function TowingCarInfo({ moveState, aircraft }: TowingCarInfoProps) {
                         <span className="text-xl font-bold text-slate-200 font-mono">{headingDeg}°</span>
                     </div>
                     <div className="bg-black/40 p-2 px-3 rounded border border-white/10 flex justify-between items-center flex-1">
-                        <span className="text-slate-500 text-xs font-bold tracking-wider">DIST REMAIN</span>
-                        <span className="text-xl font-bold text-amber-500 font-mono">120 m</span>
+                        <span className="text-slate-500 text-xs font-bold tracking-wider">DIST TO GOAL</span>
+                        <span className="text-xl font-bold text-amber-500 font-mono">{distText}</span>
                     </div>
                     <div className="bg-black/40 p-2 px-3 rounded border border-white/10 flex justify-between items-center flex-1">
                         <span className="text-slate-500 text-xs font-bold tracking-wider">DESTINATION</span>
-                        <span className="text-slate-200 font-bold text-xs font-mono">{destination}</span>
+                        <span className="text-slate-200 font-bold text-xs font-mono uppercase">{destination}</span>
                     </div>
                 </div>
                 {/* Mission Progress Steps (Replaces simple bar) */}
