@@ -37,7 +37,8 @@ export const MAP_CONFIG = {
             DEFAULT: '#1e293b', // Slate-800 (Dark Road Core)
             OUTLINE: '#cbd5e1', // Slate-300 (Crisp Border Line)
             NEON_GLOW: 'rgba(148, 163, 184, 0.5)', // Slate-400 with opacity (Soft Outer Glow)
-            ACTIVE: '#FFFFFF',  // White (활성 경로 코어)
+            ACTIVE: '#FFD0B0',  // Light Neon Orange (활성 노드 내부 - 가시성 위해 채도 높임)
+            ACTIVE_BORDER: '#FF6D28', // Neon Orange (활성 노드 테두리)
             // [ATC] Controller Preview Colors
             ATC_HIGHLIGHT: '#FF6D28',       // 네온 주황색 (밝음)
             ATC_GLOW: 'rgba(255, 109, 40, 0.6)', // 네온 주황색 발광 (은은함)
@@ -55,14 +56,13 @@ export const MAP_CONFIG = {
         },
         EDGE: {
             WIDTH: {
+                //일반도로
                 GLOW: 10,          // 최하단 발광 (가장 넓음)
                 CORE: 4,           // 최상단 도로
                 OUTLINE: 5,        // 중간 테두리 (코어보다 아주 약간 넓음 - 얇은 선)
-                ACTIVE_GLOW: 1,   // 활성 경로 발광
-                ACTIVE_BEAM: 1,    // 활성 경로 빔
-                ACTIVE_CORE: 1,    // 활성 경로 코어
-                ATC_ROUTE: 1,      // 미리보기 경로 두께 (중심선)
-                ATC_ROUTE_GLOW: 1, // 미리보기 경로 발광 두께 (테두리 빛)
+                //활성화 도로
+                ATC_ROUTE: 3,      // 미리보기 경로 두께 (중심선)
+                ATC_ROUTE_GLOW: 3, // 미리보기 경로 발광 두께 (테두리 빛)
             },
             CORNER_RADIUS: 20, // 경로 모서리 둥글기 (Fillet Radius)
         },
@@ -70,8 +70,8 @@ export const MAP_CONFIG = {
             RADIUS: {
                 NORMAL_GLOW: 0,    // 노드 발광 제거
                 NORMAL_CORE: 2.5,  // 일반 노드 크기
-                SELECTED_GLOW: 8,  // 선택된 노드 발광
-                SELECTED_CORE: 6,  // 선택된 노드 크기
+                SELECTED_GLOW: 0,  // 선택된 노드 발광
+                SELECTED_CORE: 2.5,  // 선택된 노드 크기
             },
             STROKE_WIDTH: 1.5 // [NEW] 노드 테두리 두께
         }
@@ -109,5 +109,18 @@ export const MAP_CONFIG = {
             STOP: '#FF0000',             // 빨간색: 비상/정지
             ERROR: '#FF0000'             // 빨간색: 에러
         } as Record<string, string>
+    },
+
+    // 6. 레이어 Z-Index (Layer Stacking Order)
+    Z_INDEX: {
+        BASE_MAP: 0,
+        GRAPH_LAYER: 30,      // [Deprecated] Use granular layers below
+        LAYER_ROADS: 30,      // 도로 (가장 아래)
+        LAYER_ATC_PATH: 31,   // 관제 경로 
+        LAYER_NODES: 32,      // 노드
+        LAYER_ACTIVE_NODE: 33,// [Highlighted] 활성 노드
+        GRID_LAYER: 40,       // 그리드
+        AIRCRAFT_LAYER: 50,   // 항공기 및 차량 레이어 (가장 상위)
+        UI_OVERLAY: 100       // UI 컨트롤 등
     }
 } as const;

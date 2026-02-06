@@ -190,7 +190,8 @@ export function AircraftLayer({ meta, mapHeight, mapWidth, pixelRatio = 1, data,
     return (
         <canvas 
             ref={canvasRef}
-            className="absolute inset-0 z-50 cursor-pointer pointer-events-auto"
+            className="absolute inset-0 cursor-pointer pointer-events-auto"
+            style={{ zIndex: MAP_CONFIG.Z_INDEX.AIRCRAFT_LAYER }}
             onClick={handleClick}
         />
     );

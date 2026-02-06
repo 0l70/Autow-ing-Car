@@ -222,119 +222,174 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
         return getRoundedPath(points, 0);
     }, [edges, nodes, useGraphStore.getState().highlightedPath, meta, mapHeight]);
 
+    // [Active Nodes Logic] 경로상에 있는 모든 노드를 활성화 대상으로 간주
+    const pathNodeIds = useMemo(() => {
+        const ids = new Set<string>();
+        // 1. 수동 선택된 노드 포함
+        if (selectedId) ids.add(selectedId);
+
+        // 2. 경로상의 노드 포함
+        const highlightedPath = useGraphStore.getState().highlightedPath || [];
+        highlightedPath.forEach(edgeId => {
+            const edge = edges.find(e => e.id === edgeId);
+            if (edge) {
+                ids.add(edge.fromId);
+                ids.add(edge.toId);
+            }
+        });
+        return ids;
+    }, [edges, selectedId, useGraphStore.getState().highlightedPath]);
+
+    // 공통 변환 속성
+    const transformStyle = `translate(${offset.x}, ${offset.y}) scale(${scale})`;
 
   return (
-    <div className="absolute inset-0 pointer-events-none z-30">
-      <svg className="absolute inset-0 w-full h-full overflow-visible">
-        <defs>
-          <filter id="neon-strong" x="-50%" y="-50%" width="200%" height="200%">
-             <feGaussianBlur stdDeviation="2.5" result="coloredBlur" />
-             <feMerge>
-                <feMergeNode in="coloredBlur" />
-                <feMergeNode in="SourceGraphic" />
-             </feMerge>
-          </filter>
-        </defs>
-
-        <g transform={`translate(${offset.x}, ${offset.y}) scale(${scale})`}>
-            {/* --- Layer 1: Base Roads --- */}
-            <g className="roads-layer">
-            {uniqueEdges.map((edge) => { 
-                // [Optimization Removed] We draw base roads always, so the neon path sits "on top" or "in blend"
-                // const highlightedPath = useGraphStore.getState().highlightedPath || [];
-                // if (highlightedPath.includes(edge.id)) return null;
-
-                const points = getPoints(edge);
-                if (!points) return null;
-
-                // Standard Road
-                return (
-                <g key={`road-${edge.id}`}>
-                    {/* Layer 1: Glow (Backlight) */}
-                    <path
-                        d={getRoundedPath(points)}
-                        fill="none"
-                        stroke={MAP_CONFIG.GRAPH.COLOR.NEON_GLOW}
-                        strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.GLOW}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        style={{ filter: "blur(4px)", opacity: 0.6 }}
-                    />
-                    
-                    {/* Layer 2: Outline (Border) */}
-                    <path
-                        d={getRoundedPath(points)}
-                        fill="none"
-                        stroke={MAP_CONFIG.GRAPH.COLOR.OUTLINE}
-                        strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.OUTLINE}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                    />
-
-                    {/* Layer 3: Core (Asphalt) */}
-                    <path
-                        d={getRoundedPath(points)}
-                        fill="none"
-                        stroke={MAP_CONFIG.GRAPH.COLOR.DEFAULT} 
-                        strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.CORE} 
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                    />
+    <>
+        {/* --- Layer 1: Base Roads (도로) --- */}
+        <div 
+            className="absolute inset-0 pointer-events-none"
+            style={{ zIndex: MAP_CONFIG.Z_INDEX.LAYER_ROADS }}
+        >
+            <svg className="absolute inset-0 w-full h-full overflow-visible">
+                <defs>
+                    <filter id="neon-strong" x="-50%" y="-50%" width="200%" height="200%">
+                        <feGaussianBlur stdDeviation="2.5" result="coloredBlur" />
+                        <feMerge>
+                            <feMergeNode in="coloredBlur" />
+                            <feMergeNode in="SourceGraphic" />
+                        </feMerge>
+                    </filter>
+                </defs>
+                <g transform={transformStyle} className="roads-layer">
+                    {uniqueEdges.map((edge) => { 
+                        const points = getPoints(edge);
+                        if (!points) return null;
+                        return (
+                        <g key={`road-${edge.id}`}>
+                            {/* Layer 1: Glow */}
+                            <path
+                                d={getRoundedPath(points)}
+                                fill="none"
+                                stroke={MAP_CONFIG.GRAPH.COLOR.NEON_GLOW}
+                                strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.GLOW}
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                style={{ filter: "blur(4px)", opacity: 0.6 }}
+                            />
+                            {/* Layer 2: Outline */}
+                            <path
+                                d={getRoundedPath(points)}
+                                fill="none"
+                                stroke={MAP_CONFIG.GRAPH.COLOR.OUTLINE}
+                                strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.OUTLINE}
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+                            {/* Layer 3: Core */}
+                            <path
+                                d={getRoundedPath(points)}
+                                fill="none"
+                                stroke={MAP_CONFIG.GRAPH.COLOR.DEFAULT} 
+                                strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.CORE} 
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+                        </g>
+                        );
+                    })}
                 </g>
-                );
-            })}
-            </g>
+            </svg>
+        </div>
 
-            {/* --- Layer 2: Nodes --- */}
-            {nodes.map(node => {
-                const pos = getPixel(node);
-                const isSelected = selectedId === node.id;
-                const radius = isSelected ? MAP_CONFIG.GRAPH.NODE.RADIUS.SELECTED_CORE : MAP_CONFIG.GRAPH.NODE.RADIUS.NORMAL_CORE;
-                const typeColor = MAP_CONFIG.GRAPH.COLOR.NODE_TYPE[node.type as keyof typeof MAP_CONFIG.GRAPH.COLOR.NODE_TYPE] || MAP_CONFIG.GRAPH.COLOR.NODE;
+        {/* --- Layer 2: Nodes (일반 노드) --- */}
+        <div 
+            className="absolute inset-0 pointer-events-none"
+            style={{ zIndex: MAP_CONFIG.Z_INDEX.LAYER_NODES }}
+        >
+            <svg className="absolute inset-0 w-full h-full overflow-visible">
+                <g transform={transformStyle}>
+                    {nodes.map(node => {
+                        // 활성(경로상) 노드는 별도 레이어에서 그립니다.
+                        if (pathNodeIds.has(node.id)) return null;
 
-                return (
-                    <g key={`node-${node.id}`} transform={`translate(${pos.x}, ${pos.y})`}>
-                        <circle 
-                            r={radius} 
-                            fill={isSelected ? MAP_CONFIG.GRAPH.COLOR.ACTIVE : typeColor} 
-                            stroke={isSelected ? 'none' : MAP_CONFIG.GRAPH.COLOR.NODE_BORDER}
-                            strokeWidth={isSelected ? 0 : MAP_CONFIG.GRAPH.NODE.STROKE_WIDTH}
+                        const pos = getPixel(node);
+                        const typeColor = MAP_CONFIG.GRAPH.COLOR.NODE_TYPE[node.type as keyof typeof MAP_CONFIG.GRAPH.COLOR.NODE_TYPE] || MAP_CONFIG.GRAPH.COLOR.NODE;
+
+                        return (
+                            <g key={`node-${node.id}`} transform={`translate(${pos.x}, ${pos.y})`}>
+                                <circle 
+                                    r={MAP_CONFIG.GRAPH.NODE.RADIUS.NORMAL_CORE} 
+                                    fill={typeColor} 
+                                    stroke={MAP_CONFIG.GRAPH.COLOR.NODE_BORDER}
+                                    strokeWidth={MAP_CONFIG.GRAPH.NODE.STROKE_WIDTH}
+                                />
+                            </g>
+                        );
+                    })}
+                </g>
+            </svg>
+        </div>
+
+        {/* --- Layer 3: ATC Merged Neon Path (관제 경로) --- */}
+        {mergedPathData && (
+            <div 
+                className="absolute inset-0 pointer-events-none"
+                style={{ zIndex: MAP_CONFIG.Z_INDEX.LAYER_ATC_PATH }}
+            >
+                <svg className="absolute inset-0 w-full h-full overflow-visible">
+                    <g transform={transformStyle} className="atc-flow-layer">
+                        {/* 3.1 Outer Glow */}
+                        <path
+                            d={mergedPathData}
+                            fill="none"
+                            stroke={MAP_CONFIG.GRAPH.COLOR.ATC_GLOW}
+                            strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.ATC_ROUTE_GLOW}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            opacity={0.8}
+                            style={{ filter: "url(#neon-strong)" }}
+                        />
+                        {/* 3.2 Main Solid Line */}
+                        <path
+                            d={mergedPathData}
+                            fill="none"
+                            stroke={MAP_CONFIG.GRAPH.COLOR.ATC_HIGHLIGHT} 
+                            strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.ATC_ROUTE}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            style={{ filter: `drop-shadow(0 0 2px ${MAP_CONFIG.GRAPH.COLOR.ATC_HIGHLIGHT})` }}
                         />
                     </g>
-                );
-            })}
+                </svg>
+            </div>
+        )}
 
-            {/* --- Layer 3: ATC Merged Neon Path (Top Most) --- */}
-            {mergedPathData && (
-                 <g className="atc-flow-layer">
-                     {/* 3.1 Outer Glow (Neon Effect) */}
-                     <path
-                        d={mergedPathData}
-                        fill="none"
-                        stroke={MAP_CONFIG.GRAPH.COLOR.ATC_GLOW}
-                        strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.ATC_ROUTE_GLOW} // [Fix] Use dedicated glow width
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        opacity={0.8}
-                        style={{ filter: "url(#neon-strong)" }}
-                     />
-                     
-                    {/* 3.2 Main Solid Line */}
-                    <path
-                        d={mergedPathData}
-                        fill="none"
-                        stroke={MAP_CONFIG.GRAPH.COLOR.ATC_HIGHLIGHT} 
-                        strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.ATC_ROUTE}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        style={{ filter: `drop-shadow(0 0 2px ${MAP_CONFIG.GRAPH.COLOR.ATC_HIGHLIGHT})` }}
-                    />
-
-
-                 </g>
-            )}
-        </g>
-      </svg>
-    </div>
+        {/* --- Layer 4: Active Nodes (Highlight) --- */}
+        {pathNodeIds.size > 0 && (
+            <div 
+                className="absolute inset-0 pointer-events-none"
+                style={{ zIndex: MAP_CONFIG.Z_INDEX.LAYER_ACTIVE_NODE }}
+            >
+                <svg className="absolute inset-0 w-full h-full overflow-visible">
+                    <g transform={transformStyle}>
+                        {nodes.map(node => {
+                            if (!pathNodeIds.has(node.id)) return null;
+                            const pos = getPixel(node);
+                            return (
+                                <g key={`active-node-${node.id}`} transform={`translate(${pos.x}, ${pos.y})`}>
+                                    <circle 
+                                        r={MAP_CONFIG.GRAPH.NODE.RADIUS.SELECTED_CORE} 
+                                        fill={MAP_CONFIG.GRAPH.COLOR.ACTIVE} 
+                                        stroke={MAP_CONFIG.GRAPH.COLOR.ACTIVE_BORDER}
+                                        strokeWidth={MAP_CONFIG.GRAPH.NODE.STROKE_WIDTH}
+                                    />
+                                </g>
+                            );
+                        })}
+                    </g>
+                </svg>
+            </div>
+        )}
+    </>
   );
 }
