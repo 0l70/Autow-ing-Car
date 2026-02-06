@@ -283,7 +283,14 @@ public class TowingCarService {
         }
 
         // [Auto Trigger]
+        CarStatus preAutoActionStatus = assignedCar.getCarStatus();
         checkAndTriggerAutoActions(assignedCar, x, y, status);
+
+        // [Safeguard] If Auto Logic changed the status (e.g. to DOCKING),
+        // DO NOT overwrite it with the stale payload status (e.g. MOVING_TO_GATE).
+        if (assignedCar.getCarStatus() != preAutoActionStatus) {
+            status = assignedCar.getCarStatus();
+        }
 
         // DB Update & Log
         CarStatus oldStatus = assignedCar.getCarStatus();
