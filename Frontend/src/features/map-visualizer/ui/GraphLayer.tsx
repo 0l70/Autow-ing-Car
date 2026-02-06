@@ -1,6 +1,7 @@
 import { useGraphStore } from "@/entities/map/model/store";
 import { MapMeta, WorldCoord } from "@/entities/map/model/types";
 import { worldToPixel } from "@/entities/map/lib/coordinate";
+import { useMapCamera } from "@/features/map-visualizer/ui/MapCanvas";
 
 interface GraphLayerProps {
   meta: MapMeta | null;
@@ -11,12 +12,9 @@ interface GraphLayerProps {
  * 컴포넌트: 그래프 레이어 (뷰어 전용)
  * 노드와 엣지를 단순 표시합니다. (편집 기능 없음)
  */
-/**
- * 지도 위의 노드와 간선(그래프)을 시각화하는 레이어 컴포넌트
- * SVG를 사용하여 간선을 그리고, HTML 엘리먼트로 노드를 표시합니다.
- */
 export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
   const { nodes, edges, selectedId } = useGraphStore();
+  const { offset, scale } = useMapCamera();
 
   // --- Engineered Path: Straight Lines with Rounded Corners (Fillets) ---
   const getRoundedPath = (rawPoints: { x: number; y: number }[], radius: number = 20) => {
@@ -101,14 +99,12 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
     return [p1, ...waypoints, p2];
   };
 
-  const unselectedEdges = edges.filter(e => e.id !== selectedId);
   const selectedEdge = edges.find(e => e.id === selectedId);
 
   return (
     <div className="absolute inset-0 pointer-events-none z-30">
       <svg className="absolute inset-0 w-full h-full overflow-visible">
         <defs>
-          {/* Neon Glow Filter - Tighter & Brighter */}
           <filter id="neon-sharp" x="-50%" y="-50%" width="200%" height="200%">
              <feGaussianBlur stdDeviation="1.5" result="tightBlur" />
              <feMerge>
@@ -118,115 +114,112 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
           </filter>
         </defs>
 
-        {/* --- Layer 1: Base Network (Fused Tech Lines) --- */}
-        <g>
-          {edges.map((edge) => { // Render ALL edges as base (safety)
-            const points = getPoints(edge);
-            if (!points) return null;
+        <g transform={`translate(${offset.x}, ${offset.y}) scale(${scale})`}>
+            {/* --- Layer 1: Base Network (Fused Tech Lines) --- */}
+            <g>
+            {edges.map((edge) => { // Render ALL edges as base (safety)
+                const points = getPoints(edge);
+                if (!points) return null;
 
+                return (
+                <g key={`tech-bg-${edge.id}`}>
+                    {/* 1. Glow Aura (Backing) - Transparent Glow */}
+                    <path
+                    d={getRoundedPath(points)}
+                    fill="none"
+                    stroke="#f97316" // Orange
+                    strokeWidth={5} // Wider Glow
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity={0.3}
+                    style={{ filter: "blur(3px)" }}
+                    />
+                    {/* 2. Sharp Core (Line) - SOLID (No Opacity) for Fusion */}
+                    <path
+                    d={getRoundedPath(points)}
+                    fill="none"
+                    stroke="#f97316"
+                    strokeWidth={1.5} 
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity={1} // Solid!
+                    style={{ filter: "url(#neon-sharp)" }}
+                    />
+                </g>
+                );
+            })}
+            </g>
+
+            {/* --- Layer 2: Seamless Joints (Nodes) --- */}
+            {nodes.map(node => {
+            if (node.type === "NODE" || node.type === "WAYPOINT") return null; 
+            const pos = getPixel(node);
+            const isSelected = selectedId === node.id;
+            
             return (
-              <g key={`tech-bg-${edge.id}`}>
-                 {/* 1. Glow Aura (Backing) - Transparent Glow */}
-                 <path
-                  d={getRoundedPath(points)}
-                  fill="none"
-                  stroke="#f97316" // Orange
-                  strokeWidth={5} // Wider Glow
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  opacity={0.3}
-                  style={{ filter: "blur(3px)" }}
+                <g key={`node-${node.id}`} transform={`translate(${pos.x}, ${pos.y})`}>
+                {/* Fused Joint Circle - Matches Core Line Exactly */}
+                
+                {/* 1. Glow Backing */}
+                <circle 
+                    r={isSelected ? 8 : 4} 
+                    fill="#f97316"
+                    opacity={0.3}
+                    style={{ filter: "blur(3px)" }}
                 />
-                {/* 2. Sharp Core (Line) - SOLID (No Opacity) for Fusion */}
-                <path
-                  d={getRoundedPath(points)}
-                  fill="none"
-                  stroke="#f97316"
-                  strokeWidth={1.5} 
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  opacity={1} // Solid!
-                  style={{ filter: "url(#neon-sharp)" }}
+                
+                {/* 2. Solid Core - Matches Line Width Fusion */}
+                <circle 
+                    r={isSelected ? 6 : 1.5} 
+                    fill={isSelected ? "#FFFFFF" : "#f97316"} 
+                    opacity={1}
+                    style={{ filter: isSelected ? "drop-shadow(0 0 5px #fff)" : "url(#neon-sharp)" }}
                 />
-              </g>
+                </g>
             );
-          })}
+            })}
+
+            {/* --- Layer 3: Active Path (Laser Beam) --- */}
+            {selectedEdge && (() => {
+            const points = getPoints(selectedEdge);
+            if (!points) return null;
+            return (
+                <g key={`tech-active-${selectedEdge.id}`}>
+                {/* 1. Massive Flood Glow */}
+                <path
+                    d={getRoundedPath(points)}
+                    fill="none"
+                    stroke="#f97316" 
+                    strokeWidth={12}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity={0.3}
+                    style={{ filter: "blur(5px)" }}
+                />
+                {/* 2. Intense Beam */}
+                <path
+                    d={getRoundedPath(points)}
+                    fill="none"
+                    stroke="#f97316"
+                    strokeWidth={4}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ filter: "blur(1px)" }}
+                />
+                {/* 3. White Hot Core - Solid */}
+                <path
+                    d={getRoundedPath(points)}
+                    fill="none"
+                    stroke="#FFFFFF" 
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity={1}
+                />
+                </g>
+            );
+            })()}
         </g>
-
-        {/* --- Layer 2: Seamless Joints (Nodes) --- */}
-        {nodes.map(node => {
-           if (node.type === "NODE" || node.type === "WAYPOINT") return null; 
-           const pos = getPixel(node);
-           const isSelected = selectedId === node.id;
-           
-           return (
-             <g key={`node-${node.id}`} transform={`translate(${pos.x}, ${pos.y})`}>
-               {/* Fused Joint Circle - Matches Core Line Exactly */}
-               
-               {/* 1. Glow Backing */}
-               <circle 
-                 r={isSelected ? 8 : 4} 
-                 fill="#f97316"
-                 opacity={0.3}
-                 style={{ filter: "blur(3px)" }}
-               />
-               
-               {/* 2. Solid Core - Matches Line Width Fusion */}
-               <circle 
-                 r={isSelected ? 6 : 1.5} // r=1.5 matches strokeWidth=3 diameter... actually strokeWidth 1.5 is r=0.75? No, line width is total thickness.
-                 // Correction: Line StrokeWidth = 1.5. Radius should be 0.75 to match exactly flush, 
-                 // BUT covering the join usually requires slightly larger or just matching caps.
-                 // Round LineCap already handles the end. 
-                 // We only need the circle if it's a Station (Intersection).
-                 // Let's make it slightly larger (r=2) to be a "Joint" visual.
-                 fill={isSelected ? "#FFFFFF" : "#f97316"} 
-                 opacity={1}
-                 style={{ filter: isSelected ? "drop-shadow(0 0 5px #fff)" : "url(#neon-sharp)" }}
-               />
-             </g>
-           );
-        })}
-
-        {/* --- Layer 3: Active Path (Laser Beam) --- */}
-        {selectedEdge && (() => {
-           const points = getPoints(selectedEdge);
-           if (!points) return null;
-           return (
-             <g key={`tech-active-${selectedEdge.id}`}>
-               {/* 1. Massive Flood Glow */}
-               <path
-                 d={getRoundedPath(points)}
-                 fill="none"
-                 stroke="#f97316" 
-                 strokeWidth={12}
-                 strokeLinecap="round"
-                 strokeLinejoin="round"
-                 opacity={0.3}
-                 style={{ filter: "blur(5px)" }}
-               />
-               {/* 2. Intense Beam */}
-               <path
-                 d={getRoundedPath(points)}
-                 fill="none"
-                 stroke="#f97316"
-                 strokeWidth={4}
-                 strokeLinecap="round"
-                 strokeLinejoin="round"
-                 style={{ filter: "blur(1px)" }}
-               />
-               {/* 3. White Hot Core - Solid */}
-               <path
-                 d={getRoundedPath(points)}
-                 fill="none"
-                 stroke="#FFFFFF" 
-                 strokeWidth={2}
-                 strokeLinecap="round"
-                 strokeLinejoin="round"
-                 opacity={1}
-               />
-             </g>
-           );
-        })()}
       </svg>
     </div>
   );
