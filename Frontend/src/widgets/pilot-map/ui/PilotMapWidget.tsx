@@ -93,12 +93,22 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
         // Show path when Connected/Towing or STOP
         const isActiveState = myAircraft?.status === 'TOWING' || myAircraft?.status === 'STOP' || myAircraft?.status === 'MOVING_TO_GATE';
         
-        if(!myAircraft?.currentMission || !isActiveState) return undefined;
-        
-        const missionObj = myAircraft.currentMission as any;
+        if(!isActiveState) return undefined;
+
+        // Priority 1: Check aircraft.currentMission.path (from WebSocket)
+        const missionObj = myAircraft?.currentMission as any;
         if(Array.isArray(missionObj?.path)) {
             return missionObj.path as string[];
         }
+
+        // Priority 2: Check activeMissions[carId].edgeIds (from REST API)
+        const { useMissionStore } = require('@/entities/mission');
+        const activeMissions = useMissionStore.getState().activeMissions;
+        const missionInfo = activeMissions[assignedCarId];
+        if(Array.isArray(missionInfo?.edgeIds)) {
+            return missionInfo.edgeIds;
+        }
+
         return undefined;
     }, [allAircrafts, assignedCarId]);
 
