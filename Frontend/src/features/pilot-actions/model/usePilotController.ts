@@ -49,17 +49,22 @@ export function usePilotController(initialCarId?: string) {
     ? aircrafts.find((a) => a.id === flightInfo.assignedCarId)
     : null;
 
-  // Filter: Only show Tug if status is NOT IDLE/UNLOADING (i.e., actively dispatched or connected)
+  // Filter: Only show Tug if status is NOT IDLE/UNDOCKING (i.e., actively dispatched or connected)
   const activeCarId =
     assignedCar &&
     assignedCar.status !== "IDLE" &&
-    assignedCar.status !== "UNLOADING"
+    assignedCar.status !== "UNDOCKING" &&
+    assignedCar.status !== "RETURNING" &&
+    assignedCar.status !== "WAITING_FOR_RETURN"
       ? assignedCar.id
       : (initialCarId || fetchedCarId) &&
           aircrafts.find(
             (a) =>
               (a.id === initialCarId || a.id === fetchedCarId) &&
-              a.status !== "IDLE",
+              a.status !== "IDLE" &&
+              a.status !== "UNDOCKING" &&
+              a.status !== "RETURNING" &&
+              a.status !== "WAITING_FOR_RETURN",
           )
         ? initialCarId || fetchedCarId
         : undefined;
@@ -132,13 +137,13 @@ export function usePilotController(initialCarId?: string) {
 
     // [Logic Update] Map Backend Status to UI Button State
 
-    // 1. MOVING_TO_LOAD / LOADING => 'connecting' (User sees "Connecting...")
-    if (myCar.status === "MOVING_TO_LOAD" || myCar.status === "LOADING") {
+    // 1. MOVING_TO_GATE / DOCKING => 'connecting' (User sees "Connecting...")
+    if (myCar.status === "MOVING_TO_GATE" || myCar.status === "DOCKING") {
       if (connState !== "connecting") {
         console.log(`[Sync] Status: ${myCar.status} -> UI: connecting`);
         addLog(
           "info",
-          myCar.status === "MOVING_TO_LOAD"
+          myCar.status === "MOVING_TO_GATE"
             ? "Tug dispatching to gate..."
             : "Tug docking...",
         );
@@ -158,11 +163,12 @@ export function usePilotController(initialCarId?: string) {
       }
     }
 
-    // 3. IDLE / MOVING_TO_IDLE / UNLOADING => 'disconnected' (User sees "Connect Tug")
+    // 3. IDLE / RETURNING / UNDOCKING => 'disconnected' (User sees "Connect Tug")
     else if (
       myCar.status === "IDLE" ||
-      myCar.status === "MOVING_TO_IDLE" ||
-      myCar.status === "UNLOADING"
+      myCar.status === "RETURNING" ||
+      myCar.status === "WAITING_FOR_RETURN" ||
+      myCar.status === "UNDOCKING"
     ) {
       // Reset to idle if we were in any active connection state
       if (

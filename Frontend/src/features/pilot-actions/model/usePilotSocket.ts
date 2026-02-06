@@ -6,7 +6,7 @@ import { WS_TOPICS } from '@/shared/realtime/config/topics';
 import { z } from 'zod';
 
 // Basic validation schema
-const AircraftStatusSchema = z.enum(['IDLE', 'MOVING_TO_LOAD', 'LOADING', 'TOWING', 'UNLOADING', 'MOVING_TO_IDLE', 'STOP', 'ERROR']);
+const AircraftStatusSchema = z.enum(['IDLE', 'MOVING_TO_GATE', 'DOCKING', 'TOWING', 'UNDOCKING', 'WAITING_FOR_RETURN', 'RETURNING', 'STOP', 'ERROR']);
 
 const TelemetrySchema = z.object({
     car_id: z.string().optional(),
@@ -18,6 +18,7 @@ const TelemetrySchema = z.object({
     posY: z.number().optional(),
     heading: z.number().optional(),
     velocity: z.number().optional(),
+    speed: z.number().optional(), // [Safety] Fallback
     status: AircraftStatusSchema.optional(),
 
     // Legacy/MQTT fields
@@ -91,8 +92,11 @@ export function usePilotSocket(targetCarId?: string | null, enabled: boolean = t
         const finalX = data.posX ?? data.x;
         const finalY = data.posY ?? data.y;
         const finalYaw = data.heading ?? data.yaw;
-        const finalV = data.velocity ?? data.v;
+                                                                           
+        // Priority: velocity (DTO) -> speed (Common) -> v (Legacy)
+        const finalV = data.velocity ?? data.speed ?? data.v; 
 
+        // 내 차 정보만 업데이트
         if (rawId && rawId === targetCarId) {
             const aircraft: Aircraft = {
                 id: rawId,
@@ -111,7 +115,12 @@ export function usePilotSocket(targetCarId?: string | null, enabled: boolean = t
             };
             ingestAircraft(aircraft);
         }
-    }, [ingestAircraft, targetCarId]);
+
+        // [DEBUG] Speed Issue Investigation
+        if (rawId === targetCarId && (finalV === 0 || finalV === undefined)) {
+             // console.warn(`[PilotSocket] Speed is 0 or undefined. Raw Data:`, data);
+        }
+  }, [ingestAircraft, targetCarId]);
 
     // 5. Register Listener
     useEffect(() => {

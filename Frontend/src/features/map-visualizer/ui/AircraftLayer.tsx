@@ -5,12 +5,17 @@ import { useAircraftStore } from "@/entities/aircraft";
 import { useSmoothAnimation } from "@/features/map-visualizer/lib/useSmoothAnimation";
 
 // Colors for status
+// Colors for status
 const STATUS_COLORS: Record<string, string> = {
-    IDLE: '#FFA500',   // Orange
-    MOVING: '#00FF00', // Green (Neon)
-    DOCKING: '#00FFFF',// Cyan
-    HOLD: '#FFFF00',   // Yellow
-    ERROR: '#FF0000'   // Red
+    IDLE: '#FFA500',             // Orange: Standby
+    MOVING_TO_GATE: '#00FF00',   // Green: Moving to Task
+    DOCKING: '#00FFFF',          // Cyan: Precise Maneuver
+    TOWING: '#D946EF',           // Fuchsia: Heavy Load
+    UNDOCKING: '#00FFFF',        // Cyan: Precise Maneuver
+    WAITING_FOR_RETURN: '#FACC15', // Yellow: Holding
+    RETURNING: '#3B82F6',        // Blue: Returning Home
+    STOP: '#FF0000',             // Red: Emergency/Stop
+    ERROR: '#FF0000'             // Red: Error
 };
 
 interface AircraftLayerProps {
@@ -25,7 +30,7 @@ interface AircraftLayerProps {
 // Constants for Interaction and Animation
 const CLICK_RADIUS_SQ = 400; // 20px * 20px
 const ANIMATION_DURATION_MS = 300;
-const LABEL_OFFSET_Y = 35;
+
 
 export function AircraftLayer({ meta, mapWidth, mapHeight, pixelRatio = 1, data, onAircraftClick }: AircraftLayerProps) {
     const storeAircraftList = useAircraftStore((state) => state.aircrafts);
@@ -107,14 +112,14 @@ export function AircraftLayer({ meta, mapWidth, mapHeight, pixelRatio = 1, data,
             // Draw Body
             let color = STATUS_COLORS[ac.status] || '#FFFFFF';
             let blur = 10;
-            let labelText = ac.callsign;
+            const labelText = ac.callsign;
 
             // [ATC Visualization] Towing State = Active Glow
             if (ac.isLoaded) {
                 color = '#FFFFFF'; // Body is White
                 ctx.shadowColor = '#00FF00'; // Neon Green Glow
                 blur = 30; // Strong Pulse
-                labelText += ' (TOW)';
+                // Removed '(TOW)' suffix to reduce label size
             } else {
                 ctx.shadowColor = color;
             }
@@ -135,14 +140,33 @@ export function AircraftLayer({ meta, mapWidth, mapHeight, pixelRatio = 1, data,
             ctx.shadowBlur = 0; // Reset
             ctx.restore();
             
-            // Label (Non-rotated)
+            // Label (Non-rotated with HUD Background)
             ctx.save();
             ctx.translate(pixel.x, pixel.y);
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-            ctx.font = 'bold 10px monospace'; // Smaller font for high-res look
+            
+            // Text Settings
+            ctx.font = 'bold 8px sans-serif'; // Smaller, Bolder
             ctx.textAlign = 'center';
-            // Offset label below aircraft
-            ctx.fillText(labelText, 0, 30);
+            ctx.textBaseline = 'top'; // Align top to push down from aircraft
+            
+            // const textMetrics = ctx.measureText(labelText);
+            // const textWidth = textMetrics.width;
+            
+            // Transparent Background (Requested)
+            // ctx.fillStyle = 'rgba(0, 0, 0, 0)'; 
+            // ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            // ctx.shadowBlur = 0;
+            
+            // Text (White with heavy shadow/stroke for contrast)
+            ctx.shadowColor = 'black';
+            ctx.shadowBlur = 2;
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+            ctx.strokeText(labelText, 0, 8); // Stroke first
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(labelText, 0, 8); // Fill second
+
             ctx.restore();
         });
 

@@ -21,8 +21,8 @@ export interface WorldCoord {
 
 // --- Aircraft / Agent Types (Aligned with MQTT v1.1) ---
 
-// MQTT: IDLE | MOVING_TO_LOAD | LOADING | TOWING | UNLOADING | MOVING_TO_IDLE | STOP | ERROR
-export type AircraftStatus = 'IDLE' | 'MOVING_TO_LOAD' | 'LOADING' | 'TOWING' | 'UNLOADING' | 'MOVING_TO_IDLE' | 'STOP' | 'ERROR';
+// MQTT: IDLE | MOVING_TO_GATE | DOCKING | TOWING | UNDOCKING | WAITING_FOR_RETURN | RETURNING | STOP | ERROR
+export type AircraftStatus = 'IDLE' | 'MOVING_TO_GATE' | 'DOCKING' | 'TOWING' | 'UNDOCKING' | 'WAITING_FOR_RETURN' | 'RETURNING' | 'STOP' | 'ERROR';
 
 export interface Aircraft {
     id: string;             // MQTT: {carId}
