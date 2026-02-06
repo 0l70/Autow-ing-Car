@@ -36,10 +36,10 @@
 /* [Animation] Neon Path Flow */
 @keyframes dash-flow {
   0% {
-    stroke-dashoffset: 80; /* 패턴 길이(40+40)와 일치시켜야 자연스러움 */
+    stroke-dashoffset:0;
   }
   100% {
-    stroke-dashoffset: 0;
+    stroke-dashoffset: -160; /* 흐름 방향 반전 (채워진 선이 앞으로 빠져나가는 느낌) */
   }
 }
 

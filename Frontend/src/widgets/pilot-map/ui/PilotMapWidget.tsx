@@ -33,33 +33,20 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
     // 그리드 및 치수
     const { gridMetadata: rawGridMetadata } = useGridMetadata();
 
-    // --- 고해상도 스케일링 (가상 지도) ---
-    // 사용자 요청 해상도: 0.01 (High Res)
-    // 현재 원본: 0.05.
-    // 스케일 팩터 = 0.05 / 0.01 = 5.
-    
-    const virtualMetadata = useMemo(() => {
-        const SCALE_FACTOR = MAP_CONFIG.RESOLUTION.BASE_SCALE_FACTOR; // 5배 해상도
-        
-        // 논리적 치수 (월드 픽셀)
-        const baseW = rawGridMetadata.width * SCALE_FACTOR;
-        const baseH = rawGridMetadata.height * SCALE_FACTOR;
-        
-        // 해상도 (픽셀 당 미터)
-        const baseRes = rawGridMetadata.resolution / SCALE_FACTOR; // 0.05 -> 0.01
-        
-        // 패딩 로직 (미관을 위한 가상 확장)
-        const expansionRatio = MAP_CONFIG.VIEWPORT.EXPANSION_RATIO; 
-        const sideRatio = MAP_CONFIG.VIEWPORT.SIDE_RATIO;      
+    // [Update] 1.2x Grid Expansion Logic (Matching ATC Map)
+    const paddedGridMetadata = useMemo(() => {
+        const expansionRatio = 0.2; // Total +20%
+        const sideRatio = 0.1;      // +10% per side
 
-        const extraW = baseW * expansionRatio;
-        const extraH = baseH * expansionRatio;
+        const extraW = rawGridMetadata.width * expansionRatio;
+        const extraH = rawGridMetadata.height * expansionRatio;
 
-        const newWidth = baseW + extraW;
-        const newHeight = baseH + extraH;
+        const newWidth = rawGridMetadata.width + extraW;
+        const newHeight = rawGridMetadata.height + extraH;
 
-        const padX_Meters = (baseW * sideRatio) * baseRes;
-        const padY_Meters = (baseH * sideRatio) * baseRes;
+        // Calculate Metric Padding (Meters)
+        const padX_Meters = (rawGridMetadata.width * sideRatio) * rawGridMetadata.resolution;
+        const padY_Meters = (rawGridMetadata.height * sideRatio) * rawGridMetadata.resolution;
 
         const baseOrigin = rawGridMetadata.origin || [0,0,0];
         
@@ -67,7 +54,6 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
             ...rawGridMetadata,
             width: newWidth,
             height: newHeight,
-            resolution: baseRes, // 0.01
             origin: [
                 baseOrigin[0] - padX_Meters,
                 baseOrigin[1] - padY_Meters,
@@ -76,23 +62,22 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
         };
     }, [rawGridMetadata]);
 
+    // Dimensions to use
+    const activeWidth = loadedDims.width || paddedGridMetadata.width;
+    const activeHeight = loadedDims.height || paddedGridMetadata.height;
+
     // 뷰포트 로직
-    // [수정] useAutoViewport를 사용하여 모든 노드가 포함되도록 초기 뷰포트 계산
-    // virtualMetadata(5x)를 기준으로 계산하여 고해상도 좌표계와 일치시킴
     const { viewBox: autoViewBox } = useAutoViewport(
         nodes,
-        virtualMetadata as any,
-        virtualMetadata.height,
-        virtualMetadata.width,
-        virtualMetadata.height,
+        paddedGridMetadata as any,
+        paddedGridMetadata.height,
+        paddedGridMetadata.width,
+        paddedGridMetadata.height,
         { 
-            paddingScale: MAP_CONFIG.VIEWPORT.PADDING_SCALE, 
-            minPadding: MAP_CONFIG.VIEWPORT.MIN_PADDING_METERS 
-        } // 여유 공간 설정
+            paddingScale: 0.05, 
+            minPadding: 2 
+        } // Consistent with ATC
     );
-
-    // 새로운 MapCanvas는 카메라 시스템을 사용하므로,
-    // 'initialViewBox'나 'maxBounds'를 전달하여 포커스를 맞춥니다.
     
     const myAircraftData = useMemo(() => {
         return assignedCarId 
@@ -100,7 +85,22 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
             : []; 
     }, [allAircrafts, assignedCarId]);
 
-    const activeHeight = virtualMetadata.height;
+    // [Active Route Extraction]
+    const activeRoutePath = useMemo(() => {
+        if (!assignedCarId) return undefined;
+        const myAircraft = allAircrafts.find(a => a.id === assignedCarId);
+        
+        // Show path when Connected/Towing or STOP
+        const isActiveState = myAircraft?.status === 'TOWING' || myAircraft?.status === 'STOP' || myAircraft?.status === 'MOVING_TO_GATE';
+        
+        if(!myAircraft?.currentMission || !isActiveState) return undefined;
+        
+        const missionObj = myAircraft.currentMission as any;
+        if(Array.isArray(missionObj?.path)) {
+            return missionObj.path as string[];
+        }
+        return undefined;
+    }, [allAircrafts, assignedCarId]);
 
     // 3. UI 레이어
     return (
@@ -108,36 +108,34 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
             <CardHeader className="py-3 border-b border-white/10 z-10 bg-black/20 backdrop-blur">
                 <CardTitle className="text-sm font-bold tracking-wide text-slate-400 flex items-center gap-2">
                     <MapIcon className="w-4 h-4 text-cyan-500" />
-                    DIGITAL TWIN NAVIGATION (HIGH-RES)
+                    DIGITAL TWIN NAVIGATION (PILOT)
                 </CardTitle>
             </CardHeader>
-            <div className="flex-1 relative bg-black/40 overflow-hidden">
+            <div className="flex-1 relative bg-[#0a0a0f] overflow-hidden">
                     <MapCanvas
                         // 데이터
                         mapImage={mapImage || null}
-                        meta={virtualMetadata as any} 
+                        meta={paddedGridMetadata as any} 
                         
                         // 설정
                         visualStyle="abstract"
-                        gridMetadata={virtualMetadata} 
+                        gridMetadata={paddedGridMetadata} 
                         
-                        // 렌더 스케일
-                        pixelRatio={window.devicePixelRatio || 1}
+                        // 렌더 스케일 (Match ATC)
+                        pixelRatio={5}
                         
                         // 뷰포트
-                        // 자동 계산된 뷰박스를 초기 포커스로 사용
                         initialViewBox={autoViewBox}
-                        // 가상 치수를 경계로 사용 (드래그 제한)
-                        maxBounds={{ x: 0, y: 0, width: virtualMetadata.width, height: virtualMetadata.height }}
+                        maxBounds={autoViewBox} // [Zoom Limit] Restrict to auto-fit bounds
                         
-                        // 그리드 옵션 (미터는 동일하지만 시각적 선 조절이 필요할 수 있음)
+                        // 그리드 옵션 (Match Match ATC)
                         gridOptions={{
-                            majorInterval: MAP_CONFIG.GRID.MAJOR_INTERVAL,
-                            minorInterval: MAP_CONFIG.GRID.MINOR_INTERVAL,
-                            majorWidth: MAP_CONFIG.GRID.MAJOR_WIDTH,
-                            minorWidth: MAP_CONFIG.GRID.MINOR_WIDTH,
-                            majorColor: MAP_CONFIG.GRID.COLOR.MAJOR,
-                            minorColor: MAP_CONFIG.GRID.COLOR.MINOR
+                            majorInterval: 1.5,
+                            minorInterval: 0.5,
+                            majorWidth: 0.3,
+                            minorWidth: 0.1,
+                            majorColor: 'rgba(0, 255, 255, 0.2)',
+                            minorColor: 'rgba(255, 255, 255, 0.3)'
                         }}
                         
                         className="w-full h-full"
@@ -145,14 +143,20 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
                         onMapClick={(pos) => console.log("Pilot Map Click:", pos)}
                     >
                         {/* Layers */}
-                        <GraphLayer meta={virtualMetadata as any} mapHeight={activeHeight} />
+                        <GraphLayer 
+                            meta={paddedGridMetadata as any} 
+                            mapHeight={activeHeight} 
+                            overridePath={activeRoutePath}
+                            activePathColor={MAP_CONFIG.GRAPH.COLOR.PILOT_GLOW} 
+                            activeNodeColor={MAP_CONFIG.GRAPH.COLOR.PILOT_ACTIVE} // [NEW] Mint/Teal
+                            activeNodeBorderColor={MAP_CONFIG.GRAPH.COLOR.PILOT_ACTIVE_BORDER} // [NEW] Dark Teal
+                        />
                         
                         <AircraftLayer
-                            meta={virtualMetadata as any}
-                            mapHeight={activeHeight} // Logical Height
-                            mapWidth={virtualMetadata.width} // Logical Width (Unused by Canvas sizing but maybe useful)
-                            
-                            pixelRatio={window.devicePixelRatio || 1} // Sharpness
+                            meta={paddedGridMetadata as any}
+                            mapHeight={activeHeight}
+                            mapWidth={activeWidth}
+                            pixelRatio={5}
                             data={myAircraftData}
                             onAircraftClick={(ac) => onAircraftSelect?.(ac)} 
                         />

@@ -36,6 +36,10 @@ export interface Aircraft {
     status: AircraftStatus; // MQTT: mode
     battery: number;        // MQTT: battery_pct
     speed: number;          // MQTT: velocity_mps
-    currentMission?: string; // MQTT: current_mission (e.g. "DOCKING_A")
+    currentMission?: {
+        id: string;
+        status: string;     // e.g. "RUNNING"
+        path?: string[];    // [NEW] Edge IDs for active route
+    } | string;             // Legacy support (string only)
     isLoaded: boolean;      // MQTT: is_loaded
 }

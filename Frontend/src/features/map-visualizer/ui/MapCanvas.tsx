@@ -64,6 +64,7 @@ export function MapCanvas({
     
     // Viewport State
     const [scale, setScale] = useState(1);
+    const [baseScale, setBaseScale] = useState(1); // [NEW] Base scale for 100% reference
     const [offset, setOffset] = useState({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
     const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
@@ -162,6 +163,7 @@ export function MapCanvas({
         const centeredOffsetY = (containerH - targetBox.height * fitScale) / 2;
 
         setScale(fitScale);
+        setBaseScale(fitScale); // [NEW] Set this as the 100% baseline
         setOffset({
             x: -targetBox.x * fitScale + centeredOffsetX,
             y: -targetBox.y * fitScale + centeredOffsetY
@@ -357,7 +359,7 @@ export function MapCanvas({
                     className="absolute bottom-4 right-4 pointer-events-none bg-black/60 text-[10px] text-accent-cyan font-mono px-2 py-1 rounded border border-white/10"
                     style={{ zIndex: MAP_CONFIG.Z_INDEX.UI_OVERLAY }}
                 >
-                    ZOOM: {(scale * 100).toFixed(0)}%
+                    ZOOM: {((scale / baseScale) * 100).toFixed(0)}%
                 </div>
             </div>
         </MapCameraContext.Provider>

@@ -8,15 +8,29 @@ import { MAP_CONFIG } from "@/features/map-visualizer/model/mapConfig";
 interface GraphLayerProps {
   meta: MapMeta | null;
   mapHeight: number;
+  overridePath?: string[] | undefined; 
+  activePathColor?: string; 
+  activeNodeColor?: string; // [NEW]
+  activeNodeBorderColor?: string; // [NEW]
 }
 
-/**
- * 컴포넌트: 그래프 레이어 (뷰어 전용)
- * 노드와 엣지를 단순 표시합니다. (편집 기능 없음)
- */
-export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
+export function GraphLayer({ 
+    meta, 
+    mapHeight, 
+    overridePath, 
+    activePathColor,
+    activeNodeColor,
+    activeNodeBorderColor
+}: GraphLayerProps) {
   const { nodes, edges, selectedId } = useGraphStore();
   const { offset, scale } = useMapCamera();
+
+  // Color Selection (Dynamic or Default ATC Orange)
+  const pathColor = activePathColor || MAP_CONFIG.GRAPH.COLOR.ATC_GLOW;
+  const nodeFill = activeNodeColor || MAP_CONFIG.GRAPH.COLOR.ACTIVE;
+  const nodeStroke = activeNodeBorderColor || MAP_CONFIG.GRAPH.COLOR.ACTIVE_BORDER;
+
+
 
   // --- Engineered Path: Straight Lines with Rounded Corners (Fillets) ---
   const getRoundedPath = (rawPoints: { x: number; y: number }[], radius: number = MAP_CONFIG.GRAPH.EDGE.CORNER_RADIUS) => {
@@ -119,7 +133,9 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
 
     // [Path Merging Logic] 경로 병합 로직 (끊김 없는 애니메이션)
     const mergedPathData = useMemo(() => {
-        const highlightedPath = useGraphStore.getState().highlightedPath || [];
+        // [Modified] Prioritize overridePath (Pilot View) over global store (ATC View)
+        const highlightedPath = overridePath || useGraphStore.getState().highlightedPath || [];
+        
         if (highlightedPath.length === 0) return null;
 
         const pathEdges = highlightedPath
@@ -190,13 +206,14 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
             }
         }
         return getRoundedPath(points, 0); // Straight line
-    }, [edges, nodes, useGraphStore.getState().highlightedPath, meta, mapHeight]);
+    }, [edges, nodes, useGraphStore.getState().highlightedPath, overridePath, meta, mapHeight]);
 
     // [Active Nodes Logic]
     const pathNodeIds = useMemo(() => {
         const ids = new Set<string>();
         if (selectedId) ids.add(selectedId);
-        const highlightedPath = useGraphStore.getState().highlightedPath || [];
+        
+        const highlightedPath = overridePath || useGraphStore.getState().highlightedPath || [];
         highlightedPath.forEach(edgeId => {
             const edge = edges.find(e => e.id === edgeId);
             if (edge) {
@@ -205,7 +222,7 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
             }
         });
         return ids;
-    }, [edges, selectedId, useGraphStore.getState().highlightedPath]);
+    }, [edges, selectedId, useGraphStore.getState().highlightedPath, overridePath]);
 
 
   // 공통 변환 속성
@@ -281,17 +298,17 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
                         <path
                             d={mergedPathData}
                             fill="none"
-                            stroke={MAP_CONFIG.GRAPH.COLOR.ATC_GLOW}
+                            stroke={pathColor} // [Modified] Use dynamic color
                             strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.ACTIVE_GLOW}
                             strokeLinecap="round"
                             strokeLinejoin="round"
-                            style={{ filter: "blur(4px)", opacity: 0.4 }} 
+                            style={{ filter: "blur(4px)", opacity: 0.6 }} 
                         />
                         {/* [B] Flowing Highlight (Animation) */}
                         <path
                             d={mergedPathData}
                             fill="none"
-                            stroke={MAP_CONFIG.GRAPH.COLOR.ATC_GLOW}
+                            stroke={pathColor} // [Modified] Use dynamic color
                             strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.ACTIVE_GLOW}
                             strokeLinecap="round"
                             strokeLinejoin="round"
@@ -354,8 +371,8 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
                                 <g key={`active-node-${node.id}`} transform={`translate(${pos.x}, ${pos.y})`}>
                                     <circle 
                                         r={MAP_CONFIG.GRAPH.NODE.RADIUS.SELECTED_CORE} 
-                                        fill={MAP_CONFIG.GRAPH.COLOR.ACTIVE} 
-                                        stroke={MAP_CONFIG.GRAPH.COLOR.ACTIVE_BORDER}
+                                        fill={nodeFill} // [Dynamic]
+                                        stroke={nodeStroke} // [Dynamic]
                                         strokeWidth={MAP_CONFIG.GRAPH.NODE.STROKE_WIDTH}
                                     />
                                 </g>

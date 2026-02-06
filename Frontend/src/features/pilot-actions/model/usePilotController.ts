@@ -247,6 +247,28 @@ export function usePilotController(initialCarId?: string) {
           if (moveState === "waiting") {
             setMoveState("pushback");
             addLog("success", `✓ PUSHBACK APPROVED`);
+            
+            // [NEW] Inject Path into Store (Run Once on Approval)
+            if (payload.edgeIds && payload.towingCarCode) {
+               const aircraftStore = useAircraftStore.getState();
+               const existing = aircraftStore.aircrafts.find(a => a.id === payload.towingCarCode);
+               
+               if (existing) {
+                   // Construct updated aircraft object
+                   const updatedAircraft: Aircraft = {
+                       ...existing,
+                       currentMission: {
+                           id: payload.missionId?.toString() || "temp",
+                           status: "RUNNING", // Explicitly setting status
+                           path: payload.edgeIds
+                       }
+                   };
+                   // Use ingest method (Efficient Update)
+                   aircraftStore.ingest(updatedAircraft); 
+                   // console.log("[Pilot] Path Injected:", payload.edgeIds.length, "edges");
+               }
+            }
+
             if (payload.destNode) {
               addLog("info", `Moving to: ${payload.destNode}`);
             }
