@@ -1,8 +1,6 @@
-import { useEffect, useState, ReactNode } from 'react';
+import { useEffect, ReactNode } from 'react';
+import { useSocket, WS_TOPICS } from '@/shared/realtime';
 import { useAuthStore } from '@/features/auth/model/useAuthStore';
-import { flightApi } from '@/entities/mission/api/flightApi';
-import { useSyncStore } from '@/shared/model/syncStore';
-import { LoadingSplash } from '@/shared/ui/LoadingSplash';
 
 interface PilotInitializerProps {
     children: ReactNode;
@@ -11,11 +9,45 @@ interface PilotInitializerProps {
 /**
  * PilotInitializer
  * 기장(PILOT) 권한인 경우에만 동작하며,
- * 새로고침 시 증발된 비행 정보를 REST로 복구합니다.
+ * 전역적인 파일럿 소켓 구독 및 비행 정보 요청을 담당합니다.
+ * (기존 usePilotSocket에서 분리됨)
  */
 export function PilotInitializer({ children }: PilotInitializerProps) {
-    // Note: 싱크 로직이 SocketBridge로 통합되었으므로, 
-    // 이곳은 이제 단순히 권한별 컴포넌트 마운트 지점 역할만 수행합니다.
+    const socket = useSocket();
+    const { socketToken } = useAuthStore();
+    const isConnected = socket?.isConnected;
+    const send = socket?.send;
+
+    useEffect(() => {
+        if (!isConnected || !send || !socketToken) return;
+
+        console.log("[PilotInitializer] 🚀 Starting Global Pilot Session...");
+
+        // 1. Subscribe to Private Responses
+        send("SUBSCRIBE", {
+            id: "sub-pilot-private",
+            destination: WS_TOPICS.PRIVATE_RESPONSES
+        });
+
+        // 2. Subscribe to Flight Info
+        send("SUBSCRIBE", {
+            id: "sub-pilot-flight-info",
+            destination: WS_TOPICS.PILOT_FLIGHT_INFO
+        });
+
+        // 3. Request Flight Info (Explicit Request)
+        console.log("[PilotInitializer] 📨 Requesting flight info...");
+        send("SEND", {
+            destination: "/app/flight/info/request"
+        }, "");
+
+        return () => {
+            console.log("[PilotInitializer] 🔌 Cleaning up Global Pilot Session...");
+            send("UNSUBSCRIBE", { id: "sub-pilot-private" });
+            send("UNSUBSCRIBE", { id: "sub-pilot-flight-info" });
+        };
+    }, [isConnected, send, socketToken]);
+
     return <>{children}</>;
 }
 

@@ -241,45 +241,59 @@ export function SocketBridge() {
   }, []);
 
   // 4. WebSocket Subscription Management
+  // 4. WebSocket Subscription Management
+  
+  // 4.1. Message Listener Registration (Depends on handleMessage)
   useEffect(() => {
     if (!socket) return;
+    // Register listener
     const unsubscribe = socket.onMessage(handleMessage);
+    
+    // Cleanup listener on unmount or when handleMessage changes
+    return () => {
+      unsubscribe();
+    };
+  }, [socket, handleMessage]);
 
-    if (socket.isConnected) {
-      console.log("[SocketBridge] 📡 Subscribing to topics...");
+  // 4.2. Topic Subscriptions (Depends only on connection status)
+  useEffect(() => {
+    if (!socket || !socket.isConnected) return;
 
-      // Pilot already subscribes to individual car via usePilotSocket, skip wildcard
-      const isPilot = user?.role === "PILOT";
-      if (!isPilot) {
-        socket.send("SUBSCRIBE", {
-          id: "sub-monitoring-all",
-          destination: WS_TOPICS.MONITORING("*"),
-        });
-      }
+    console.log("[SocketBridge] 📡 Subscribing to topics...");
 
+    // Pilot already subscribes to individual car via usePilotSocket, skip wildcard
+    const isPilot = user?.role === "PILOT";
+    if (!isPilot) {
       socket.send("SUBSCRIBE", {
-        id: "sub-mission-updates",
-        destination: WS_TOPICS.MISSION_UPDATES,
-      });
-      socket.send("SUBSCRIBE", {
-        id: "sub-map-info-global",
-        destination: WS_TOPICS.MAP_INFO,
-      });
-      socket.send("SUBSCRIBE", {
-        id: "sub-app-responses-global",
-        destination: WS_TOPICS.APP_RESPONSES,
-      });
-      socket.send("SUBSCRIBE", {
-        id: "sub-controller-requests",
-        destination: WS_TOPICS.CONTROLLER_REQUESTS,
+        id: "sub-monitoring-all",
+        destination: WS_TOPICS.MONITORING("*"),
       });
     }
 
+    socket.send("SUBSCRIBE", {
+      id: "sub-mission-updates",
+      destination: WS_TOPICS.MISSION_UPDATES,
+    });
+    socket.send("SUBSCRIBE", {
+      id: "sub-map-info-global",
+      destination: WS_TOPICS.MAP_INFO,
+    });
+    socket.send("SUBSCRIBE", {
+      id: "sub-app-responses-global",
+      destination: WS_TOPICS.APP_RESPONSES,
+    });
+    socket.send("SUBSCRIBE", {
+      id: "sub-controller-requests",
+      destination: WS_TOPICS.CONTROLLER_REQUESTS,
+    });
+
     return () => {
       console.log("[SocketBridge] 🔌 Cleaning up subscriptions...");
-      unsubscribe();
+      // Ideally, we should send UNSUBSCRIBE frames here if we want to be strict,
+      // but usually closing the socket or page reload handles it.
+      // Since this effect only runs on mount/connection change, it's safer.
     };
-  }, [socket, handleMessage, user?.role]);
+  }, [socket, socket?.isConnected, user?.role]);
 
   return null;
 }
