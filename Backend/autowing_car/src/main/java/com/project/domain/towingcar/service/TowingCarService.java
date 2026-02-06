@@ -56,10 +56,11 @@ public class TowingCarService {
 
     // [Restored Configuration Fields]
     private final String START_NODE = "n1";
+    private final String RUNWAY_NODE = "n4";
     private final String FINISH_NODE = "n8";
     private boolean isAutoConnectEnabled = true;
     private boolean isAutoDisconnectEnabled = true;
-    private static final double ARRIVAL_THRESHOLD = 2.0;
+    private static final double ARRIVAL_THRESHOLD = 0.1;
 
     // ... (unchanged)
     public TowingCarStatusResponse getTowingCarStatusByPilot(String pilotId) {
@@ -137,7 +138,7 @@ public class TowingCarService {
     }
 
     /**
-     * [연결] 수동/자동 공통
+     * [연결]
      */
     @Transactional
     public void connectCar(String pilotId, CarConnectRequestDto request) {
@@ -151,10 +152,8 @@ public class TowingCarService {
 
         log.info("🔗 [Connect] Flight={} (By {})", flight.getFlightNumber(), pilotId);
 
-        // ✅ 비즈니스 로직: 상태 변경만
-        assignedCar.updateStatus(assignedCar.getLastPosX(), assignedCar.getLastPosY(),
-                assignedCar.getLastHeading(), assignedCar.getLastVelocity(),
-                assignedCar.getBattery(), CarStatus.DOCKING);
+        // ✅ 비즈니스 로직: 상태 변경 제거 (차량의 응답을 대기해야 함 - User Request)
+        // assignedCar.updateStatus(..., CarStatus.DTOKING); // REMOVED
 
         // ✅ 알림: WebSocket (Helper 메서드로 위임)
         notifyCarConnected(assignedCar, pilotId);
@@ -180,7 +179,7 @@ public class TowingCarService {
         // 1. 상태 변경: UNLOADING
         assignedCar.updateStatus(assignedCar.getLastPosX(), assignedCar.getLastPosY(),
                 assignedCar.getLastHeading(), assignedCar.getLastVelocity(),
-                assignedCar.getBattery(), CarStatus.UNDOCKING);
+                assignedCar.getBattery(), assignedCar.getCarStatus());
         towingCarDBAdaptor.save(assignedCar); // Intermediate save
 
         // 2. 미션 완료 처리
@@ -216,7 +215,8 @@ public class TowingCarService {
         }
 
         // Use LastNode if available
-        Node carNode = car.getLastNode();
+        // Node carNode = car.getLastNode();
+        Node carNode = mapDBAdaptor.getNodeByCode(RUNWAY_NODE);
         if (carNode == null) {
             carNode = mapService.findNearestNode(car.getLastPosX(), car.getLastPosY());
         }
@@ -244,7 +244,7 @@ public class TowingCarService {
         Map<String, Object> payload = new HashMap<>();
         payload.put("msgId", UUID.randomUUID().toString());
         payload.put("timestamp", System.currentTimeMillis());
-        payload.put("type", "DRIVE");
+        payload.put("type", "Drive");
         payload.put("taskId", "RETURN_" + car.getCode());
         payload.put("data", data);
 
@@ -272,6 +272,19 @@ public class TowingCarService {
         double velocity = payload.get("v").asDouble();
         CarStatus status = CarStatus.from(payload.path("mode").asText());
         int battery = payload.get("battery").asInt();
+
+        // [Safeguard] Prevent Stale Status Overwrite
+        // If DB is already DOCKING (Transitioning), but Car reports MOVING_TO_GATE
+        // (Lag),
+        // ignore the Car's payload and keep DOCKING.
+        if (assignedCar.getCarStatus() == CarStatus.DOCKING && status == CarStatus.MOVING_TO_GATE) {
+            status = CarStatus.DOCKING;
+        }
+        // // [Safeguard] Prevent Stale Status Overwrite (Disconnect)
+        // if (assignedCar.getCarStatus() == CarStatus.UNDOCKING && status ==
+        // CarStatus.WAITING_FOR_RETURN) {
+        // status = CarStatus.UNDOCKING;
+        // }
 
         // [Topological Tracking] Update LastNode within context
         Node nearestNode = mapService.findNearestNode(x, y, assignedCar.getLastNode());
@@ -328,32 +341,17 @@ public class TowingCarService {
     }
 
     private void checkAndTriggerAutoActions(TowingCar assignedCar, double x, double y, CarStatus status) {
-        // 1. Auto Connect (Moving to Load -> Arrived at Gate -> Connect)
-        if (isAutoConnectEnabled && assignedCar.getCarStatus() == CarStatus.MOVING_TO_GATE) {
-            Flight flight = flightDBAdaptor.getFlightByAssignedCar(assignedCar);
-            // Use LastNode logic or Distance logic
-            if (flight != null && isArrivedAt(x, y, flight.getNodeCode())) {
-                connectCar("SYSTEM", new CarConnectRequestDto(flight.getId()));
-            }
-        }
 
-        // 2. Auto Disconnect / Return (Runway Undocking -> Return n8)
-        // Trigger specific transition: UNLOADING -> IDLE
+        // 2. Auto Return (WAITING_FOR_RETURN -> Return to Base n8)
+        // WAITING_FOR_RETURN은 미션 완료 후 복귀 대기 상태.
         if (isAutoDisconnectEnabled && status == CarStatus.WAITING_FOR_RETURN) {
-            if (assignedCar.getCurrentMissionId() != null) {
-                Mission mission = missionDBAdaptor.getMissionById(assignedCar.getCurrentMissionId());
-                Node destNode = mapDBAdaptor.getNodeByCode(mission.getDestNode());
-                Node lastNode = assignedCar.getLastNode();
-
-                if (lastNode != null && destNode != null &&
-                        lastNode.getId().equals(destNode.getId())) {
-
-                    log.info("🚩 [Auto Action] Car {} arrived at Dest {} ({}) -> Triggering Disconnect/Return",
-                            assignedCar.getCode(), destNode.getNodeCode(), status);
-
-                    disconnectCar("SYSTEM", new CarDisconnectRequestDto(mission.getFlight().getId()));
-                }
+            // 이미 RETURNING 상태면 스킵 (무한루프 방지)
+            if (assignedCar.getCarStatus() == CarStatus.RETURNING) {
+                return;
             }
+            log.info("🚩 [Auto Action] Car {} is WAITING_FOR_RETURN -> Triggering returnToBase",
+                    assignedCar.getCode());
+            returnToBase(assignedCar);
         }
 
         // 3. Mission Completion Check (Arrival at n1 + IDLE)
