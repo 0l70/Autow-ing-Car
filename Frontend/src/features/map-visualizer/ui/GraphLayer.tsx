@@ -2,6 +2,7 @@ import { useGraphStore } from "@/entities/map/model/store";
 import { MapMeta, WorldCoord } from "@/entities/map/model/types";
 import { worldToPixel } from "@/entities/map/lib/coordinate";
 import { useMapCamera } from "@/features/map-visualizer/ui/MapCanvas";
+import { MAP_CONFIG } from "@/features/map-visualizer/model/mapConfig";
 
 interface GraphLayerProps {
   meta: MapMeta | null;
@@ -17,7 +18,7 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
   const { offset, scale } = useMapCamera();
 
   // --- Engineered Path: Straight Lines with Rounded Corners (Fillets) ---
-  const getRoundedPath = (rawPoints: { x: number; y: number }[], radius: number = 20) => {
+  const getRoundedPath = (rawPoints: { x: number; y: number }[], radius: number = MAP_CONFIG.GRAPH.EDGE.CORNER_RADIUS) => {
     // 1. Strict Input Validation (Filter NaNs)
     if (!rawPoints) return "";
     const points = rawPoints.filter(p => p && !isNaN(p.x) && !isNaN(p.y));
@@ -127,8 +128,8 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
                     <path
                     d={getRoundedPath(points)}
                     fill="none"
-                    stroke="#f97316" // Orange
-                    strokeWidth={5} // Wider Glow
+                    stroke={MAP_CONFIG.GRAPH.COLOR.DEFAULT} // Orange
+                    strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.GLOW} // Wider Glow
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     opacity={0.3}
@@ -138,8 +139,8 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
                     <path
                     d={getRoundedPath(points)}
                     fill="none"
-                    stroke="#f97316"
-                    strokeWidth={1.5} 
+                    stroke={MAP_CONFIG.GRAPH.COLOR.DEFAULT}
+                    strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.CORE} 
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     opacity={1} // Solid!
@@ -156,22 +157,25 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
             const pos = getPixel(node);
             const isSelected = selectedId === node.id;
             
+            const glowR = isSelected ? MAP_CONFIG.GRAPH.NODE.RADIUS.SELECTED_GLOW : MAP_CONFIG.GRAPH.NODE.RADIUS.NORMAL_GLOW;
+            const coreR = isSelected ? MAP_CONFIG.GRAPH.NODE.RADIUS.SELECTED_CORE : MAP_CONFIG.GRAPH.NODE.RADIUS.NORMAL_CORE;
+
             return (
                 <g key={`node-${node.id}`} transform={`translate(${pos.x}, ${pos.y})`}>
                 {/* Fused Joint Circle - Matches Core Line Exactly */}
                 
                 {/* 1. Glow Backing */}
                 <circle 
-                    r={isSelected ? 8 : 4} 
-                    fill="#f97316"
+                    r={glowR} 
+                    fill={MAP_CONFIG.GRAPH.COLOR.DEFAULT}
                     opacity={0.3}
                     style={{ filter: "blur(3px)" }}
                 />
                 
                 {/* 2. Solid Core - Matches Line Width Fusion */}
                 <circle 
-                    r={isSelected ? 6 : 1.5} 
-                    fill={isSelected ? "#FFFFFF" : "#f97316"} 
+                    r={coreR} 
+                    fill={isSelected ? MAP_CONFIG.GRAPH.COLOR.ACTIVE : MAP_CONFIG.GRAPH.COLOR.DEFAULT} 
                     opacity={1}
                     style={{ filter: isSelected ? "drop-shadow(0 0 5px #fff)" : "url(#neon-sharp)" }}
                 />
@@ -189,8 +193,8 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
                 <path
                     d={getRoundedPath(points)}
                     fill="none"
-                    stroke="#f97316" 
-                    strokeWidth={12}
+                    stroke={MAP_CONFIG.GRAPH.COLOR.DEFAULT} 
+                    strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.ACTIVE_GLOW}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     opacity={0.3}
@@ -200,8 +204,8 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
                 <path
                     d={getRoundedPath(points)}
                     fill="none"
-                    stroke="#f97316"
-                    strokeWidth={4}
+                    stroke={MAP_CONFIG.GRAPH.COLOR.DEFAULT}
+                    strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.ACTIVE_BEAM}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     style={{ filter: "blur(1px)" }}
@@ -210,8 +214,8 @@ export function GraphLayer({ meta, mapHeight }: GraphLayerProps) {
                 <path
                     d={getRoundedPath(points)}
                     fill="none"
-                    stroke="#FFFFFF" 
-                    strokeWidth={2}
+                    stroke={MAP_CONFIG.GRAPH.COLOR.ACTIVE} 
+                    strokeWidth={MAP_CONFIG.GRAPH.EDGE.WIDTH.ACTIVE_CORE}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     opacity={1}

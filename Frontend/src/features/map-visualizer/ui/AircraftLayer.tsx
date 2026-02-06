@@ -4,43 +4,26 @@ import { worldToPixel } from "@/entities/map/lib/coordinate";
 import { useAircraftStore } from "@/entities/aircraft";
 import { useSmoothAnimation } from "@/features/map-visualizer/lib/useSmoothAnimation";
 import { useMapCamera } from "@/features/map-visualizer/ui/MapCanvas";
-
-// Colors for status
-const STATUS_COLORS: Record<string, string> = {
-    IDLE: '#FFA500',             // Orange: Standby
-    MOVING_TO_GATE: '#00FF00',   // Green: Moving to Task
-    DOCKING: '#00FFFF',          // Cyan: Precise Maneuver
-    TOWING: '#D946EF',           // Fuchsia: Heavy Load
-    UNDOCKING: '#00FFFF',        // Cyan: Precise Maneuver
-    WAITING_FOR_RETURN: '#FACC15', // Yellow: Holding
-    RETURNING: '#3B82F6',        // Blue: Returning Home
-    STOP: '#FF0000',             // Red: Emergency/Stop
-    ERROR: '#FF0000'             // Red: Error
-};
+import { MAP_CONFIG } from "@/features/map-visualizer/model/mapConfig";
 
 interface AircraftLayerProps {
     meta: MapMeta | null;
-    mapHeight: number; // Logical World Height (High Res)
-    mapWidth: number; // Logical World Width (High Res)
-    pixelRatio?: number; // [New] High-DPI Support
-    data?: Aircraft[]; // [New] Optional external data source
+    mapHeight: number; // 논리적 월드 높이 (고해상도)
+    mapWidth: number; // 논리적 월드 너비 (고해상도)
+    pixelRatio?: number; // [신규] 고해상도(High-DPI) 지원
+    data?: Aircraft[]; // [신규] 외부 데이터 소스 (선택 사항)
     onAircraftClick?: (aircraft: Aircraft) => void;
 }
 
-// Constants for Interaction and Animation
-const CLICK_RADIUS_SQ = 400; // 20px * 20px
-const ANIMATION_DURATION_MS = 300;
-
-
 export function AircraftLayer({ meta, mapHeight, mapWidth, pixelRatio = 1, data, onAircraftClick }: AircraftLayerProps) {
     const storeAircraftList = useAircraftStore((state) => state.aircrafts);
-    const { scale, offset, viewport } = useMapCamera();
+    const { scale, offset } = useMapCamera();
     
-    // [Update] Data Injection Logic
+    // [수정] 데이터 주입 로직
     const displayData = data || storeAircraftList;
     
-    // Apply Smooth Animation (Interpolation)
-    const animatedList = useSmoothAnimation(displayData, ANIMATION_DURATION_MS);
+    // 부드러운 애니메이션 적용 (보간)
+    const animatedList = useSmoothAnimation(displayData, MAP_CONFIG.AIRCRAFT.ANIMATION_DURATION);
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -49,37 +32,32 @@ export function AircraftLayer({ meta, mapHeight, mapWidth, pixelRatio = 1, data,
         
         const rect = canvasRef.current.getBoundingClientRect();
         
-        // Mouse coordinates relative to Viewport
+        // 뷰포트 기준 마우스 좌표
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
 
-        // Convert User Click (Screen) -> World
+        // 사용자 클릭 (화면) -> 월드 변환
         // Screen = World * Scale + Offset
         // World = (Screen - Offset) / Scale
-        const worldClickX = (mouseX - offset.x) / scale;
-        const worldClickY = (mouseY - offset.y) / scale;
+        // const worldClickX = (mouseX - offset.x) / scale;
+        // const worldClickY = (mouseY - offset.y) / scale;
 
-        // However, we are comparing against Aircraft Position which is "Pixel Coords" (worldToPixel)
-        // worldToPixel returns Logical Pixel Coords.
-        // So we need to match spaces.
+        // 하지만 worldToPixel은 "픽셀 좌표(논리적 월드)"를 반환합니다.
+        // 따라서 공간을 맞춰야 합니다.
         
         for (const ac of animatedList) {
              const pixel = worldToPixel(ac.position, meta, mapHeight);
              
-             // Pixel is in Logical World Space.
-             // We can compare in World Space OR Screen Space.
+             // Pixel은 논리적 월드 공간에 있습니다.
+             // 월드 공간에서 비교할지, 화면 공간에서 비교할지 결정해야 합니다.
              
-             // Let's compare in Logical World Space.
-             // Radius check: 20px in SCREEN space? Or World space?
-             // Usually we want clickable area to be fixed screen size (e.g. 20px).
-             // So let's project Aircraft to Screen Space.
-             
+             // 화면 공간으로 투영(Project)해 보겠습니다.
              const screenX = pixel.x * scale + offset.x;
              const screenY = pixel.y * scale + offset.y;
              
              const distSq = (mouseX - screenX) ** 2 + (mouseY - screenY) ** 2;
              
-             if (distSq < CLICK_RADIUS_SQ) { 
+             if (distSq < MAP_CONFIG.AIRCRAFT.CLICK_RADIUS_SQ) { 
                  onAircraftClick(ac);
                  return;
              }
@@ -98,31 +76,32 @@ export function AircraftLayer({ meta, mapHeight, mapWidth, pixelRatio = 1, data,
         const screenW = parent.clientWidth;
         const screenH = parent.clientHeight;
         
-        // [New] High-DPI Scaling & Viewport Size
+        // [신규] High-DPI 스케일링 및 뷰포트 크기
         canvas.width = screenW * pixelRatio;
         canvas.height = screenH * pixelRatio;
         canvas.style.width = '100%';
         canvas.style.height = '100%';
         
-        // Reset Transform
+        // 변환 초기화
         ctx.setTransform(1, 0, 0, 1, 0, 0); 
         
-        // Scale for DPI
+        // DPI 스케일
         ctx.scale(pixelRatio, pixelRatio);
         
-        // Apply Camera Transform
+        // 카메라 변환 적용
         ctx.translate(offset.x, offset.y);
         ctx.scale(scale, scale);
 
-        // Clear Screen Rect? 
-        // We transformed the context. Clearing (0,0,W,H) clears World(0,0,W,H).
-        // If we want to clear the SCREEN, we should use identity transform or calculate inverse.
-        // Easiest: Reset transform, clear, then apply transform.
+        // 화면 지우기
+        // 컨텍스트가 변환되었으므로, (0,0)에서 지우면 World(0,0)부터 지워집니다.
+        // 화면 전체를 지우려면 변환을 잠시 풀고 지워야 합니다.
         
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.restore();
+
+        const { SIZE, FONT, STATUS_COLORS } = MAP_CONFIG.AIRCRAFT;
 
         animatedList.forEach(ac => {
             const pixel = worldToPixel(ac.position, meta, mapHeight);
@@ -130,26 +109,18 @@ export function AircraftLayer({ meta, mapHeight, mapWidth, pixelRatio = 1, data,
             ctx.save();
             ctx.translate(pixel.x, pixel.y);
             
-            // Rotation Correction: 
+            // 회전 보정:
             ctx.rotate(-ac.position.r); 
 
-            // Draw Body (Scale Invariant? No, let it scale with map for now, looks naturally anchored)
-            // But if super High Res (5x), the drawing commands (5px) will appear tiny relative to the world?
-            // No, Logical Pixels are 5x more dense.
+            // 바디 그리기 (스케일 불변? 아니요, 지금은 맵과 함께 스케일되도록 둡니다.)
+            // 하지만 고해상도(5배) 상태에서 기본 5px 크기는 너무 작게 보일 수 있습니다.
+            // 논리적 픽셀이 5배 더 조밀하기 때문입니다.
             // Drawing 5px at scale 1.0 (Zoomed Out to fit screen) -> 
             // mapHeight=10000. Screen=1000. Scale=0.1.
-            // 5px * 0.1 = 0.5px. Too small!
+            // 5px * 0.1 = 0.5px. 너무 작습니다!
             
-            // So we need to compensation scale for ID entities if we want fixed visibility?
-            // OR we define dimensions in Meters?
-            // Existing code used "Pixels" for drawing (moveTo 5, etc).
-            // Users want "High Resolution" -> "Crisp edges".
-            // If we use High Res, we should map everything to Meters logically or scale drawing commands.
-            
-            // Solution: Inverse Scale for fixed size icons.
+            // 해결책: 아이콘 크기를 고정하기 위해 역(Inverse) 스케일을 적용합니다.
             const fixedSizeScale = 1 / scale; 
-            // Clamp min scale so they don't get too huge when zoomed in?
-            // Or just let them be fixed screen size.
             
             ctx.scale(fixedSizeScale, fixedSizeScale);
             
@@ -157,11 +128,11 @@ export function AircraftLayer({ meta, mapHeight, mapWidth, pixelRatio = 1, data,
             let blur = 10;
             const labelText = ac.callsign;
 
-            // [ATC Visualization] Towing State = Active Glow
+            // [ATC 시각화] 견인 상태 = 활성 광채
             if (ac.isLoaded) {
-                color = '#FFFFFF'; // Body is White
-                ctx.shadowColor = '#00FF00'; // Neon Green Glow
-                blur = 30; // Strong Pulse
+                color = '#FFFFFF'; // 바디는 흰색
+                ctx.shadowColor = '#00FF00'; // 네온 그린 광채
+                blur = 30; // 강한 펄스
             } else {
                 ctx.shadowColor = color;
             }
@@ -170,38 +141,46 @@ export function AircraftLayer({ meta, mapHeight, mapWidth, pixelRatio = 1, data,
             ctx.shadowBlur = blur;
             
             ctx.beginPath();
-            // Triangle pointing East (0 deg)
-            ctx.moveTo(10, 0);      // Enlarged base size (was 5)
-            ctx.lineTo(-7.5, 6);  
-            ctx.lineTo(-4, 0);     
-            ctx.lineTo(-7.5, -6); 
+            // 동쪽(0도)을 가리키는 삼각형
+            // SIZE.LENGTH = 10 (Nose)
+            // SIZE.WING_SPAN_HALF = 7.5 (Width)
+            // SIZE.TAIL_INDENT = 4 (Back)
+            // Nose: (LENGTH, 0)
+            // Right Wing: (-WING_SPAN_HALF, 6) -> 6 is slight angle back aspect ratio. Let's create specific ratio or constant.
+            // Actually hardcoded was (-7.5, 6). If WING_SPAN_HALF is 7.5, Y is 6. aspect ~0.8.
+            // Let's rely on constants.
+            
+            ctx.moveTo(SIZE.LENGTH, 0);      
+            ctx.lineTo(-SIZE.WING_SPAN_HALF, 6);  
+            ctx.lineTo(-SIZE.TAIL_INDENT, 0);     
+            ctx.lineTo(-SIZE.WING_SPAN_HALF, -6); 
             ctx.closePath();
             ctx.fill();
             
-            ctx.shadowBlur = 0; // Reset
+            ctx.shadowBlur = 0; // 초기화
             ctx.restore();
             
-            // Label (Non-rotated with HUD Background)
+            // 라벨 (회전하지 않음, HUD 배경)
             ctx.save();
             ctx.translate(pixel.x, pixel.y);
             
-            // Fixed Size Label
+            // 고정 크기 라벨
             ctx.scale(fixedSizeScale, fixedSizeScale);
 
-            // Text Settings
-            ctx.font = 'bold 12px sans-serif'; // Larger Base Font
+            // 텍스트 설정
+            ctx.font = `${FONT.WEIGHT} ${FONT.SIZE}px ${FONT.FAMILY}`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top'; 
             
-            // Text (White with heavy shadow/stroke for contrast)
+            // 텍스트 (대비를 위한 진한 그림자/스트로크)
             ctx.shadowColor = 'black';
             ctx.shadowBlur = 2;
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-            ctx.strokeText(labelText, 0, 12); 
+            ctx.lineWidth = FONT.STROKE_WIDTH;
+            ctx.strokeStyle = FONT.STROKE_COLOR;
+            ctx.strokeText(labelText, 0, FONT.SIZE); 
 
-            ctx.fillStyle = '#ffffff';
-            ctx.fillText(labelText, 0, 12); 
+            ctx.fillStyle = FONT.COLOR;
+            ctx.fillText(labelText, 0, FONT.SIZE); 
 
             ctx.restore();
         });

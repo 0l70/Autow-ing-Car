@@ -5,13 +5,14 @@ import { useGraphStore } from "@/entities/map/model/store";
 import { Aircraft } from "@/entities/map/model/types";
 import { useAircraftStore } from "@/entities/aircraft"; 
 
-// FSD Layers
+// FSD 레이어
 import { MapCanvas } from "@/features/map-visualizer/ui/MapCanvas";
 import { GraphLayer } from "@/features/map-visualizer/ui/GraphLayer";
 import { AircraftLayer } from "@/features/map-visualizer/ui/AircraftLayer";
 import { useMapData } from "@/features/map-visualizer/model/useMapData";
 import { useGridMetadata } from "@/features/map-visualizer/model/useGridMetadata"; 
-import { useAutoViewport } from "@/features/map-visualizer/model/useAutoViewport"; 
+import { useAutoViewport } from "@/features/map-visualizer/model/useAutoViewport";
+import { MAP_CONFIG } from "@/features/map-visualizer/model/mapConfig";
 
 interface PilotMapWidgetProps {
     className?: string;
@@ -20,36 +21,36 @@ interface PilotMapWidgetProps {
 }
 
 export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: PilotMapWidgetProps) {
-    // 1. Data Layer
+    // 1. 데이터 레이어
     const { meta, mapImage } = useMapData();
     const { nodes } = useGraphStore(); 
     
     const allAircrafts = useAircraftStore(state => state.aircrafts);
 
-    // 2. Logic Layer
+    // 2. 로직 레이어
     const [loadedDims, setLoadedDims] = useState({ width: 0, height: 0 });
     
-    // Grid & Dimensions
+    // 그리드 및 치수
     const { gridMetadata: rawGridMetadata } = useGridMetadata();
 
-    // --- HIGH RESOLUTION SCALING (VIRTUAL MAP) ---
-    // User requested Resolution 0.01 (High Res)
-    // Current Raw: 0.05.
-    // Scale Factor = 0.05 / 0.01 = 5.
+    // --- 고해상도 스케일링 (가상 지도) ---
+    // 사용자 요청 해상도: 0.01 (High Res)
+    // 현재 원본: 0.05.
+    // 스케일 팩터 = 0.05 / 0.01 = 5.
     
     const virtualMetadata = useMemo(() => {
-        const SCALE_FACTOR = 5; // 5x Resolution
+        const SCALE_FACTOR = MAP_CONFIG.RESOLUTION.BASE_SCALE_FACTOR; // 5배 해상도
         
-        // Logical Dimensions (World Pixels)
+        // 논리적 치수 (월드 픽셀)
         const baseW = rawGridMetadata.width * SCALE_FACTOR;
         const baseH = rawGridMetadata.height * SCALE_FACTOR;
         
-        // Resolution (Meters per Pixel)
+        // 해상도 (픽셀 당 미터)
         const baseRes = rawGridMetadata.resolution / SCALE_FACTOR; // 0.05 -> 0.01
         
-        // Padded Logic (Virtual Expansion for aesthetics)
-        const expansionRatio = 0.2; 
-        const sideRatio = 0.1;      
+        // 패딩 로직 (미관을 위한 가상 확장)
+        const expansionRatio = MAP_CONFIG.VIEWPORT.EXPANSION_RATIO; 
+        const sideRatio = MAP_CONFIG.VIEWPORT.SIDE_RATIO;      
 
         const extraW = baseW * expansionRatio;
         const extraH = baseH * expansionRatio;
@@ -75,7 +76,7 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
         };
     }, [rawGridMetadata]);
 
-    // Viewport    // 뷰포트 로직
+    // 뷰포트 로직
     // [수정] useAutoViewport를 사용하여 모든 노드가 포함되도록 초기 뷰포트 계산
     // virtualMetadata(5x)를 기준으로 계산하여 고해상도 좌표계와 일치시킴
     const { viewBox: autoViewBox } = useAutoViewport(
@@ -84,7 +85,10 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
         virtualMetadata.height,
         virtualMetadata.width,
         virtualMetadata.height,
-        { paddingScale: 0.05, minPadding: 2 } // 여유 공간 설정
+        { 
+            paddingScale: MAP_CONFIG.VIEWPORT.PADDING_SCALE, 
+            minPadding: MAP_CONFIG.VIEWPORT.MIN_PADDING_METERS 
+        } // 여유 공간 설정
     );
 
     // 새로운 MapCanvas는 카메라 시스템을 사용하므로,
@@ -98,7 +102,7 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
 
     const activeHeight = virtualMetadata.height;
 
-    // 3. UI Layer
+    // 3. UI 레이어
     return (
         <Card className={`glass-panel relative overflow-hidden flex flex-col ${className}`}>
             <CardHeader className="py-3 border-b border-white/10 z-10 bg-black/20 backdrop-blur">
@@ -109,11 +113,11 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
             </CardHeader>
             <div className="flex-1 relative bg-black/40 overflow-hidden">
                     <MapCanvas
-                        // Data
+                        // 데이터
                         mapImage={mapImage || null}
                         meta={virtualMetadata as any} 
                         
-                        // Config
+                        // 설정
                         visualStyle="abstract"
                         gridMetadata={virtualMetadata} 
                         
@@ -128,12 +132,12 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
                         
                         // 그리드 옵션 (미터는 동일하지만 시각적 선 조절이 필요할 수 있음)
                         gridOptions={{
-                            majorInterval: 1.5,
-                            minorInterval: 0.5,
-                            majorWidth: 0.3,
-                            minorWidth: 0.1,
-                            majorColor: 'rgba(0, 255, 255, 0.2)',
-                            minorColor: 'rgba(255, 255, 255, 0.3)'
+                            majorInterval: MAP_CONFIG.GRID.MAJOR_INTERVAL,
+                            minorInterval: MAP_CONFIG.GRID.MINOR_INTERVAL,
+                            majorWidth: MAP_CONFIG.GRID.MAJOR_WIDTH,
+                            minorWidth: MAP_CONFIG.GRID.MINOR_WIDTH,
+                            majorColor: MAP_CONFIG.GRID.COLOR.MAJOR,
+                            minorColor: MAP_CONFIG.GRID.COLOR.MINOR
                         }}
                         
                         className="w-full h-full"
