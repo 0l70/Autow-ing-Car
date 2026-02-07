@@ -52,12 +52,31 @@ export function selectButtonStates(moveState: MoveState, connState: ConnectionSt
 }
 
 /**
- * Socket Car ID 계산 (항상 subscribe, IDLE도 포함)
+ * Socket Car ID 계산 (구독 대상 ID)
+ * - UNDOCKING 상태이거나 미션이 COMPLETED되면 undefined 반환하여 구독 해제
  */
 export function selectSocketCarId(
   flightInfo: FlightInfo | null,
+  aircrafts: Aircraft[],
+  activeMissions: Record<string, any>,
   fetchedCarId?: string,
   initialCarId?: string
 ): string | undefined {
-  return flightInfo?.assignedCarId || fetchedCarId || initialCarId;
+  const targetId = flightInfo?.assignedCarId || fetchedCarId || initialCarId;
+  
+  if (!targetId) return undefined;
+
+  // 1. Check Vehicle Status (UNDOCKING -> Unsubscribe)
+  const car = aircrafts.find(a => a.id === targetId);
+  if (car?.status === 'UNDOCKING') {
+    return undefined;
+  }
+
+  // 2. Check Mission Status (COMPLETED -> Unsubscribe)
+  const mission = activeMissions[targetId];
+  if (mission?.status === 'COMPLETED') {
+    return undefined;
+  }
+
+  return targetId;
 }

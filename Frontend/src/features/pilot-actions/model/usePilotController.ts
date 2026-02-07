@@ -29,12 +29,11 @@ export function usePilotController(initialCarId?: string) {
 
   // --- Derived State (using Selectors) ---
   const aircrafts = useAircraftStore((s) => s.aircrafts);
-  const activeCarId = selectActiveCarId(aircrafts, flightInfo, initialCarId, fetchedCarId);
-  const socketCarId = selectSocketCarId(flightInfo, fetchedCarId, initialCarId);
-  const { isEmergencyStopEnabled, isResumeEnabled } = selectButtonStates(moveState, connState);
-
-  // --- Mission State Restore ---
   const activeMissions = useMissionStore((state) => state.activeMissions);
+  
+  const activeCarId = selectActiveCarId(aircrafts, flightInfo, initialCarId, fetchedCarId);
+  const socketCarId = selectSocketCarId(flightInfo, aircrafts, activeMissions, fetchedCarId, initialCarId);
+  const { isEmergencyStopEnabled, isResumeEnabled } = selectButtonStates(moveState, connState);
   useEffect(() => {
     const carId = flightInfo?.assignedCarId;
     if (carId && activeMissions[carId]?.status === "RUNNING") {

@@ -21,7 +21,7 @@ export function PilotSafetyLock({ moveState, handleResume, handleEmergencyStop }
                     CRITICAL
                 </CardTitle>
             </CardHeader>
-            <CardContent className="flex-1 p-3 flex flex-col gap-3">
+            <CardContent className="flex-1 p-3 flex flex-col gap-2">
                 {/* Resume Pushback Button (Replaces Mode Toggle) */}
                 <div className="flex-1 relative">
                     <Button
