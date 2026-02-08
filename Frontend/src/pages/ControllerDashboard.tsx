@@ -38,15 +38,11 @@ export function ControllerDashboard() {
         lastMissionStatus.current = mission?.status;
 
         // Condition Check: Is there a pending approval request for this aircraft?
+        // Match by either Aircraft Callsign OR Mission Flight Number
         const hasPendingAlert = alerts.some(a => 
-            (a.flightNumber === aircraft?.callsign) && a.type === 'MISSION_REQUEST'
+            (a.flightNumber === aircraft?.callsign || a.flightNumber === mission?.flightNumber) && 
+            a.type === 'MISSION_REQUEST'
         );
-
-        // [Fix] Case 0: Pending Alert detected -> Suppress auto-sync but do NOT clear if already set
-        // (Prevents flickering during manual path selection)
-        if (hasPendingAlert) {
-             return; 
-        }
 
         // Case 1: No Selection or No Aircraft -> Clear All
         if (!selectedAircraftId || !aircraft) {
@@ -55,8 +51,13 @@ export function ControllerDashboard() {
             return;
         }
 
-        // Case 2: Aircraft Finished or Pre-Docking (IDLE / WAITING / UNDOCKING / MOVING_TO_GATE / DOCKING)
-        // -> Explicit Clear All (High Priority)
+        // Case 2: Handover logic - Clear ONLY when switching aircraft to avoid flickering
+        if (idChanged) {
+            setActiveDestinationNode(null);
+            setHighlightedPath([]);
+        }
+
+        // Case 3: Aircraft Finished or Pre-Docking -> Clear All
         const isFinishedOrArriving = 
             aircraft.status === 'IDLE' || 
             aircraft.status === 'WAITING_FOR_RETURN' || 
@@ -64,23 +65,19 @@ export function ControllerDashboard() {
             aircraft.status === 'MOVING_TO_GATE' ||
             aircraft.status === 'DOCKING';
 
-        if (isFinishedOrArriving) {
+        if (isFinishedOrArriving && !hasPendingAlert) {
              setActiveDestinationNode(null);
              setHighlightedPath([]);
              return;
         }
 
-        // Case 3: Mission is actively RUNNING and NO pending alerts -> Force Sync (Auto-mode)
-        // [Fix] Remove 'isWaitingForFirstMove' suppression for ATC. 
-        // ATC should see the mission data as soon as it is RUNNING.
+        // Case 4: Mission is actively RUNNING -> Auto-Sync Map Visuals
         if (mission?.status === 'RUNNING' && mission?.destNode) {
              setActiveDestinationNode(mission.destNode);
-             
-             // Also auto-sync the path if it's available in the mission info
              if (Array.isArray(mission.edgeIds)) {
                  setHighlightedPath(mission.edgeIds);
              }
-        } 
+        }
         // Case 4: Selection Changed OR Status changed to something NOT Running -> Clear All
         else if (idChanged || (statusChanged && mission?.status !== 'RUNNING')) {
              setActiveDestinationNode(null);

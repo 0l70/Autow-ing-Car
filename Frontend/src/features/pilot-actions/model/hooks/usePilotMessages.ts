@@ -107,22 +107,40 @@ function handlePrivateResponse(
     if (isApproved && ctx.moveState === "waiting") {
       ctx.setMoveState("pushback");
       
-      // [Fix] Ingest Path Data Immediately
-      if (payload.edgeIds && payload.towingCarCode) {
-         console.log("[PilotMessages] 🚀 Taking off! Ingesting mission path:", payload.edgeIds.length);
-         const missionStore = useMissionStore.getState();
-         missionStore.ingest(payload.towingCarCode, {
-            flightNumber: payload.flightNumber,
-            status: payload.status,
-            departNode: payload.departNode,
-            destNode: payload.destNode,
-            edgeIds: payload.edgeIds,
-         });
-      }
+      // [Fix] Sync mission data immediately upon approval
+      // Supports both flat payload (remote) and payload.data (local fix)
+      const missionData = payload.data || payload;
+      const { edgeIds, destNode, towingCarCode, flightNumber, departNode } = missionData;
+      
+      if (edgeIds && towingCarCode) {
+        console.log("[PilotMessages] Syncing APPROVED mission data to stores...");
+        
+        // 1. Update AircraftStore
+        const aircraftStore = useAircraftStore.getState();
+        const existing = aircraftStore.aircrafts.find((a) => a.id === towingCarCode);
+        if (existing) {
+          aircraftStore.ingest({
+            ...existing,
+            currentMission: {
+              id: missionData.missionId?.toString() || "temp",
+              status: "RUNNING",
+              flightNumber: flightNumber || "",
+              path: edgeIds,
+            },
+          });
+        }
 
-      if (payload.destNode || payload.data?.destNodeName) {
-        const dest = payload.destNode || payload.data?.destNodeName;
-        ctx.addLog("info", `PATH: To [${dest}] assigned`);
+        // 2. Update MissionStore
+        useMissionStore.getState().ingest(towingCarCode, {
+          flightNumber: flightNumber || "",
+          status: "RUNNING",
+          departNode: departNode || "",
+          destNode: destNode || "",
+          edgeIds: edgeIds,
+        });
+
+        const destName = destNode || missionData.destNodeName || "Destination";
+        ctx.addLog("success", `PATH: To [${destName}] assigned and synced`);
       }
     } else if (payload.status === "REJECTED" || payload.status === "FAIL") {
       if (payload.message.includes("Connect")) ctx.setConnState("idle");

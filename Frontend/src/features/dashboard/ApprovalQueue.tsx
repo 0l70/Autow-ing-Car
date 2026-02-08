@@ -17,9 +17,8 @@ import { WS_TOPICS } from "@/shared/realtime/config/topics";
 import { useAlertStore } from "./model/useAlertStore";
 import { AdminAlertDto, PathOptionDto, PathOptionsResponseDto } from "./model/alert.types";
 
-// [NEW] Use Aircraft Store for State Sync
-import { useAircraftStore } from "@/entities/aircraft/model/store";
 import { useGraphStore } from "@/entities/map/model/store";
+import { useAircraftStore } from "@/entities/aircraft/model/store";
 
 // [NEW] Props definition
 interface ApprovalQueueProps {
@@ -31,9 +30,8 @@ export function ApprovalQueue({ onSelectAircraft }: ApprovalQueueProps) {
   
   // [FSD] Persistent Store
   const { alerts, addAlert, removeAlert } = useAlertStore();
-  
-  // [NEW] Aircraft State for Sync
   const aircrafts = useAircraftStore((state) => state.aircrafts);
+  
 
   // Timeline Store
   const addLog = useTimelineStore((state) => state.addLog);
@@ -42,37 +40,6 @@ export function ApprovalQueue({ onSelectAircraft }: ApprovalQueueProps) {
   const [pathOptionsData, setPathOptionsData] = useState<PathOptionsResponseDto | null>(null);
   const [selectedPath, setSelectedPath] = useState<PathOptionDto | null>(null);
 
-  // --- [NEW] State Synchronization Logic ---
-  // If an aircraft is in ERROR/STOP state but no alert exists, create one.
-  useEffect(() => {
-    aircrafts.forEach(car => {
-      // Check for Emergency conditions
-      if (car.status === 'ERROR' || car.status === 'STOP') {
-         // Check if alert already exists to prevent duplicate (spam)
-         // We assume one active emergency alert per car is enough
-         const exists = alerts.find(a => 
-           (a.type === 'EMERGENCY_STOP' || a.type === 'MANUAL_CONTROL') && 
-           a.flightNumber === car.callsign // or car.id
-         );
-         
-         if (!exists) {
-            console.log(`[ApprovalQueue] ⚠️ Detected silent emergency for ${car.callsign}. Synced alert.`);
-            addAlert({
-                id: `sync-alert-${Date.now()}-${car.id}`,
-                type: 'EMERGENCY_STOP',
-                message: `Synced: Vehicle ${car.callsign} is in ${car.status} state.`,
-                severity: 'CRITICAL',
-                timestamp: Date.now(),
-                flightNumber: car.callsign, 
-             });
-         }
-      }
-    });
-  // Check periodically or only when aircrafts change? 
-  // 'aircrafts' changes frequently (telemetry), so we need to be careful not to spam.
-  // 'addAlert' in store should handle duplicates if ID matches, but here we generate new ID.
-  // We rely on the 'exists' check.
-  }, [aircrafts, alerts, addAlert]);
 
 
   // --- WebSocket Subscription ---
@@ -137,7 +104,10 @@ export function ApprovalQueue({ onSelectAircraft }: ApprovalQueueProps) {
             // Note: In our system callsign often equals flightNumber for assigned cars
             // Or we check which car is assigned to this flight. 
             // Simplified: Find aircraft with matching callsign or mission flight number.
-            const targetCar = aircrafts.find(a => a.callsign === alertItem.flightNumber || a.currentMission?.flightNumber === alertItem.flightNumber);
+             const targetCar = aircrafts.find(a => 
+                a.callsign === alertItem.flightNumber || 
+                (typeof a.currentMission === 'object' && a.currentMission?.flightNumber === alertItem.flightNumber)
+             );
             if (targetCar) {
                 onSelectAircraft(targetCar.id);
             }
