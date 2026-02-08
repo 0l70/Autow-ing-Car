@@ -82,12 +82,15 @@ backend-deploy:
         docker stop backend-app || true &&
         docker rm backend-app || true &&
 
-        # 3. Network Setup (autowing-net)
-        docker network create autowing-net || true &&
+        # 3. Network Setup (Use EXISTING app-net)
+        # Assuming app-net is already created and DB is attached to it.
+        # If app-net doesn't exist, create it (fallback)
+        docker network create app-net || true &&
 
         # [Safety] Ensure DB container is connected to the network
-        # (If user started it manually without --network autowing-net)
-        docker network connect autowing-net autowing-db || true &&
+        DB_CONTAINER_NAME="autowing-postgres"
+        # Only connect if not already connected (though usually it is)
+        docker network connect app-net $DB_CONTAINER_NAME || true &&
 
         # 4. Prepare Environment Variables
         # Determine Profile (master -> prod, dev -> dev)
@@ -107,28 +110,34 @@ backend-deploy:
         echo 'REDIS_PORT=6379' >> deploy.env &&
         echo \"BACKEND_IMAGE=$BACKEND_IMAGE\" >> deploy.env &&
         
-        # [DB Vars] Injected from GitLab CI Settings
-        echo \"DB_URL=$DB_URL\" >> deploy.env &&
+        # [DB Vars] Auto-generate for app-net
+        if [ -z "$DB_URL" ]; then
+          echo "⚠️ DB_URL is empty. Using auto-generated internal Docker URL on app-net."
+          # Use internal 5432 port
+          echo "DB_URL=jdbc:postgresql://$DB_CONTAINER_NAME:5432/autowing?binaryTransfer=false" >> deploy.env
+        else
+          echo "DB_URL=$DB_URL" >> deploy.env
+        fi &&
         echo \"DB_USERNAME=$DB_USERNAME\" >> deploy.env &&
         echo \"DB_PASSWORD=$DB_PASSWORD\" >> deploy.env &&
 
-        # 5. Redis Container Setup (autowing-net)
+        # 5. Redis Container Setup (app-net)
         if ! docker ps -a | grep -q autowing-redis; then
           echo '🔴 Redis Container not found. Creating...'
           docker run -d --name autowing-redis \
-            --network autowing-net \
+            --network app-net \
             --restart always \
             -v autowing-redis-data:/data \
             redis:7-alpine redis-server --appendonly yes
         else
           echo '✅ Redis Container exists.'
           # Ensure Redis is also on the network
-          docker network connect autowing-net autowing-redis || true
+          docker network connect app-net autowing-redis || true
         fi &&
 
         # 6. Run Backend Container
         docker run -d --name backend-app \
-          --network autowing-net \
+          --network app-net \
           --restart always \
           -p 8080:8080 \
           --env-file deploy.env \
