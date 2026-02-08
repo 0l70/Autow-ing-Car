@@ -19,6 +19,7 @@ import { AdminAlertDto, PathOptionDto, PathOptionsResponseDto } from "./model/al
 
 import { useGraphStore } from "@/entities/map/model/store";
 import { useAircraftStore } from "@/entities/aircraft/model/store";
+import { useMissionStore } from "@/entities/mission"; // [NEW] Import Mission Store
 
 // [NEW] Props definition
 interface ApprovalQueueProps {
@@ -31,6 +32,8 @@ export function ApprovalQueue({ onSelectAircraft }: ApprovalQueueProps) {
   // [FSD] Persistent Store
   const { alerts, addAlert, removeAlert } = useAlertStore();
   const aircrafts = useAircraftStore((state) => state.aircrafts);
+  const ingestAircraft = useAircraftStore((state) => state.ingest); // [NEW] Get ingest action
+  const clearMission = useMissionStore((state) => state.clearMission); // [NEW] Get clearMission action
   
 
   // Timeline Store
@@ -49,10 +52,34 @@ export function ApprovalQueue({ onSelectAircraft }: ApprovalQueueProps) {
     // Listen for All Controller Notifications (Requests + Emergencies)
     const unsubscribe = onMessage((msg: any) => {
       const { destination, body } = msg;
+      const data = typeof body === 'string' ? JSON.parse(body) : body;
+
+      // [NEW] Handle Mission Updates (Completion logic)
+      if (destination === WS_TOPICS.MISSION_UPDATES) {
+           console.log("[ApprovalQueue] Mission Update Received:", data.status);
+           // Check for completion/cancellation
+           if (data.status === 'COMPLETED') {
+               console.log(`[ApprovalQueue] 🧹 Mission Ended (${data.status}):`, data.towingCarCode);
+               
+               // 1. Clear from Mission Store
+               if (data.towingCarCode) {
+                   clearMission(data.towingCarCode);
+                   
+                   // 2. Clear from Aircraft Store (to sync UI status)
+                   const car = aircrafts.find(a => a.id === data.towingCarCode);
+                   if (car) {
+                       ingestAircraft({
+                           ...car,
+                           status: 'IDLE', // Fallback to IDLE
+                           currentMission: null 
+                       });
+                   }
+               }
+           }
+      }
 
       // Ensure we listen to the correct topic constant
       if (destination === WS_TOPICS.CONTROLLER_REQUESTS) {
-        const data = typeof body === 'string' ? JSON.parse(body) : body;
         console.log("[ApprovalQueue] Received Notification:", data);
 
         // CASE 1: Emergency / Manual Control Notif
