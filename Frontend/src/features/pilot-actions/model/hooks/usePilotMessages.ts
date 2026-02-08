@@ -4,7 +4,6 @@ import { FlightInfoSchema } from '@/features/dashboard/model/dashboardTypes';
 import { useAircraftStore } from '@/entities/aircraft';
 import { useMissionStore } from '@/entities/mission';
 import { usePilotStore } from '../usePilotStore';
-import type { Aircraft } from '@/entities/map/model/types';
 
 interface UsePilotMessagesOptions {
   onMessage: ((cb: (msg: { destination: string; body: any }) => void) => () => void) | undefined;
@@ -165,30 +164,25 @@ function handleMissionUpdate(
   if (payload.status === "RUNNING") {
     // [Fix] Do NOT transition to pushback state here. 
     // This transition should ONLY happen via handlePrivateResponse ('APPROVED' status).
-    // This prevents the UI from showing destination pins/paths before ATC has explicitly confirmed the route.
     console.log("[PilotMessages] Syncing RUNNING mission data. UI transition handled by separate approval message.");
 
-    // Update aircraft mission path
     if (payload.edgeIds && payload.towingCarCode) {
-      // 1. Update AircraftStore (Live Map)
       const aircraftStore = useAircraftStore.getState();
       const existing = aircraftStore.aircrafts.find((a) => a.id === payload.towingCarCode);
 
       if (existing) {
-        const updatedAircraft: Aircraft = {
+        aircraftStore.ingest({
           ...existing,
           currentMission: {
             id: payload.missionId?.toString() || "temp",
             status: "RUNNING",
+            flightNumber: payload.flightNumber || "",
             path: payload.edgeIds,
           },
-        };
-        aircraftStore.ingest(updatedAircraft);
+        });
       }
 
-      // 2. Update MissionStore (Sync with other widgets)
-      const missionStore = useMissionStore.getState();
-      missionStore.ingest(payload.towingCarCode, {
+      useMissionStore.getState().ingest(payload.towingCarCode, {
         flightNumber: payload.flightNumber,
         status: payload.status,
         departNode: payload.departNode,
@@ -204,28 +198,24 @@ function handleMissionUpdate(
     ctx.setMoveState("stopped");
     ctx.addLog("success", `✓ Mission Completed`);
     
-    // [Fix] Clear mission from stores
     if (payload.towingCarCode) {
         useMissionStore.getState().clearMission(payload.towingCarCode);
         const aircraftStore = useAircraftStore.getState();
         const existing = aircraftStore.aircrafts.find((a) => a.id === payload.towingCarCode);
         if (existing) {
-          const { currentMission, ...rest } = existing;
-          aircraftStore.ingest(rest);
+          aircraftStore.ingest({ ...existing, currentMission: null });
         }
     }
   } else if (payload.status === "CANCELLED") {
     ctx.setMoveState("stopped");
     ctx.addLog("error", `✗ PUSHBACK CANCELLED`);
 
-    // [Fix] Clear mission from stores
     if (payload.towingCarCode) {
         useMissionStore.getState().clearMission(payload.towingCarCode);
         const aircraftStore = useAircraftStore.getState();
         const existing = aircraftStore.aircrafts.find((a) => a.id === payload.towingCarCode);
         if (existing) {
-          const { currentMission, ...rest } = existing;
-          aircraftStore.ingest(rest);
+          aircraftStore.ingest({ ...existing, currentMission: null });
         }
     }
   }
