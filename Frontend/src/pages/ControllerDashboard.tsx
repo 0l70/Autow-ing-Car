@@ -42,14 +42,10 @@ export function ControllerDashboard() {
             (a.flightNumber === aircraft?.callsign) && a.type === 'MISSION_REQUEST'
         );
 
-        // [Fix] Case 0: Pending Alert detected -> Suppress all auto-sync
-        // Clear any stale markers if the mission status just changed to RUNNING (init state)
+        // [Fix] Case 0: Pending Alert detected -> Suppress auto-sync but do NOT clear if already set
+        // (Prevents flickering during manual path selection)
         if (hasPendingAlert) {
-             if (statusChanged) {
-                 setActiveDestinationNode(null);
-                 setHighlightedPath([]);
-             }
-             return; // Skip auto-mode while alert is active
+             return; 
         }
 
         // Case 1: No Selection or No Aircraft -> Clear All
@@ -61,7 +57,6 @@ export function ControllerDashboard() {
 
         // Case 2: Aircraft Finished or Pre-Docking (IDLE / WAITING / UNDOCKING / MOVING_TO_GATE / DOCKING)
         // -> Explicit Clear All (High Priority)
-        // This ensures the map stays clean while the tug is just arriving or finishing.
         const isFinishedOrArriving = 
             aircraft.status === 'IDLE' || 
             aircraft.status === 'WAITING_FOR_RETURN' || 
@@ -76,17 +71,14 @@ export function ControllerDashboard() {
         }
 
         // Case 3: Mission is actively RUNNING and NO pending alerts -> Force Sync (Auto-mode)
-        // [Fix] Reinforce suppression: Even if RUNNING, do not auto-sync if we are still in the pre-approval phase (TOWING/STOP)
-        // and haven't manually confirmed a path.
-        if (!hasPendingAlert && mission?.status === 'RUNNING' && mission?.destNode) {
-             const isWaitingForFirstMove = aircraft.status === 'TOWING' || aircraft.status === 'STOP';
+        // [Fix] Remove 'isWaitingForFirstMove' suppression for ATC. 
+        // ATC should see the mission data as soon as it is RUNNING.
+        if (mission?.status === 'RUNNING' && mission?.destNode) {
+             setActiveDestinationNode(mission.destNode);
              
-             if (!isWaitingForFirstMove) {
-                 setActiveDestinationNode(mission.destNode);
-             } else {
-                 // Explicitly clear during pre-approval to prevent premature markers from backend data
-                 setActiveDestinationNode(null);
-                 setHighlightedPath([]);
+             // Also auto-sync the path if it's available in the mission info
+             if (Array.isArray(mission.edgeIds)) {
+                 setHighlightedPath(mission.edgeIds);
              }
         } 
         // Case 4: Selection Changed OR Status changed to something NOT Running -> Clear All
