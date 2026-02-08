@@ -92,7 +92,7 @@ backend-deploy:
         # 4. Prepare Environment Variables
         # Determine Profile (master -> prod, dev -> dev)
         TARGET_PROFILE='dev'
-        if [ '$CI_COMMIT_REF_NAME' == 'dev' ]; then
+        if [ '$CI_COMMIT_REF_NAME' == 'master' ]; then
           TARGET_PROFILE='prod'
         fi &&
 
