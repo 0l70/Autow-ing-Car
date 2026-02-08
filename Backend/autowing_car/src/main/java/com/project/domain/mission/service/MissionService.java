@@ -25,6 +25,7 @@ import com.project.global.util.TxUtil; // [NEW]
 
 import java.security.Principal;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -36,8 +37,10 @@ public class MissionService {
     private final FlightDBAdaptor flightDBAdaptor;
 
     private final MissionWebSocketService missionWebSocketService;
+
     private final MapService mapService;
     private final TowingCarMqttService towingCarMqttService;
+    private final MissionCacheService missionCacheService; // [NEW]
 
     /**
      * [기장 요청] 경로 계산 후 관제사에게 알림 (DB 저장 X)
@@ -134,12 +137,16 @@ public class MissionService {
 
         User pilot = mission.getPilot();
         missionWebSocketService.notifyPilotResult(pilot.getEmail(), response);
+
+        // Redis Caching
+        missionCacheService.saveMission(response); // [NEW]
+
         missionWebSocketService.broadcastMissionUpdate(response);
     }
 
     public List<MissionResponseDto> getAllActiveMissions() {
         return missionDBAdaptor.findActiveMissions().stream()
                 .map(MissionResponseDto::from)
-                .collect(java.util.stream.Collectors.toList());
+                .collect(Collectors.toList());
     }
 }

@@ -9,17 +9,20 @@ import java.time.LocalDateTime;
 @Entity
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@IdClass(DrivingLogId.class) // [NEW] Composite Key
 @Table(name = "driving_log", indexes = {
         @Index(name = "idx_driving_log_car_time", columnList = "TOWING_CAR_ID, CREATED_AT")
 })
 public class DrivingLog {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "log_seq_gen")
+    @SequenceGenerator(name = "log_seq_gen", sequenceName = "driving_log_seq", allocationSize = 1)
     @Column(name = "log_id")
     private Long id;
 
-    @Column(nullable = false, updatable = false)
+    @Id // [NEW] Part of PK for TimescaleDB
+    @Column(nullable = false)
     private LocalDateTime createdAt;
 
     private Double posX;

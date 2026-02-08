@@ -11,3 +11,5 @@ out/
 
 # Secrets
 .env
+docker-compose-local.yml
+mosquitto.conf
