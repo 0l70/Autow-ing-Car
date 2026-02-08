@@ -7,11 +7,13 @@ spring:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver # [FIX] Driver 명시
   jpa:
     hibernate:
       ddl-auto: update # validate -> update (첫 배포 시 테이블 자동 생성 위해)
-    # database-platform 삭제 (Spring Boot가 DB URL 보고 자동 감지)
-    
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect # [FIX] Dialect 명시
   # Redis 설정 (환경변수)
   data:
     redis:
