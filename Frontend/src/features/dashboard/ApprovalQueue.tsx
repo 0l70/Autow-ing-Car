@@ -207,6 +207,7 @@ export function ApprovalQueue() {
     setPathOptionsData(null);
     setSelectedPath(null);
     useGraphStore.getState().setHighlightedPath([]); // [NEW] Clear Highlight
+    useGraphStore.getState().setActiveDestinationNode(null); // [NEW] Clear Destination
   };
 
   const handleConfirm = (id: string) => {
@@ -264,6 +265,7 @@ export function ApprovalQueue() {
                 onClick={() => {
                     setPathOptionsData(null);
                     useGraphStore.getState().setHighlightedPath([]); // [NEW] Clear Highlight
+                    useGraphStore.getState().setActiveDestinationNode(null); // [NEW] Clear Destination
                 }}
                 className="text-gray-400 hover:text-white"
               >
@@ -288,6 +290,8 @@ export function ApprovalQueue() {
                       setSelectedPath(option);
                       // [NEW] Trigger Map Highlight
                       useGraphStore.getState().setHighlightedPath(option.edgeIds || []);
+                      // [NEW] Set Destination Marker
+                      useGraphStore.getState().setActiveDestinationNode(pathOptionsData.destNode);
                   }}
                   className={cn(
                     "w-full p-2 text-left rounded border transition-all",

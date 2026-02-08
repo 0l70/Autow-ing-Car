@@ -10,6 +10,7 @@ import { useMissionStore } from "@/entities/mission";
 import { MapCanvas } from "@/features/map-visualizer/ui/MapCanvas";
 import { GraphLayer } from "@/features/map-visualizer/ui/GraphLayer";
 import { AircraftLayer } from "@/features/map-visualizer/ui/AircraftLayer";
+import { DestinationLayer } from "@/features/map-visualizer/ui/DestinationLayer";
 import { useMapData } from "@/features/map-visualizer/model/useMapData";
 import { useGridMetadata } from "@/features/map-visualizer/model/useGridMetadata"; 
 import { useAutoViewport } from "@/features/map-visualizer/model/useAutoViewport";
@@ -112,6 +113,14 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
         return undefined;
     }, [allAircrafts, assignedCarId]);
 
+    // [New] Destination for Pilot
+    const destNodeId = useMemo(() => {
+        if (!assignedCarId) return undefined;
+        // Priority 1: Mission Store (REST/Socket synced)
+        const myMission = useMissionStore.getState().activeMissions[assignedCarId];
+        return myMission?.destNode;
+    }, [assignedCarId, allAircrafts]); // Re-eval when aircrafts update (sync)
+
     // 3. UI 레이어
     return (
         <Card className={`glass-panel relative overflow-hidden flex flex-col ${className}`}>
@@ -169,6 +178,12 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
                             pixelRatio={5}
                             data={myAircraftData}
                             onAircraftClick={(ac) => onAircraftSelect?.(ac)} 
+                        />
+                        
+                        <DestinationLayer 
+                            meta={paddedGridMetadata as any}
+                            mapHeight={activeHeight}
+                            overrideNodeId={destNodeId} 
                         />
                     </MapCanvas>
             </div>
