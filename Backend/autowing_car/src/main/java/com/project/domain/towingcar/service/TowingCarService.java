@@ -52,6 +52,7 @@ public class TowingCarService {
     private final MapService mapService; // [NEW]
     private final TowingCarMqttService towingCarMqttService;
     private final TowingCarWebSocketService towingCarWebSocketService;
+    private final TowingCarCacheService towingCarCacheService; // [NEW]
     private final TowingCarMapper towingCarMapper; // [NEW]
 
     // [Restored Configuration Fields]
@@ -83,6 +84,11 @@ public class TowingCarService {
                     .build();
         }
 
+        // Try Cache First
+        TowingCarStatusResponse cachedStatus = towingCarCacheService.getCarStatus(car.getCode());
+        if (cachedStatus != null) {
+            return cachedStatus;
+        }
         return towingCarMapper.toResponseDTO(car);
     }
     // ...
@@ -346,6 +352,8 @@ public class TowingCarService {
         saveDrivingLog(assignedCar, mission);
 
         // [Final Step] 통합 브로드캐스트 (DTO 기반으로 Pilot + ATCs에게 전송)
+        TowingCarStatusResponse responseDto = towingCarMapper.toResponseDTO(assignedCar); // [FIX] Use ResponseDTO
+        towingCarCacheService.saveCarStatus(carCode, responseDto); // [NEW] Save to Redis
         towingCarWebSocketService.broadcastCarStatus(carCode, towingCarMapper.toDTO(assignedCar));
     }
 
@@ -563,6 +571,12 @@ public class TowingCarService {
 
     @Transactional(readOnly = true)
     public List<TowingCarStatusResponse> getAllTowingCars() {
+        // Redis에서 먼저 조회
+        List<TowingCarStatusResponse> cachedCars = towingCarCacheService.getAllCars();
+        if (cachedCars != null && !cachedCars.isEmpty()) {
+            return cachedCars;
+        }
+        // 없으면 DB 조회 (Fallback)
         return towingCarDBAdaptor.findAllCars().stream()
                 .map(towingCarMapper::toResponseDTO)
                 .collect(java.util.stream.Collectors.toList());

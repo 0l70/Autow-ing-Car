@@ -4,26 +4,31 @@ spring:
       on-profile: dev
 
   datasource:
-    url: jdbc:h2:mem:ats_db;MODE=PostgreSQL # Postgres 모드로 실행 (호환성 UP)
-    username: sa
-    password:
-    driver-class-name: org.h2.Driver
+    # 로컬 PostgreSQL (8432 포트)
+    url: jdbc:postgresql://localhost:8432/postgres?binaryTransfer=false
+    username: A402
+    # [주의] Docker 실행 시 설정한 비밀번호 (가이드 예시: mysecurepassword)
+    password: A402TEAM 
+    driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: create-drop # 껐다 켜면 초기화 (개발용)
+      # create: 시작 시 기존 데이터 DROP 후 새로 생성 (매번 초기화)
+      ddl-auto: create 
     show-sql: true
     properties:
       hibernate:
         format-sql: true
-  h2:
-    console:
-      enabled: true # http://localhost:8080/h2-console 접속 가능
-
-  # Redis 설정 (Refresh Token 저장소)
+        # PostgreSQL 방언 명시 (혹시 H2 설정이 남아있을까봐 확실하게)
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  mqtt:
+    broker:
+      url: tcp://${MQTT_HOST}:${MQTT_PORT}
+      # url: ssl://${MQTT_HOST}:${MQTT_PORT}
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      
 logging:
   level:
     org.springframework.web: DEBUG
@@ -48,5 +53,4 @@ springwolf:
         protocol: ws
         host: localhost:8080
         description: Local WebSocket Server
-  use-fqn: false # 클래스명을 짧게 표시
-
+  use-fqn: false

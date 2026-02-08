@@ -7,10 +7,8 @@ spring:
   profiles:
     active: dev # 기본은 로컬 개발 모드
 
-  mqtt:
-    broker:
-      url: ssl://${MQTT_HOST}:${MQTT_PORT}
-      # url: tcp://localhost:1883
+  
+      # url: ssl://${MQTT_HOST}:${MQTT_PORT}
 
   datasource:
     hikari:

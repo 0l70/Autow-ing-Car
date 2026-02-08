@@ -31,7 +31,7 @@ public class MqttConfig {
         DefaultMqttPahoClientFactory factory = new DefaultMqttPahoClientFactory();
 
         MqttConnectOptions options = new MqttConnectOptions();
-        options.setServerURIs(new String[] { brokerUrl }); // 👈 여기에 URL을 넣습니다!
+        options.setServerURIs(new String[] { brokerUrl });
 
         // 아이디/비번이 있는 경우 설정
         // if (!username.isBlank()) {

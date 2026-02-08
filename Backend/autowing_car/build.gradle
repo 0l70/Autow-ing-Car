@@ -29,8 +29,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 
     // runtimeOnly 'com.h2database:h2'
-	implementation 'com.h2database:h2' 
-	// runtimeOnly 'org.postgresql:postgresql' // 운영 배포 시 주석 해제
+	// implementation 'com.h2database:h2' 
+	runtimeOnly 'org.postgresql:postgresql' // 운영 배포 시 주석 해제
 	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
 	implementation 'org.springframework.boot:spring-boot-starter-security'

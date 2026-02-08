@@ -74,14 +74,31 @@ backend-deploy:
     - |
       echo "🚀 [Backend] Deploying..."
       ssh ubuntu@$EC2_IP "
-        # 서버에서도 Docker Hub 로그인
+        # 1. Docker Login & Pull
         echo '$BACKEND_DOCKER_PASSWORD' | docker login -u '$BACKEND_DOCKER_USERNAME' --password-stdin &&
         docker pull $BACKEND_IMAGE &&
 
+        # 2. Cleanup Old Container
         docker stop backend-app || true &&
         docker rm backend-app || true &&
 
-        # 환경 변수 주입
+        # 3. Network Setup (autowing-net)
+        docker network create autowing-net || true &&
+
+        # [Safety] Ensure DB container is connected to the network
+        # (If user started it manually without --network autowing-net)
+        docker network connect autowing-net autowing-db || true &&
+
+        # 4. Prepare Environment Variables
+        # Determine Profile (master -> prod, dev -> dev)
+        TARGET_PROFILE='dev'
+        if [ '$CI_COMMIT_REF_NAME' == 'dev' ]; then
+          TARGET_PROFILE='prod'
+        fi &&
+
+        echo \"Deploying with Profile: \$TARGET_PROFILE\" &&
+
+        # Create .env file
         echo 'MQTT_HOST=autowingcar.o-r.kr' > deploy.env &&
         echo 'MQTT_PORT=8883' >> deploy.env &&
         echo 'JWT_SECRET=$JWT_SECRET' >> deploy.env &&
@@ -89,28 +106,36 @@ backend-deploy:
         echo 'REDIS_HOST=autowing-redis' >> deploy.env &&
         echo 'REDIS_PORT=6379' >> deploy.env &&
         echo \"BACKEND_IMAGE=$BACKEND_IMAGE\" >> deploy.env &&
+        
+        # [DB Vars] Injected from GitLab CI Settings
+        echo \"DB_URL=$DB_URL\" >> deploy.env &&
+        echo \"DB_USERNAME=$DB_USERNAME\" >> deploy.env &&
+        echo \"DB_PASSWORD=$DB_PASSWORD\" >> deploy.env &&
 
-        # Redis 컨테이너 설정 (최초 1회만, 이미 있으면 skip)
+        # 5. Redis Container Setup (autowing-net)
         if ! docker ps -a | grep -q autowing-redis; then
-          echo '🔴 Redis 컨테이너가 없습니다. 새로 생성합니다...'
+          echo '🔴 Redis Container not found. Creating...'
           docker run -d --name autowing-redis \
-            --network app-net \
+            --network autowing-net \
             --restart always \
             -v autowing-redis-data:/data \
             redis:7-alpine redis-server --appendonly yes
         else
-          echo '✅ Redis 컨테이너가 이미 실행 중입니다. 유지합니다.'
+          echo '✅ Redis Container exists.'
+          # Ensure Redis is also on the network
+          docker network connect autowing-net autowing-redis || true
         fi &&
 
-        # Backend 컨테이너 실행(dev 환경 엔 local, master 환경엔 prod)
+        # 6. Run Backend Container
         docker run -d --name backend-app \
-          --network app-net \
+          --network autowing-net \
           --restart always \
           -p 8080:8080 \
           --env-file deploy.env \
-          -e SPRING_PROFILES_ACTIVE=$CI_COMMIT_REF_NAME \
+          -e SPRING_PROFILES_ACTIVE=\$TARGET_PROFILE \
           $BACKEND_IMAGE &&
 
+        # 7. Cleanup
         rm deploy.env &&
         docker image prune -f
       "
