@@ -1,8 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import useLongPress from "@/shared/lib/useLongPress";
 import { usePilotSocket } from "./usePilotSocket";
 import { WS_TOPICS } from "@/shared/realtime/config/topics";
-import { MoveState, ConnectionState, PilotLog } from "./pilot.types";
 import { usePilotStore } from "./usePilotStore";
 
 import { useFlightWelcome } from "./useFlightWelcome";
@@ -25,7 +24,7 @@ export function usePilotController(initialCarId?: string) {
   } = usePilotStore();
 
   const flightInfo = useMissionStore((state) => state.flightInfo);
-  const [fetchedCarId, setFetchedCarId] = useState<string | undefined>(undefined);
+  const fetchedCarId = undefined; // setFetchedCarId removed
 
   // --- Derived State (using Selectors) ---
   const aircrafts = useAircraftStore((s) => s.aircrafts);
@@ -37,11 +36,23 @@ export function usePilotController(initialCarId?: string) {
   const activeMissions = useMissionStore((state) => state.activeMissions);
   useEffect(() => {
     const carId = flightInfo?.assignedCarId;
-    if (carId && activeMissions[carId]?.status === "RUNNING") {
-      console.log("[Restore] Found RUNNING mission -> pushback");
-      if (moveState !== "pushback") setMoveState("pushback");
+    const car = aircrafts.find(a => a.id === carId);
+    
+    // Only restore pushback if mission is RUNNING AND car is actually active (not IDLE/WAITING)
+    // [Fix] Restrict state restoration to only valid 'pushback' compatible sates.
+    // AND [Fix] ONLY trigger restoration if we are NOT actively waiting for a response.
+    const isCarActive = car && (car.status === 'TOWING' || car.status === 'STOP');
+    
+    if (carId && activeMissions[carId]?.status === "RUNNING" && isCarActive) {
+      // The state belongs to a 'RUNNING' session. 
+      // If we are currently 'stopped' or 'idle', it means we are re-entering/refreshing. Restore it.
+      // If we are 'waiting', it means we just sent a request and must NOT be forced into pushback yet.
+      if (moveState === "stopped" || connState === "idle") {
+        console.log("[Restore] Restoring active RUNNING session -> pushback");
+        setMoveState("pushback");
+      }
     }
-  }, [flightInfo, activeMissions, setMoveState, moveState]);
+  }, [flightInfo, activeMissions, setMoveState, moveState, aircrafts, connState]);
 
   // --- Modal State ---
   const [confirmModal, setConfirmModal] = useState<{
@@ -131,7 +142,7 @@ export function usePilotController(initialCarId?: string) {
 
       setConfirmModal({
         open: true,
-        action: connState === "idle" ? "CONNECT TUG" : "DISCONNECT TUG",
+        action: "CONNECT TUG",
         onConfirm: () => {
           if (!flightInfo) {
             addLog("error", "SYS: Flight Info not loaded yet");
@@ -142,27 +153,17 @@ export function usePilotController(initialCarId?: string) {
             return;
           }
 
-          const isConnecting = connState === "idle";
-          const endpoint = isConnecting
-            ? WS_TOPICS.PILOT.CONNECT
-            : WS_TOPICS.PILOT.DISCONNECT;
+          const endpoint = WS_TOPICS.PILOT.CONNECT;
 
           setConnState("waiting");
-          addLog(
-            "info",
-            isConnecting
-              ? "REQ: Requesting Connection..."
-              : "REQ: Requesting Disconnection...",
-          );
+          addLog("info", "REQ: Requesting Connection...");
 
-          const payload = isConnecting
-            ? { flightNumber: flightInfo.flightNumber }
-            : { flightId: flightInfo.flightId };
+          const payload = { flightNumber: flightInfo.flightNumber };
 
           const sent = send("SEND", { destination: endpoint }, JSON.stringify(payload));
 
           if (!sent) {
-            setConnState(isConnecting ? "idle" : "connected");
+            setConnState("idle");
             addLog("error", "SYS: Not Connected");
           }
         },

@@ -7,7 +7,7 @@ import { usePilotStore } from '../usePilotStore';
 import type { Aircraft } from '@/entities/map/model/types';
 
 interface UsePilotMessagesOptions {
-  onMessage: ((cb: (msg: any) => void) => () => void) | undefined;
+  onMessage: ((cb: (msg: { destination: string; body: any }) => void) => () => void) | undefined;
   addLog: (type: "info" | "success" | "warning" | "error", message: string) => void;
   checkWelcome: (flightId: number) => void;
 }
@@ -59,7 +59,7 @@ function handleFlightInfo(
   payload: any,
   ctx: {
     lastLoadedFlightId: React.MutableRefObject<number | null>;
-    addLog: (type: any, msg: string) => void;
+    addLog: (type: "info" | "success" | "warning" | "error", msg: string) => void;
     checkWelcome: (id: number) => void;
     setFlightInfo: (info: any) => void;
   }
@@ -85,7 +85,7 @@ function handlePrivateResponse(
     setMoveState: (s: any) => void;
     connState: string;
     setConnState: (s: any) => void;
-    addLog: (type: any, msg: string) => void;
+    addLog: (type: "info" | "success" | "warning" | "error", msg: string) => void;
   }
 ) {
   // REJECTED 처리
@@ -119,16 +119,18 @@ function handleMissionUpdate(
   ctx: {
     moveState: string;
     setMoveState: (s: any) => void;
-    addLog: (type: any, msg: string) => void;
+    addLog: (type: "info" | "success" | "warning" | "error", msg: string) => void;
   }
 ) {
   if (payload.message !== "Mission Updated" || !payload.status) return;
 
   console.log("[PilotMessages] 🚨 Mission Status Update:", payload);
 
-  if (payload.status === "RUNNING" && ctx.moveState === "waiting") {
-    ctx.setMoveState("pushback");
-    ctx.addLog("success", `✓ PUSHBACK APPROVED`);
+  if (payload.status === "RUNNING") {
+    // [Fix] Do NOT transition to pushback state here. 
+    // This transition should ONLY happen via handlePrivateResponse ('APPROVED' status).
+    // This prevents the UI from showing destination pins/paths before ATC has explicitly confirmed the route.
+    console.log("[PilotMessages] Syncing RUNNING mission data. UI transition handled by separate approval message.");
 
     // Update aircraft mission path
     if (payload.edgeIds && payload.towingCarCode) {
@@ -165,8 +167,30 @@ function handleMissionUpdate(
   } else if (payload.status === "COMPLETED") {
     ctx.setMoveState("stopped");
     ctx.addLog("success", `✓ Mission Completed`);
+    
+    // [Fix] Clear mission from stores
+    if (payload.towingCarCode) {
+        useMissionStore.getState().clearMission(payload.towingCarCode);
+        const aircraftStore = useAircraftStore.getState();
+        const existing = aircraftStore.aircrafts.find((a) => a.id === payload.towingCarCode);
+        if (existing) {
+          const { currentMission, ...rest } = existing;
+          aircraftStore.ingest(rest);
+        }
+    }
   } else if (payload.status === "CANCELLED") {
     ctx.setMoveState("stopped");
     ctx.addLog("error", `✗ PUSHBACK CANCELLED`);
+
+    // [Fix] Clear mission from stores
+    if (payload.towingCarCode) {
+        useMissionStore.getState().clearMission(payload.towingCarCode);
+        const aircraftStore = useAircraftStore.getState();
+        const existing = aircraftStore.aircrafts.find((a) => a.id === payload.towingCarCode);
+        if (existing) {
+          const { currentMission, ...rest } = existing;
+          aircraftStore.ingest(rest);
+        }
+    }
   }
 }

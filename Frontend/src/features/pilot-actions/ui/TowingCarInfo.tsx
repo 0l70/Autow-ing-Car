@@ -11,7 +11,7 @@ interface TowingCarInfoProps {
 
 export function TowingCarInfo({ moveState, aircraft }: TowingCarInfoProps) {
     // 1. Get Metrics from Domain Hook
-    const { distRemain, destination } = useDerivedMetrics(aircraft);
+    const { distRemain, destination, calcSpeed } = useDerivedMetrics(aircraft);
 
     // 2. Format Data for Display
     // [Updated] Match Controller Logic: Use direct telemetry speed converted to Knots

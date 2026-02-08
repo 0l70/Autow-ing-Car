@@ -16,6 +16,7 @@ import { useMapData } from "@/features/map-visualizer/model/useMapData";
 import { useGridMetadata } from "@/features/map-visualizer/model/useGridMetadata"; 
 import { useAutoViewport } from "@/features/map-visualizer/model/useAutoViewport";
 import { MAP_CONFIG } from "@/features/map-visualizer/model/mapConfig";
+import { usePilotStore } from "@/features/pilot-actions/model/usePilotStore";
 
 interface PilotMapWidgetProps {
     className?: string;
@@ -29,6 +30,8 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
     const { nodes } = useGraphStore(); 
     
     const allAircrafts = useAircraftStore(state => state.aircrafts);
+    const activeMissions = useMissionStore(state => state.activeMissions); // [Fix] Reactive access
+    const moveState = usePilotStore(state => state.moveState); // [Fix] Current UI state guard
 
     // 2. 로직 레이어
     const [loadedDims, setLoadedDims] = useState({ width: 0, height: 0 });
@@ -88,15 +91,16 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
             : []; 
     }, [allAircrafts, assignedCarId]);
 
-    // [Active Route Extraction]
     const activeRoutePath = useMemo(() => {
         if (!assignedCarId) return undefined;
         const myAircraft = allAircrafts.find(a => a.id === assignedCarId);
         
-        // Show path when Connected/Towing or STOP
-        const isActiveState = myAircraft?.status === 'TOWING' || myAircraft?.status === 'STOP' || myAircraft?.status === 'MOVING_TO_GATE';
+        // [Fix] Only show path if in Pushback/Moving phase 
+        // AND car is in a docked status (TOWING/STOP)
+        const isPushbackPhase = moveState === 'pushback' || moveState === 'moving' || moveState === 'paused';
+        const isCarActive = myAircraft?.status === 'TOWING' || myAircraft?.status === 'STOP';
         
-        if(!isActiveState) return undefined;
+        if(!isPushbackPhase || !isCarActive) return undefined;
 
         // Priority 1: Check aircraft.currentMission.path (from WebSocket)
         const missionObj = myAircraft?.currentMission as any;
@@ -105,24 +109,30 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
         }
 
         // Priority 2: Check activeMissions[carId].edgeIds (from REST API)
-        const activeMissions = useMissionStore.getState().activeMissions;
-        const missionInfo = activeMissions[assignedCarId];
+        const missionInfo = activeMissions[assignedCarId]; // Use from component scope
         if(Array.isArray(missionInfo?.edgeIds)) {
             return missionInfo.edgeIds;
         }
 
         return undefined;
-    }, [allAircrafts, assignedCarId]);
+    }, [allAircrafts, assignedCarId, activeMissions, moveState]); // Added moveState dependency
 
-    // [New] Destination for Pilot
     const destNodeId = useMemo(() => {
         if (!assignedCarId) return undefined;
+        
+        const myAircraft = allAircrafts.find(a => a.id === assignedCarId);
+        
+        // [Fix] Only show destination pin if we are in the Pushback phase
+        const isPushbackPhase = moveState === 'pushback' || moveState === 'moving' || moveState === 'paused';
+        const isCarActive = myAircraft?.status === 'TOWING' || myAircraft?.status === 'STOP';
+        
+        if (!isPushbackPhase || !isCarActive) return undefined;
+
         // Priority 1: Mission Store (REST/Socket synced)
-        const activeMissions = useMissionStore.getState().activeMissions;
-        const myMission = activeMissions[assignedCarId];
+        const myMission = activeMissions[assignedCarId]; // Use from component scope
         
         return myMission?.destNode;
-    }, [assignedCarId, allAircrafts]); // Re-eval when aircrafts update (sync)
+    }, [assignedCarId, allAircrafts, activeMissions, moveState]); // Updated dependency to include moveState
 
     // 3. UI 레이어
     return (

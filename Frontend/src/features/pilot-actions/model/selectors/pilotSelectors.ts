@@ -4,8 +4,11 @@ import type { MoveState, ConnectionState } from '../pilot.types';
 
 /**
  * 비활성 차량 상태 목록
+ * [수정] WAITING_FOR_RETURN, RETURNING 등도 모니터링해야 하므로 제외.
+ * 오직 IDLE이거나, 할당 정보가 없을 때만 비활성으로 간주하도록 변경 검토.
+ * 일단 리스트에서 IDLE만 남김.
  */
-const INACTIVE_STATUSES = ['IDLE', 'UNDOCKING', 'RETURNING', 'WAITING_FOR_RETURN'] as const;
+const INACTIVE_STATUSES = ['IDLE'] as const;
 
 /**
  * 활성 차량 ID 계산
