@@ -22,8 +22,7 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
   mqtt:
     broker:
-      url: tcp://${MQTT_HOST}:${MQTT_PORT}
-      # url: ssl://${MQTT_HOST}:${MQTT_PORT}
+      url: ssl://${MQTT_HOST}:${MQTT_PORT}
   data:
     redis:
       host: ${REDIS_HOST:localhost}
