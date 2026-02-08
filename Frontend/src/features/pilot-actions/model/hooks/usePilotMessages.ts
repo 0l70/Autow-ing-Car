@@ -101,10 +101,28 @@ function handlePrivateResponse(
     const type = payload.status === "SUCCESS" || payload.status === "APPROVED" ? "success" : "error";
     ctx.addLog(type, `[${payload.status}] ${payload.message}`);
 
-    if (payload.status === "APPROVED" && ctx.moveState === "waiting") {
+    // [Updated Check] Accept both 'APPROVED' (Legacy) and 'RUNNING' (Current Backend)
+    const isApproved = payload.status === "APPROVED" || payload.status === "RUNNING";
+
+    if (isApproved && ctx.moveState === "waiting") {
       ctx.setMoveState("pushback");
-      if (payload.data?.destNodeName) {
-        ctx.addLog("info", `PATH: To [${payload.data.destNodeName}] assigned`);
+      
+      // [Fix] Ingest Path Data Immediately
+      if (payload.edgeIds && payload.towingCarCode) {
+         console.log("[PilotMessages] 🚀 Taking off! Ingesting mission path:", payload.edgeIds.length);
+         const missionStore = useMissionStore.getState();
+         missionStore.ingest(payload.towingCarCode, {
+            flightNumber: payload.flightNumber,
+            status: payload.status,
+            departNode: payload.departNode,
+            destNode: payload.destNode,
+            edgeIds: payload.edgeIds,
+         });
+      }
+
+      if (payload.destNode || payload.data?.destNodeName) {
+        const dest = payload.destNode || payload.data?.destNodeName;
+        ctx.addLog("info", `PATH: To [${dest}] assigned`);
       }
     } else if (payload.status === "REJECTED" || payload.status === "FAIL") {
       if (payload.message.includes("Connect")) ctx.setConnState("idle");

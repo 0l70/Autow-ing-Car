@@ -21,7 +21,12 @@ import { AdminAlertDto, PathOptionDto, PathOptionsResponseDto } from "./model/al
 import { useAircraftStore } from "@/entities/aircraft/model/store";
 import { useGraphStore } from "@/entities/map/model/store";
 
-export function ApprovalQueue() {
+// [NEW] Props definition
+interface ApprovalQueueProps {
+    onSelectAircraft?: (aircraftId: string) => void;
+}
+
+export function ApprovalQueue({ onSelectAircraft }: ApprovalQueueProps) {
   const { onMessage, send, isConnected } = useSocket() || {};
   
   // [FSD] Persistent Store
@@ -109,45 +114,57 @@ export function ApprovalQueue() {
                 subMessage: "Pilot requested pushback.",
                 actor: "System",
              });
-        }
-      }
-    });
-
-    return () => unsubscribe();
-  }, [onMessage, addAlert, addLog]);
-
-  // --- Actions ---
-  // ... existing handleDecision ...
-  const handleDecision = async (
-    alertItem: AdminAlertDto,
-    approved: boolean,
-  ) => {
-    if (!alertItem.flightId) return;
-
-    try {
-      if (approved) {
-        if (alertItem.pathOptions && alertItem.pathOptions.length > 0) {
-          setPathOptionsData({
-            flightId: alertItem.flightId,
-            flightNumber: alertItem.flightNumber || "",
-            departNode: alertItem.currentGate || "",
-            destNode: alertItem.activeRunway || "", 
-            pathOptions: alertItem.pathOptions,
-            alertId: alertItem.id, // [NEW] Store Alert ID
-          });
-          
-          addLog({
-            type: "APPROVE",
-            message: `PUSHBACK REQUEST ACCEPTED: ${alertItem.flightNumber}`,
-            subMessage: `Opening path options...`,
-            actor: "ATC-Controller",
-          });
-          // NOTE: Do NOT remove alert here. Wait for Route Confirmation.
-        } else {
-          window.alert("No path options available for this request.");
-          return;
-        }
-      } else {
+         }
+       }
+     });
+ 
+     return () => unsubscribe();
+   }, [onMessage, addAlert, addLog]);
+ 
+   // --- Actions ---
+   // ... existing handleDecision ...
+   const handleDecision = async (
+     alertItem: AdminAlertDto,
+     approved: boolean,
+   ) => {
+     if (!alertItem.flightId) return;
+ 
+     try {
+       if (approved) {
+         // [NEW] Sync Dashboard Selection to prevent clearing map
+         if (onSelectAircraft && alertItem.flightNumber) {
+            // Find aircraft by callsign (flightNumber)
+            // Note: In our system callsign often equals flightNumber for assigned cars
+            // Or we check which car is assigned to this flight. 
+            // Simplified: Find aircraft with matching callsign or mission flight number.
+            const targetCar = aircrafts.find(a => a.callsign === alertItem.flightNumber || a.currentMission?.flightNumber === alertItem.flightNumber);
+            if (targetCar) {
+                onSelectAircraft(targetCar.id);
+            }
+         }
+ 
+         if (alertItem.pathOptions && alertItem.pathOptions.length > 0) {
+           setPathOptionsData({
+             flightId: alertItem.flightId,
+             flightNumber: alertItem.flightNumber || "",
+             departNode: alertItem.currentGate || "",
+             destNode: alertItem.activeRunway || "", 
+             pathOptions: alertItem.pathOptions,
+             alertId: alertItem.id, // [NEW] Store Alert ID
+           });
+           
+           addLog({
+             type: "APPROVE",
+             message: `PUSHBACK REQUEST ACCEPTED: ${alertItem.flightNumber}`,
+             subMessage: `Opening path options...`,
+             actor: "ATC-Controller",
+           });
+           // NOTE: Do NOT remove alert here. Wait for Route Confirmation.
+         } else {
+           window.alert("No path options available for this request.");
+           return;
+         }
+       } else {
         if (send) {
           send(
             "SEND",

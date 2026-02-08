@@ -95,7 +95,7 @@ export function ControllerDashboard() {
             leftPanel={<MissionInspector selectedAircraftId={selectedAircraftId} />}
             rightPanel={
                 <>
-                    <ApprovalQueue />
+                    <ApprovalQueue onSelectAircraft={setSelectedAircraftId} />
                     <ActivityTimeline />
                 </>
             }
