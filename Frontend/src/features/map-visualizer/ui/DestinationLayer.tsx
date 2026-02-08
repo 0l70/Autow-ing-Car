@@ -3,6 +3,8 @@ import { useGraphStore } from "@/entities/map/model/store";
 import { worldToPixel } from "@/entities/map/lib/coordinate";
 import { MapPin } from "lucide-react";
 import { MapMeta } from "@/entities/map/model/types";
+import { MAP_CONFIG } from '@/features/map-visualizer/model/mapConfig';
+import { useMapCamera } from "@/features/map-visualizer/ui/MapCanvas"; // [NEW]
 
 interface DestinationLayerProps {
     meta: MapMeta | null;
@@ -12,31 +14,37 @@ interface DestinationLayerProps {
 
 export function DestinationLayer({ meta, mapHeight, overrideNodeId }: DestinationLayerProps) {
     const { nodes, activeDestinationNodeId } = useGraphStore();
+    const { scale, offset } = useMapCamera(); // [NEW] Get Camera State
     
     // 1. Determine Target ID (Pilot Override -> ATC Store)
     const targetId = overrideNodeId || activeDestinationNodeId;
 
-    // 2. Find Node & Calculate Position
-    const pinPosition = useMemo(() => {
+    // 2. Find Node & Calculate Position (Map Space)
+    const mapPos = useMemo(() => {
         if (!targetId || !meta || mapHeight === 0) return null;
 
         const targetNode = nodes.find(n => n.id === targetId);
         if (!targetNode) return null;
-
+        
         return worldToPixel(targetNode, meta, mapHeight);
     }, [targetId, meta, mapHeight, nodes]);
 
-    if (!pinPosition) return null;
+    if (!mapPos) return null;
+
+    // 3. Apply Camera Transform (Map Space -> Screen Space)
+    // Screen = Offset + (Map * Scale)
+    const screenX = offset.x + (mapPos.x * scale);
+    const screenY = offset.y + (mapPos.y * scale);
 
     return (
         <div 
             className="absolute inset-0 pointer-events-none"
-            style={{ zIndex: 60 }} // Above Aircraft (50)
+            style={{ zIndex: MAP_CONFIG.Z_INDEX.DESTINATION_LAYER }} // Above Aircraft (50)
         >
             <div 
                 style={{ 
-                    left: pinPosition.x, 
-                    top: pinPosition.y,
+                    left: screenX, 
+                    top: screenY,
                     transform: 'translate(-50%, -100%)' // Pin tip at exact coordinate
                 }}
                 className="absolute flex flex-col items-center animate-bounce-slow"
@@ -52,12 +60,6 @@ export function DestinationLayer({ meta, mapHeight, overrideNodeId }: Destinatio
                     {/* Fake Shadow */}
                     <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-4 h-1.5 bg-black/60 blur-[3px] rounded-full scale-x-100 animate-pulse" />
                 </div>
-
-                {/* Label Badge */}
-                <span className="mt-1 px-2.5 py-0.5 bg-black/80 border border-red-500/30 text-white text-[10px] font-bold rounded-full backdrop-blur-sm shadow-xl flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                    DESTINATION
-                </span>
             </div>
 
             {/* CSS Animation for smoother bounce if needed (Tailwind 'animate-bounce' is a bit too fast) */}

@@ -130,6 +130,14 @@ export function SocketBridge() {
         const finalY = data.posY ?? data.y;
         const finalYaw = data.heading ?? data.yaw;
         const finalV = data.velocity ?? data.v;
+        
+        // [Debug] Check incoming speed data
+        // console.log(`[SocketBridge] Telemetry for ${rawId}:`, { 
+        //    v: data.v, 
+        //    velocity: data.velocity, 
+        //    finalV 
+        // });
+
         if (rawId) {
             // [Conversion]
             // Input: finalYaw is Radians (from Backend/MQTT)

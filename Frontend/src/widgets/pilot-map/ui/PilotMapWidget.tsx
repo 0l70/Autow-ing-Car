@@ -10,6 +10,7 @@ import { useMissionStore } from "@/entities/mission";
 import { MapCanvas } from "@/features/map-visualizer/ui/MapCanvas";
 import { GraphLayer } from "@/features/map-visualizer/ui/GraphLayer";
 import { AircraftLayer } from "@/features/map-visualizer/ui/AircraftLayer";
+import { ConnectionRippleLayer } from "@/features/map-visualizer/ui/ConnectionRippleLayer"; // [NEW]
 import { DestinationLayer } from "@/features/map-visualizer/ui/DestinationLayer";
 import { useMapData } from "@/features/map-visualizer/model/useMapData";
 import { useGridMetadata } from "@/features/map-visualizer/model/useGridMetadata"; 
@@ -117,7 +118,9 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
     const destNodeId = useMemo(() => {
         if (!assignedCarId) return undefined;
         // Priority 1: Mission Store (REST/Socket synced)
-        const myMission = useMissionStore.getState().activeMissions[assignedCarId];
+        const activeMissions = useMissionStore.getState().activeMissions;
+        const myMission = activeMissions[assignedCarId];
+        
         return myMission?.destNode;
     }, [assignedCarId, allAircrafts]); // Re-eval when aircrafts update (sync)
 
@@ -171,6 +174,12 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
                             activeNodeBorderColor={MAP_CONFIG.GRAPH.COLOR.PILOT_ACTIVE_BORDER} // [NEW] Dark Teal
                         />
                         
+                        {/* 4. Connection Ripple Layer */}
+                        <ConnectionRippleLayer 
+                            meta={paddedGridMetadata as any}
+                            mapHeight={activeHeight}
+                        />
+
                         <AircraftLayer
                             meta={paddedGridMetadata as any}
                             mapHeight={activeHeight}

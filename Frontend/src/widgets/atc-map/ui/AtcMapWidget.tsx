@@ -9,6 +9,7 @@ import { MOCK_MAP_SIZE } from "@/entities/map/lib/mockData";
 import { MapCanvas } from "@/features/map-visualizer/ui/MapCanvas";
 import { GraphLayer } from "@/features/map-visualizer/ui/GraphLayer";
 import { AircraftLayer } from "@/features/map-visualizer/ui/AircraftLayer";
+import { ConnectionRippleLayer } from "@/features/map-visualizer/ui/ConnectionRippleLayer"; // [NEW]
 import { DestinationLayer } from "@/features/map-visualizer/ui/DestinationLayer";
 import { useMapData } from "@/features/map-visualizer/model/useMapData";
 import { useAutoViewport } from "@/features/map-visualizer/model/useAutoViewport"; 
@@ -126,6 +127,12 @@ export function AtcMapWidget({ className, onAircraftSelect }: AtcMapWidgetProps)
                         mapHeight={activeHeight} 
                     />
                     
+                    {/* 4. Connection Ripple Layer (Below Aircraft) */}
+                    <ConnectionRippleLayer 
+                        meta={paddedGridMetadata}
+                        mapHeight={activeHeight}
+                    />
+
                     <AircraftLayer
                         meta={paddedGridMetadata as any}
                         mapWidth={activeWidth}
