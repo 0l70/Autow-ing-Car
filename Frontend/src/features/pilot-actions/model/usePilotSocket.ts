@@ -14,18 +14,19 @@ const TelemetrySchema = z.object({
     code: z.string().optional(), // Backend DTO uses 'code'
     
     // Backend DTO fields
-    posX: z.number().optional(),
-    posY: z.number().optional(),
-    heading: z.number().optional(),
-    velocity: z.number().optional(),
-    speed: z.number().optional(), // [Safety] Fallback
+    // Backend DTO fields
+    posX: z.coerce.number().optional(),
+    posY: z.coerce.number().optional(),
+    heading: z.coerce.number().optional(),
+    velocity: z.coerce.number().optional(),
+    speed: z.coerce.number().optional(), // [Safety] Fallback
     status: AircraftStatusSchema.optional(),
 
     // Legacy/MQTT fields
-    x: z.number().default(0),
-    y: z.number().default(0),
-    yaw: z.number().default(0),
-    v: z.number().default(0),
+    x: z.coerce.number().default(0),
+    y: z.coerce.number().default(0),
+    yaw: z.coerce.number().default(0),
+    v: z.coerce.number().default(0),
     mode: AircraftStatusSchema.catch('IDLE'),
     
     battery: z.number().default(0),
@@ -89,12 +90,12 @@ export function usePilotSocket(targetCarId?: string | null, enabled: boolean = t
         const rawId = data.code || data.car_id || data.carId;
         
         const finalStatus = data.status || data.mode;
-        const finalX = data.posX ?? data.x;
-        const finalY = data.posY ?? data.y;
-        const finalYaw = data.heading ?? data.yaw;
+        const finalX = data.posX ?? data.x ?? 0;
+        const finalY = data.posY ?? data.y ?? 0;
+        const finalYaw = data.heading ?? data.yaw ?? 0;
                                                                            
-        // Priority: velocity (DTO) -> speed (Common) -> v (Legacy)
-        const finalV = data.velocity ?? data.speed ?? data.v; 
+        // Priority: velocity (DTO) -> v (MQTT active field) -> speed (Fallback)
+        const finalV = data.velocity ?? data.v ?? data.speed ?? 0; 
 
         // 내 차 정보만 업데이트
         if (rawId && rawId === targetCarId) {

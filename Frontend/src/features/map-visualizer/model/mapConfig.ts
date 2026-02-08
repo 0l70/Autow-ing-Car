@@ -102,15 +102,6 @@ export const MAP_CONFIG = {
         ANIMATION_DURATION: 300, // 이동 애니메이션 시간 (ms)
         CLICK_RADIUS_SQ: 400,    // 클릭 인식 반경 제곱 (20px * 20px)
         
-        FONT: {
-            SIZE: 12,
-            WEIGHT: 'bold',
-            FAMILY: 'sans-serif',
-            COLOR: '#FFFFFF',
-            STROKE_COLOR: 'rgba(0,0,0,0.8)',
-            STROKE_WIDTH: 3,
-        },
-        
         // 상태별 색상 (Status Colors)
         STATUS_COLORS: {
             IDLE: '#FFA500',             // 주황색: 대기 중
@@ -122,19 +113,26 @@ export const MAP_CONFIG = {
             RETURNING: '#3B82F6',        // 파란색: 복귀 중
             STOP: '#FF0000',             // 빨간색: 비상/정지
             ERROR: '#FF0000'             // 빨간색: 에러
-        } as Record<string, string>
+        } as Record<string, string>,
+
+        // [Restored] FONT config for Aircraft Labels
+        FONT: {
+            SIZE: 12,
+            WEIGHT: 'bold',
+            FAMILY: 'sans-serif',
+            COLOR: '#FFFFFF',
+            STROKE_COLOR: 'rgba(0,0,0,0.8)',
+            STROKE_WIDTH: 3,
+        }
     },
 
     // 6. 레이어 Z-Index (Layer Stacking Order)
     Z_INDEX: {
         BASE_MAP: 0,
         GRAPH_LAYER: 30,      // [Deprecated] Use granular layers below
-        LAYER_ROADS: 30,      // 도로 (가장 아래)
-        LAYER_ATC_PATH: 31,   // 관제 경로 
-        LAYER_NODES: 32,      // 노드
-        LAYER_ACTIVE_NODE: 33,// [Highlighted] 활성 노드
-        GRID_LAYER: 40,       // 그리드
+        RIPPLE_LAYER: 40,     // [NEW] Connection Ripple (Below Aircraft)
         AIRCRAFT_LAYER: 50,   // 항공기 및 차량 레이어 (가장 상위)
+        DESTINATION_LAYER: 60,// [NEW] Purpose: Always on top of aircraft
         UI_OVERLAY: 100       // UI 컨트롤 등
     }
 } as const;

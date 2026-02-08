@@ -50,7 +50,7 @@ export function MissionInspector({ selectedAircraftId }: MissionInspectorProps) 
                 </h2>
                 <div className="flex items-center gap-2 text-sm text-gray-400 font-mono mb-6">
                     <span>w/ {id}</span>
-                    {missionInfo?.destNode && (
+                    {missionInfo?.destNode && status !== 'IDLE' && status !== 'WAITING_FOR_RETURN' && (
                         <>
                             <span>→</span>
                             <span className="text-accent-cyan font-bold">{missionInfo.destNode}</span>

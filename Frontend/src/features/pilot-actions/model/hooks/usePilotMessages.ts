@@ -4,10 +4,9 @@ import { FlightInfoSchema } from '@/features/dashboard/model/dashboardTypes';
 import { useAircraftStore } from '@/entities/aircraft';
 import { useMissionStore } from '@/entities/mission';
 import { usePilotStore } from '../usePilotStore';
-import type { Aircraft } from '@/entities/map/model/types';
 
 interface UsePilotMessagesOptions {
-  onMessage: ((cb: (msg: any) => void) => () => void) | undefined;
+  onMessage: ((cb: (msg: { destination: string; body: any }) => void) => () => void) | undefined;
   addLog: (type: "info" | "success" | "warning" | "error", message: string) => void;
   checkWelcome: (flightId: number) => void;
 }
@@ -59,7 +58,7 @@ function handleFlightInfo(
   payload: any,
   ctx: {
     lastLoadedFlightId: React.MutableRefObject<number | null>;
-    addLog: (type: any, msg: string) => void;
+    addLog: (type: "info" | "success" | "warning" | "error", msg: string) => void;
     checkWelcome: (id: number) => void;
     setFlightInfo: (info: any) => void;
   }
@@ -85,7 +84,7 @@ function handlePrivateResponse(
     setMoveState: (s: any) => void;
     connState: string;
     setConnState: (s: any) => void;
-    addLog: (type: any, msg: string) => void;
+    addLog: (type: "info" | "success" | "warning" | "error", msg: string) => void;
   }
 ) {
   // REJECTED 처리
@@ -101,10 +100,46 @@ function handlePrivateResponse(
     const type = payload.status === "SUCCESS" || payload.status === "APPROVED" ? "success" : "error";
     ctx.addLog(type, `[${payload.status}] ${payload.message}`);
 
-    if (payload.status === "APPROVED" && ctx.moveState === "waiting") {
+    // [Updated Check] Accept both 'APPROVED' (Legacy) and 'RUNNING' (Current Backend)
+    const isApproved = payload.status === "APPROVED" || payload.status === "RUNNING";
+
+    if (isApproved && ctx.moveState === "waiting") {
       ctx.setMoveState("pushback");
-      if (payload.data?.destNodeName) {
-        ctx.addLog("info", `PATH: To [${payload.data.destNodeName}] assigned`);
+      
+      // [Fix] Sync mission data immediately upon approval
+      // Supports both flat payload (remote) and payload.data (local fix)
+      const missionData = payload.data || payload;
+      const { edgeIds, destNode, towingCarCode, flightNumber, departNode } = missionData;
+      
+      if (edgeIds && towingCarCode) {
+        console.log("[PilotMessages] Syncing APPROVED mission data to stores...");
+        
+        // 1. Update AircraftStore
+        const aircraftStore = useAircraftStore.getState();
+        const existing = aircraftStore.aircrafts.find((a) => a.id === towingCarCode);
+        if (existing) {
+          aircraftStore.ingest({
+            ...existing,
+            currentMission: {
+              id: missionData.missionId?.toString() || "temp",
+              status: "RUNNING",
+              flightNumber: flightNumber || "",
+              path: edgeIds,
+            },
+          });
+        }
+
+        // 2. Update MissionStore
+        useMissionStore.getState().ingest(towingCarCode, {
+          flightNumber: flightNumber || "",
+          status: "RUNNING",
+          departNode: departNode || "",
+          destNode: destNode || "",
+          edgeIds: edgeIds,
+        });
+
+        const destName = destNode || missionData.destNodeName || "Destination";
+        ctx.addLog("success", `PATH: To [${destName}] assigned and synced`);
       }
     } else if (payload.status === "REJECTED" || payload.status === "FAIL") {
       if (payload.message.includes("Connect")) ctx.setConnState("idle");
@@ -119,38 +154,35 @@ function handleMissionUpdate(
   ctx: {
     moveState: string;
     setMoveState: (s: any) => void;
-    addLog: (type: any, msg: string) => void;
+    addLog: (type: "info" | "success" | "warning" | "error", msg: string) => void;
   }
 ) {
   if (payload.message !== "Mission Updated" || !payload.status) return;
 
   console.log("[PilotMessages] 🚨 Mission Status Update:", payload);
 
-  if (payload.status === "RUNNING" && ctx.moveState === "waiting") {
-    ctx.setMoveState("pushback");
-    ctx.addLog("success", `✓ PUSHBACK APPROVED`);
+  if (payload.status === "RUNNING") {
+    // [Fix] Do NOT transition to pushback state here. 
+    // This transition should ONLY happen via handlePrivateResponse ('APPROVED' status).
+    console.log("[PilotMessages] Syncing RUNNING mission data. UI transition handled by separate approval message.");
 
-    // Update aircraft mission path
     if (payload.edgeIds && payload.towingCarCode) {
-      // 1. Update AircraftStore (Live Map)
       const aircraftStore = useAircraftStore.getState();
       const existing = aircraftStore.aircrafts.find((a) => a.id === payload.towingCarCode);
 
       if (existing) {
-        const updatedAircraft: Aircraft = {
+        aircraftStore.ingest({
           ...existing,
           currentMission: {
             id: payload.missionId?.toString() || "temp",
             status: "RUNNING",
+            flightNumber: payload.flightNumber || "",
             path: payload.edgeIds,
           },
-        };
-        aircraftStore.ingest(updatedAircraft);
+        });
       }
 
-      // 2. Update MissionStore (Sync with other widgets)
-      const missionStore = useMissionStore.getState();
-      missionStore.ingest(payload.towingCarCode, {
+      useMissionStore.getState().ingest(payload.towingCarCode, {
         flightNumber: payload.flightNumber,
         status: payload.status,
         departNode: payload.departNode,
@@ -165,8 +197,26 @@ function handleMissionUpdate(
   } else if (payload.status === "COMPLETED") {
     ctx.setMoveState("stopped");
     ctx.addLog("success", `✓ Mission Completed`);
+    
+    if (payload.towingCarCode) {
+        useMissionStore.getState().clearMission(payload.towingCarCode);
+        const aircraftStore = useAircraftStore.getState();
+        const existing = aircraftStore.aircrafts.find((a) => a.id === payload.towingCarCode);
+        if (existing) {
+          aircraftStore.ingest({ ...existing, currentMission: null });
+        }
+    }
   } else if (payload.status === "CANCELLED") {
     ctx.setMoveState("stopped");
     ctx.addLog("error", `✗ PUSHBACK CANCELLED`);
+
+    if (payload.towingCarCode) {
+        useMissionStore.getState().clearMission(payload.towingCarCode);
+        const aircraftStore = useAircraftStore.getState();
+        const existing = aircraftStore.aircrafts.find((a) => a.id === payload.towingCarCode);
+        if (existing) {
+          aircraftStore.ingest({ ...existing, currentMission: null });
+        }
+    }
   }
 }

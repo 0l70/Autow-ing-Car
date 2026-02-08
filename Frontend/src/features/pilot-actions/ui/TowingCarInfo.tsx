@@ -3,21 +3,22 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/shared/ui/Card";
 import { MoveState } from "../model/types";
 import { Aircraft } from "@/entities/map/model/types";
 import { useDerivedMetrics } from "../model/hooks/useDerivedMetrics";
-import { msToKmh } from "@/shared/lib/math";
 
 interface TowingCarInfoProps {
     moveState: MoveState;
     aircraft: Aircraft | null;
 }
 
-export function TowingCarInfo({ moveState, aircraft }: TowingCarInfoProps) {
+export function TowingCarInfo({ aircraft }: Omit<TowingCarInfoProps, 'moveState'>) {
     // 1. Get Metrics from Domain Hook
-    const { calcSpeed, distRemain, destination } = useDerivedMetrics(aircraft);
+    const { destination } = useDerivedMetrics(aircraft);
 
     // 2. Format Data for Display
-    const speedKmh = msToKmh(calcSpeed).toFixed(1);
+    // [Updated] Match Controller Logic: Use direct telemetry speed converted to Knots
+    const rawSpeed = aircraft?.speed ?? 0;
+    const speedKts = (rawSpeed * 1.94384).toFixed(0); 
+    
     const headingDeg = aircraft ? Math.round(aircraft.position.r) : 0;
-    const distText = distRemain !== null ? `${Math.round(distRemain)} m` : "---";
 
     return (
         <Card className="col-span-5 glass-panel flex flex-col">
@@ -26,19 +27,15 @@ export function TowingCarInfo({ moveState, aircraft }: TowingCarInfoProps) {
             </CardHeader>
             <CardContent className="flex-1 p-4 grid grid-cols-2 gap-4 items-center">
                 <div className="bg-black/40 p-4 rounded border border-white/10 h-full flex flex-col justify-center">
-                    <span className="text-slate-500 text-xs font-bold block mb-1 tracking-wider uppercase">Ground Speed (calc)</span>
+                    <span className="text-slate-500 text-xs font-bold block mb-1 tracking-wider uppercase">Ground Speed</span>
                     <span className="text-4xl font-bold text-slate-200 font-mono tracking-tighter">
-                        {speedKmh} <span className="text-sm text-slate-500 font-normal">km/h</span>
+                        {speedKts} <span className="text-sm text-slate-500 font-normal">kts</span>
                     </span>
                 </div>
                 <div className="flex flex-col gap-2 h-full">
                     <div className="bg-black/40 p-2 px-3 rounded border border-white/10 flex justify-between items-center flex-1">
                         <span className="text-slate-500 text-xs font-bold tracking-wider">HEADING</span>
                         <span className="text-xl font-bold text-slate-200 font-mono">{headingDeg}°</span>
-                    </div>
-                    <div className="bg-black/40 p-2 px-3 rounded border border-white/10 flex justify-between items-center flex-1">
-                        <span className="text-slate-500 text-xs font-bold tracking-wider">DIST TO GOAL</span>
-                        <span className="text-xl font-bold text-amber-500 font-mono">{distText}</span>
                     </div>
                     <div className="bg-black/40 p-2 px-3 rounded border border-white/10 flex justify-between items-center flex-1">
                         <span className="text-slate-500 text-xs font-bold tracking-wider">DESTINATION</span>

@@ -1,5 +1,5 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/shared/ui/Card";
-import { Battery, Signal } from "lucide-react";
+import { Battery } from "lucide-react";
 // import { VEHICLE_STATUS } from "@/features/dashboard/MockData";
 import { Aircraft } from "@/entities/map/model/types";
 
@@ -10,9 +10,7 @@ interface PilotStatusPanelProps {
 export function PilotStatusPanel({ aircraft }: PilotStatusPanelProps) {
     // Fallback to Mock Data if no aircraft connected yet
     const displayId = aircraft?.id || 'NO TUG'; // Changed from VEHICLE_STATUS.id
-    const displayBattery = aircraft?.battery ?? 0; // Changed from VEHICLE_STATUS.battery
-    // Signal strength is not in Aircraft type yet, assume GOOD if connected
-    const displaySignal = aircraft ? "EXCELLENT" : "NO SIG"; // Changed from WAITING
+    const displayBattery = aircraft?.battery ?? 0;
 
     return (
         <Card className="col-span-3 glass-panel flex flex-col">
@@ -36,9 +34,11 @@ export function PilotStatusPanel({ aircraft }: PilotStatusPanelProps) {
                 </div>
                 <div className="flex items-center justify-between p-3 bg-black/40 rounded border border-white/10">
                     <span className="text-slate-500 flex items-center gap-2 text-xs font-bold tracking-wider">
-                        <Signal className="w-3 h-3" /> SIGNAL
+                        POSITION (X, Y)
                     </span>
-                    <span className="text-cyan-400 text-xs font-bold font-mono tracking-wide">{displaySignal}</span>
+                    <span className="text-cyan-400 text-sm font-bold font-mono tracking-wide">
+                        {aircraft?.position.x.toFixed(1) || '0.0'}, {aircraft?.position.y.toFixed(1) || '0.0'}
+                    </span>
                 </div>
             </CardContent>
         </Card>

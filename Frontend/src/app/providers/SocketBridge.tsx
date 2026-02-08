@@ -20,20 +20,20 @@ const TelemetrySchema = z.object({
   code: z.string().optional(),
   
   // Frontend/MQTT standard
-  x: z.number().default(0),
-  y: z.number().default(0),
-  yaw: z.number().default(0),
-  v: z.number().default(0),
+  x: z.coerce.number().default(0),
+  y: z.coerce.number().default(0),
+  yaw: z.coerce.number().default(0),
+  v: z.coerce.number().default(0),
   
   // Backend DTO standard (Incoming Payload)
-  posX: z.number().optional(),
-  posY: z.number().optional(),
-  heading: z.number().optional(),
-  velocity: z.number().optional(),
+  posX: z.coerce.number().optional(),
+  posY: z.coerce.number().optional(),
+  heading: z.coerce.number().optional(),
+  velocity: z.coerce.number().optional(),
 
   status: z.string().optional(),
   mode: z.string().optional(),
-  battery: z.number().default(0),
+  battery: z.coerce.number().default(0),
   currentMission: z.any().optional(),
   is_loaded: z.boolean().default(false),
 });
@@ -130,6 +130,14 @@ export function SocketBridge() {
         const finalY = data.posY ?? data.y;
         const finalYaw = data.heading ?? data.yaw;
         const finalV = data.velocity ?? data.v;
+        
+        // [Debug] Check incoming speed data
+        // console.log(`[SocketBridge] Telemetry for ${rawId}:`, { 
+        //    v: data.v, 
+        //    velocity: data.velocity, 
+        //    finalV 
+        // });
+
         if (rawId) {
             // [Conversion]
             // Input: finalYaw is Radians (from Backend/MQTT)

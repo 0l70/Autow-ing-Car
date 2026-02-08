@@ -17,18 +17,24 @@ import { WS_TOPICS } from "@/shared/realtime/config/topics";
 import { useAlertStore } from "./model/useAlertStore";
 import { AdminAlertDto, PathOptionDto, PathOptionsResponseDto } from "./model/alert.types";
 
-// [NEW] Use Aircraft Store for State Sync
-import { useAircraftStore } from "@/entities/aircraft/model/store";
 import { useGraphStore } from "@/entities/map/model/store";
+import { useAircraftStore } from "@/entities/aircraft/model/store";
+import { useMissionStore } from "@/entities/mission"; // [NEW] Import Mission Store
 
-export function ApprovalQueue() {
+// [NEW] Props definition
+interface ApprovalQueueProps {
+    onSelectAircraft?: (aircraftId: string) => void;
+}
+
+export function ApprovalQueue({ onSelectAircraft }: ApprovalQueueProps) {
   const { onMessage, send, isConnected } = useSocket() || {};
   
   // [FSD] Persistent Store
   const { alerts, addAlert, removeAlert } = useAlertStore();
-  
-  // [NEW] Aircraft State for Sync
   const aircrafts = useAircraftStore((state) => state.aircrafts);
+  const ingestAircraft = useAircraftStore((state) => state.ingest); // [NEW] Get ingest action
+  const clearMission = useMissionStore((state) => state.clearMission); // [NEW] Get clearMission action
+  
 
   // Timeline Store
   const addLog = useTimelineStore((state) => state.addLog);
@@ -37,37 +43,6 @@ export function ApprovalQueue() {
   const [pathOptionsData, setPathOptionsData] = useState<PathOptionsResponseDto | null>(null);
   const [selectedPath, setSelectedPath] = useState<PathOptionDto | null>(null);
 
-  // --- [NEW] State Synchronization Logic ---
-  // If an aircraft is in ERROR/STOP state but no alert exists, create one.
-  useEffect(() => {
-    aircrafts.forEach(car => {
-      // Check for Emergency conditions
-      if (car.status === 'ERROR' || car.status === 'STOP') {
-         // Check if alert already exists to prevent duplicate (spam)
-         // We assume one active emergency alert per car is enough
-         const exists = alerts.find(a => 
-           (a.type === 'EMERGENCY_STOP' || a.type === 'MANUAL_CONTROL') && 
-           a.flightNumber === car.callsign // or car.id
-         );
-         
-         if (!exists) {
-            console.log(`[ApprovalQueue] ⚠️ Detected silent emergency for ${car.callsign}. Synced alert.`);
-            addAlert({
-                id: `sync-alert-${Date.now()}-${car.id}`,
-                type: 'EMERGENCY_STOP',
-                message: `Synced: Vehicle ${car.callsign} is in ${car.status} state.`,
-                severity: 'CRITICAL',
-                timestamp: Date.now(),
-                flightNumber: car.callsign, 
-             });
-         }
-      }
-    });
-  // Check periodically or only when aircrafts change? 
-  // 'aircrafts' changes frequently (telemetry), so we need to be careful not to spam.
-  // 'addAlert' in store should handle duplicates if ID matches, but here we generate new ID.
-  // We rely on the 'exists' check.
-  }, [aircrafts, alerts, addAlert]);
 
 
   // --- WebSocket Subscription ---
@@ -77,10 +52,34 @@ export function ApprovalQueue() {
     // Listen for All Controller Notifications (Requests + Emergencies)
     const unsubscribe = onMessage((msg: any) => {
       const { destination, body } = msg;
+      const data = typeof body === 'string' ? JSON.parse(body) : body;
+
+      // [NEW] Handle Mission Updates (Completion logic)
+      if (destination === WS_TOPICS.MISSION_UPDATES) {
+           console.log("[ApprovalQueue] Mission Update Received:", data.status);
+           // Check for completion/cancellation
+           if (data.status === 'COMPLETED') {
+               console.log(`[ApprovalQueue] 🧹 Mission Ended (${data.status}):`, data.towingCarCode);
+               
+               // 1. Clear from Mission Store
+               if (data.towingCarCode) {
+                   clearMission(data.towingCarCode);
+                   
+                   // 2. Clear from Aircraft Store (to sync UI status)
+                   const car = aircrafts.find(a => a.id === data.towingCarCode);
+                   if (car) {
+                       ingestAircraft({
+                           ...car,
+                           status: 'IDLE', // Fallback to IDLE
+                           currentMission: null 
+                       });
+                   }
+               }
+           }
+      }
 
       // Ensure we listen to the correct topic constant
       if (destination === WS_TOPICS.CONTROLLER_REQUESTS) {
-        const data = typeof body === 'string' ? JSON.parse(body) : body;
         console.log("[ApprovalQueue] Received Notification:", data);
 
         // CASE 1: Emergency / Manual Control Notif
@@ -109,45 +108,60 @@ export function ApprovalQueue() {
                 subMessage: "Pilot requested pushback.",
                 actor: "System",
              });
-        }
-      }
-    });
-
-    return () => unsubscribe();
-  }, [onMessage, addAlert, addLog]);
-
-  // --- Actions ---
-  // ... existing handleDecision ...
-  const handleDecision = async (
-    alertItem: AdminAlertDto,
-    approved: boolean,
-  ) => {
-    if (!alertItem.flightId) return;
-
-    try {
-      if (approved) {
-        if (alertItem.pathOptions && alertItem.pathOptions.length > 0) {
-          setPathOptionsData({
-            flightId: alertItem.flightId,
-            flightNumber: alertItem.flightNumber || "",
-            departNode: alertItem.currentGate || "",
-            destNode: alertItem.activeRunway || "", 
-            pathOptions: alertItem.pathOptions,
-            alertId: alertItem.id, // [NEW] Store Alert ID
-          });
-          
-          addLog({
-            type: "APPROVE",
-            message: `PUSHBACK REQUEST ACCEPTED: ${alertItem.flightNumber}`,
-            subMessage: `Opening path options...`,
-            actor: "ATC-Controller",
-          });
-          // NOTE: Do NOT remove alert here. Wait for Route Confirmation.
-        } else {
-          window.alert("No path options available for this request.");
-          return;
-        }
-      } else {
+         }
+       }
+     });
+ 
+     return () => unsubscribe();
+   }, [onMessage, addAlert, addLog]);
+ 
+   // --- Actions ---
+   // ... existing handleDecision ...
+   const handleDecision = async (
+     alertItem: AdminAlertDto,
+     approved: boolean,
+   ) => {
+     if (!alertItem.flightId) return;
+ 
+     try {
+       if (approved) {
+         // [NEW] Sync Dashboard Selection to prevent clearing map
+         if (onSelectAircraft && alertItem.flightNumber) {
+            // Find aircraft by callsign (flightNumber)
+            // Note: In our system callsign often equals flightNumber for assigned cars
+            // Or we check which car is assigned to this flight. 
+            // Simplified: Find aircraft with matching callsign or mission flight number.
+             const targetCar = aircrafts.find(a => 
+                a.callsign === alertItem.flightNumber || 
+                (typeof a.currentMission === 'object' && a.currentMission?.flightNumber === alertItem.flightNumber)
+             );
+            if (targetCar) {
+                onSelectAircraft(targetCar.id);
+            }
+         }
+ 
+         if (alertItem.pathOptions && alertItem.pathOptions.length > 0) {
+           setPathOptionsData({
+             flightId: alertItem.flightId,
+             flightNumber: alertItem.flightNumber || "",
+             departNode: alertItem.currentGate || "",
+             destNode: alertItem.activeRunway || "", 
+             pathOptions: alertItem.pathOptions,
+             alertId: alertItem.id, // [NEW] Store Alert ID
+           });
+           
+           addLog({
+             type: "APPROVE",
+             message: `PUSHBACK REQUEST ACCEPTED: ${alertItem.flightNumber}`,
+             subMessage: `Opening path options...`,
+             actor: "ATC-Controller",
+           });
+           // NOTE: Do NOT remove alert here. Wait for Route Confirmation.
+         } else {
+           window.alert("No path options available for this request.");
+           return;
+         }
+       } else {
         if (send) {
           send(
             "SEND",
@@ -207,6 +221,7 @@ export function ApprovalQueue() {
     setPathOptionsData(null);
     setSelectedPath(null);
     useGraphStore.getState().setHighlightedPath([]); // [NEW] Clear Highlight
+    useGraphStore.getState().setActiveDestinationNode(null); // [NEW] Clear Destination
   };
 
   const handleConfirm = (id: string) => {
@@ -264,6 +279,7 @@ export function ApprovalQueue() {
                 onClick={() => {
                     setPathOptionsData(null);
                     useGraphStore.getState().setHighlightedPath([]); // [NEW] Clear Highlight
+                    useGraphStore.getState().setActiveDestinationNode(null); // [NEW] Clear Destination
                 }}
                 className="text-gray-400 hover:text-white"
               >
@@ -288,6 +304,8 @@ export function ApprovalQueue() {
                       setSelectedPath(option);
                       // [NEW] Trigger Map Highlight
                       useGraphStore.getState().setHighlightedPath(option.edgeIds || []);
+                      // [NEW] Set Destination Marker
+                      useGraphStore.getState().setActiveDestinationNode(pathOptionsData.destNode);
                   }}
                   className={cn(
                     "w-full p-2 text-left rounded border transition-all",

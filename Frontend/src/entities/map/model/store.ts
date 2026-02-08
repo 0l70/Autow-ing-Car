@@ -47,6 +47,10 @@ interface GraphState {
   // [ATC] Visualization
   highlightedPath: string[]; // List of Edge IDs to highlight
   setHighlightedPath: (edgeIds: string[]) => void;
+
+  // [ATC] Destination Visualization
+  activeDestinationNodeId: string | null;
+  setActiveDestinationNode: (nodeId: string | null) => void;
 }
 
 export const useGraphStore = create<GraphState>((set, get) => ({
@@ -64,6 +68,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   // [ATC] Initial State
   highlightedPath: [],
   setHighlightedPath: (edgeIds) => set({ highlightedPath: edgeIds }),
+
+  activeDestinationNodeId: null,
+  setActiveDestinationNode: (id) => set({ activeDestinationNodeId: id }),
 
   setMode: (mode) => set({ interactionMode: mode, selectedId: null }),
   setActiveNodeType: (type) => set({ activeNodeType: type }),

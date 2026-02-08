@@ -20,11 +20,7 @@ export function PilotDashboard() {
     // Find MY assigned car from the store data
     const activeCarId = state.flightInfo?.assignedCarId;
     const assignedAircraft = activeCarId ? aircrafts.find(a => a.id === activeCarId) || null : null;
-    const myAircraft = (assignedAircraft && 
-                        assignedAircraft.status !== 'IDLE' && 
-                        assignedAircraft.status !== 'UNDOCKING') 
-                        ? assignedAircraft 
-                        : null;
+    const myAircraft = assignedAircraft;
 
     return (
         <div className="h-full w-full bg-black/50 p-4 text-slate-200 font-mono overflow-hidden flex flex-col gap-[2%] relative">
@@ -48,7 +44,7 @@ export function PilotDashboard() {
                     connLongPress={controls.connLongPress}
                 />
                 <PilotStatusPanel aircraft={myAircraft} /> 
-                <TowingCarInfo moveState={state.move} aircraft={myAircraft} />
+                <TowingCarInfo aircraft={myAircraft} />
                 <PilotSafetyLock 
                     moveState={state.move}
                     handleResume={controls.handleResume}

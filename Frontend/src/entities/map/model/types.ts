@@ -39,7 +39,8 @@ export interface Aircraft {
     currentMission?: {
         id: string;
         status: string;     // e.g. "RUNNING"
+        flightNumber?: string; // [NEW] Associated flight
         path?: string[];    // [NEW] Edge IDs for active route
-    } | string;             // Legacy support (string only)
+    } | string | null;             // Legacy support (string only)
     isLoaded: boolean;      // MQTT: is_loaded
 }
