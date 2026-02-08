@@ -9,9 +9,9 @@ interface TowingCarInfoProps {
     aircraft: Aircraft | null;
 }
 
-export function TowingCarInfo({ moveState, aircraft }: TowingCarInfoProps) {
+export function TowingCarInfo({ aircraft }: Omit<TowingCarInfoProps, 'moveState'>) {
     // 1. Get Metrics from Domain Hook
-    const { distRemain, destination, calcSpeed } = useDerivedMetrics(aircraft);
+    const { destination } = useDerivedMetrics(aircraft);
 
     // 2. Format Data for Display
     // [Updated] Match Controller Logic: Use direct telemetry speed converted to Knots
@@ -19,7 +19,6 @@ export function TowingCarInfo({ moveState, aircraft }: TowingCarInfoProps) {
     const speedKts = (rawSpeed * 1.94384).toFixed(0); 
     
     const headingDeg = aircraft ? Math.round(aircraft.position.r) : 0;
-    const distText = distRemain !== null ? `${Math.round(distRemain)} m` : "---";
 
     return (
         <Card className="col-span-5 glass-panel flex flex-col">
@@ -37,10 +36,6 @@ export function TowingCarInfo({ moveState, aircraft }: TowingCarInfoProps) {
                     <div className="bg-black/40 p-2 px-3 rounded border border-white/10 flex justify-between items-center flex-1">
                         <span className="text-slate-500 text-xs font-bold tracking-wider">HEADING</span>
                         <span className="text-xl font-bold text-slate-200 font-mono">{headingDeg}°</span>
-                    </div>
-                    <div className="bg-black/40 p-2 px-3 rounded border border-white/10 flex justify-between items-center flex-1">
-                        <span className="text-slate-500 text-xs font-bold tracking-wider">DIST TO GOAL</span>
-                        <span className="text-xl font-bold text-amber-500 font-mono">{distText}</span>
                     </div>
                     <div className="bg-black/40 p-2 px-3 rounded border border-white/10 flex justify-between items-center flex-1">
                         <span className="text-slate-500 text-xs font-bold tracking-wider">DESTINATION</span>

@@ -85,7 +85,9 @@ export function useCarStatusSync({ socketCarId, addLog }: UseCarStatusSyncOption
     }
     // 3. STOP => 'paused' (Emergency Stop)
     else if (myCar.status === "STOP") {
-      if (moveState !== "paused") {
+      // [Fix] Only transition to 'paused' if we were actually moving or in pushback phase.
+      // Do NOT override 'waiting' or 'stopped' states.
+      if (moveState === "moving" || moveState === "pushback") {
         console.log("[Sync] Status: STOP -> UI: paused");
         setMoveState("paused");
       }

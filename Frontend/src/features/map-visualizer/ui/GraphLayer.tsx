@@ -8,9 +8,9 @@ import { MAP_CONFIG } from "@/features/map-visualizer/model/mapConfig";
 interface GraphLayerProps {
   meta: MapMeta | null;
   mapHeight: number;
-  overridePath?: string[] | undefined; 
-  activePathColor?: string; 
-  activeNodeColor?: string; 
+  overridePath?: string[] | undefined;
+  activePathColor?: string;
+  activeNodeColor?: string;
   activeNodeBorderColor?: string;
 }
 
@@ -53,11 +53,13 @@ export function GraphLayer({
   // 4. Path Geometry Logic
   const getRoundedPath = useCallback((rawPoints: { x: number; y: number }[], radius: number = MAP_CONFIG.GRAPH.EDGE.CORNER_RADIUS) => {
     if (!rawPoints || rawPoints.length < 2) return "";
-    const points = rawPoints.filter(p => p && !isNaN(p.x) && !isNaN(p.y));
+    const points = rawPoints.filter((p): p is { x: number; y: number } => !!p && !isNaN(p.x) && !isNaN(p.y));
     if (points.length < 2) return "";
-    if (points.length === 2) return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+    const p0 = points[0]!;
+    const p1 = points[1]!;
+    if (points.length === 2) return `M ${p0.x} ${p0.y} L ${p1.x} ${p1.y}`;
 
-    let d = `M ${points[0].x} ${points[0].y}`;
+    let d = `M ${p0.x} ${p0.y}`;
     for (let i = 1; i < points.length - 1; i++) {
         const p0 = points[i - 1]; const p1 = points[i]; const p2 = points[i + 1];
         if (!p0 || !p1 || !p2) continue;

@@ -44,7 +44,7 @@ export function PilotDashboard() {
                     connLongPress={controls.connLongPress}
                 />
                 <PilotStatusPanel aircraft={myAircraft} /> 
-                <TowingCarInfo moveState={state.move} aircraft={myAircraft} />
+                <TowingCarInfo aircraft={myAircraft} />
                 <PilotSafetyLock 
                     moveState={state.move}
                     handleResume={controls.handleResume}

@@ -9,7 +9,7 @@ import { useMapCamera } from "@/features/map-visualizer/ui/MapCanvas";
 interface DestinationLayerProps {
     meta: MapMeta | null;
     mapHeight: number;
-    overrideNodeId?: string | null;
+    overrideNodeId?: string | null | undefined;
 }
 
 export function DestinationLayer({ meta, mapHeight, overrideNodeId }: DestinationLayerProps) {
