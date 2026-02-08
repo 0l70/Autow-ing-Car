@@ -21,7 +21,7 @@ class AckermannDriver(Node):
         super().__init__('ackermann_driver')
 
         self.wheelbase = 0.145        
-        self.max_steering_deg = 40.0 
+        self.max_steering_deg = 50.0 
         
         self.servo_channel = 0
         self.motor_channel = 0
@@ -112,31 +112,71 @@ class AckermannDriver(Node):
         threading.Thread(target=self.execute_gripper, args=(cmd,)).start()
 
     def execute_gripper(self, cmd):
-        self.get_logger().info(f"🦾 Executing: {cmd}")
+        """
+        그리퍼 동작 시퀀스 실행
+        cmd: "PICK" (잡기), "PLACE" (놓기), "INIT" (초기화)
+        """
+        self.get_logger().info(f"🦾 Gripper Sequence: {cmd}")
         
-        if cmd == "UP":
-            self.move_servo_smooth(self.lift_channel, self.current_lift, self.LIFT_UP)
-            self.current_lift = self.LIFT_UP
-            
-        elif cmd == "DOWN":
+        # [시퀀스 1] 물체 잡기 (내리기 -> 잡기 -> 올리기)
+        if cmd == "PICK":
+            # 1. 리프트 내리기
+            self.get_logger().info("  -> Lift DOWN")
             self.move_servo_smooth(self.lift_channel, self.current_lift, self.LIFT_DOWN)
             self.current_lift = self.LIFT_DOWN
+            time.sleep(1.0) # 기구적 안정화 대기
             
-        elif cmd == "GRIP": # 잡기 (CLOSE)
+            # 2. 그리퍼 잡기
+            self.get_logger().info("  -> Grip CLOSE")
             self.move_servo_smooth(self.gripper_channel, self.current_grip, self.GRIP_CLOSE)
             self.current_grip = self.GRIP_CLOSE
+            time.sleep(1.0) # 꽉 잡을 시간 대기
             
-        elif cmd == "RELEASE" or cmd == "OPEN": # 놓기 (OPEN)
+            # 3. 리프트 올리기
+            self.get_logger().info("  -> Lift UP")
+            self.move_servo_smooth(self.lift_channel, self.current_lift, self.LIFT_UP)
+            self.current_lift = self.LIFT_UP
+            time.sleep(1.0)
+            
+            self.get_logger().info("✅ PICK Sequence Complete")
+
+        # [시퀀스 2] 물체 놓기 (내리기 -> 풀기 -> 올리기)
+        elif cmd == "PLACE":
+            # 1. 리프트 내리기
+            self.get_logger().info("  -> Lift DOWN")
+            self.move_servo_smooth(self.lift_channel, self.current_lift, self.LIFT_DOWN)
+            self.current_lift = self.LIFT_DOWN
+            time.sleep(1.0)
+            
+            # 2. 그리퍼 풀기
+            self.get_logger().info("  -> Grip OPEN")
             self.move_servo_smooth(self.gripper_channel, self.current_grip, self.GRIP_OPEN)
             self.current_grip = self.GRIP_OPEN
+            time.sleep(1.0) # 물체가 떨어질 시간 대기
             
+            # 3. 리프트 올리기
+            self.get_logger().info("  -> Lift UP")
+            self.move_servo_smooth(self.lift_channel, self.current_lift, self.LIFT_UP)
+            self.current_lift = self.LIFT_UP
+            time.sleep(1.0)
+            
+            self.get_logger().info("✅ PLACE Sequence Complete")
+
+        # [시퀀스 3] 초기화 (안전하게 들고 벌리기)
         elif cmd == "INIT":
-            # UP -> OPEN
+            self.get_logger().info("  -> Initializing...")
+            # 먼저 들어올려서 바닥 충돌 방지
             self.move_servo_smooth(self.lift_channel, self.current_lift, self.LIFT_UP)
             self.current_lift = self.LIFT_UP
             time.sleep(0.5)
+            
+            # 벌리기
             self.move_servo_smooth(self.gripper_channel, self.current_grip, self.GRIP_OPEN)
             self.current_grip = self.GRIP_OPEN
+            self.get_logger().info("✅ Initialized")
+            
+        else:
+            self.get_logger().warn(f"⚠️ Unknown command: {cmd}")
 
     def listener_callback(self, msg):
         if not self.hardware_connected: return
@@ -164,7 +204,7 @@ class AckermannDriver(Node):
 
     def set_throttle_hardware(self, throttle):
         if not self.pca: return
-        throttle = max(-0.8, min(0.8, throttle))
+        throttle = max(-0.4, min(0.4, throttle))
         pulse = int(0xFFFF * abs(throttle))
         in1, in2, in3 = self.motor_channel + 5, self.motor_channel + 4, self.motor_channel + 3
 
