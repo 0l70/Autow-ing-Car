@@ -4,11 +4,11 @@ spring:
       on-profile: dev
 
   datasource:
-    # 로컬 PostgreSQL (8432 포트)
-    url: jdbc:postgresql://localhost:8432/postgres?binaryTransfer=false
-    username: A402
+    # 로컬 PostgreSQL (8432 포트) 또는 배포 환경변수
+    url: ${DB_URL:jdbc:postgresql://localhost:8432/postgres?binaryTransfer=false}
+    username: ${DB_USERNAME:A402}
     # [주의] Docker 실행 시 설정한 비밀번호 (가이드 예시: mysecurepassword)
-    password: A402TEAM 
+    password: ${DB_PASSWORD:A402TEAM} 
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
