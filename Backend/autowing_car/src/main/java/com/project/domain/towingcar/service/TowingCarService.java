@@ -8,7 +8,6 @@ import com.project.domain.flight.service.FlightDBAdaptor;
 import com.project.domain.map.entity.Edge;
 import com.project.domain.map.entity.Node;
 import com.project.domain.map.service.MapDBAdaptor;
-import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.CarConnectRequestDto;
 import com.project.domain.user.service.UserDBAdaptor;
 
 import com.project.domain.mission.dto.MissionWebSocketDtos.MissionResponseDto;
@@ -37,6 +36,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
+
+import com.project.domain.towingcar.constant.CarCommand;
 import com.project.domain.towingcar.dto.TowingCarStatusResponse;
 
 @Slf4j
@@ -55,7 +56,7 @@ public class TowingCarService {
     private final TowingCarMapper towingCarMapper; // [NEW]
 
     // [Restored Configuration Fields]
-    private final String START_NODE = "n1";
+    private final String START_NODE = "n2";
     private final String RUNWAY_NODE = "n4";
     private final String FINISH_NODE = "n8";
     private boolean isAutoConnectEnabled = true;
@@ -135,6 +136,8 @@ public class TowingCarService {
         payload.put("data", data);
 
         TxUtil.executeAfterCommit(() -> towingCarMqttService.sendDriveCommand(carCode, payload));
+        if (path.isEmpty())
+            TxUtil.executeAfterCommit(() -> towingCarMqttService.connectCar(carCode, flight.getId()));
     }
 
     /**
