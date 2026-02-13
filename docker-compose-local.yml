@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # 1. PostgreSQL (Local Port 8432)
+  postgres:
+    image: timescale/timescaledb-ha:pg16
+    container_name: local-postgres
+    restart: always
+    ports:
+      - "8432:5432" # 매핑: 로컬 8432 -> 컨테이너 5432
+    environment:
+      POSTGRES_USER: A402
+      POSTGRES_PASSWORD: A402TEAM
+      POSTGRES_DB: postgres
+    volumes:
+      - local-pgdata:/var/lib/postgresql/data
+
+  # 2. Redis
+  redis:
+    image: redis:7-alpine
+    container_name: local-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - local-redis-data:/data
+
+  # 3. MQTT Broker (Mosquitto)
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: local-mqtt
+    restart: always
+    ports:
+      - "1883:1883" # TCP
+      - "9001:9001" # Websocket
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf # Config 파일 마운트
+      - local-mosquitto-data:/mosquitto/data
+      - local-mosquitto-log:/mosquitto/log
+
+volumes:
+  local-pgdata:
+  local-redis-data:
+  local-mosquitto-data:
+  local-mosquitto-log:

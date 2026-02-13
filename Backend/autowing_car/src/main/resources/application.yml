@@ -1,0 +1,34 @@
+# --- application.yml (공통) ---
+spring:
+  config:
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:Backend/autowing_car/.env[.properties]
+  profiles:
+    active: dev # 기본은 로컬 개발 모드
+
+  
+      # url: ssl://${MQTT_HOST}:${MQTT_PORT}
+
+  datasource:
+    hikari:
+      maximum-pool-size: 50
+      minimum-idle: 10
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION}
+
+app:
+  mqtt:
+    mock: false
+  map:
+    locations:
+      - "file:/data/maps/node_*.json"
+      - "file:/data/maps/edge_*.json"
+      - "classpath:/maps/node_*.json"
+      - "classpath:/maps/edge_*.json"
+      - "classpath*:/maps/node_*.json"
+      - "classpath*:/maps/edge_*.json"

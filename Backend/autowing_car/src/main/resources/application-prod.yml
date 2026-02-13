@@ -1,0 +1,28 @@
+spring:
+  config:
+    activate:
+      on-profile: prod # 'master' -> 'prod'로 변경 (가이드와 통일)
+  datasource:
+    # EC2 환경변수에서 주입
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver # [FIX] Driver 명시
+  jpa:
+    hibernate:
+      ddl-auto: update # validate -> update (첫 배포 시 테이블 자동 생성 위해)
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect # [FIX] Dialect 명시
+  # Redis 설정 (환경변수)
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+  mqtt:
+    broker:
+      url: ssl://${MQTT_HOST}:${MQTT_PORT}
+
+app:
+  mqtt:
+    mock: false

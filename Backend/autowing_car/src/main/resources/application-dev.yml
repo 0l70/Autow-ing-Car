@@ -1,0 +1,55 @@
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  datasource:
+    # 로컬 PostgreSQL (8432 포트) 또는 배포 환경변수
+    url: ${DB_URL:jdbc:postgresql://localhost:8432/postgres?binaryTransfer=false}
+    username: ${DB_USERNAME:A402}
+    # [주의] Docker 실행 시 설정한 비밀번호 (가이드 예시: mysecurepassword)
+    password: ${DB_PASSWORD:A402TEAM} 
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      # create: 시작 시 기존 데이터 DROP 후 새로 생성 (매번 초기화)
+      ddl-auto: create 
+    show-sql: true
+    properties:
+      hibernate:
+        format-sql: true
+        # PostgreSQL 방언 명시 (혹시 H2 설정이 남아있을까봐 확실하게)
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  mqtt:
+    broker:
+      url: ssl://${MQTT_HOST}:${MQTT_PORT}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      
+logging:
+  level:
+    org.springframework.web: DEBUG
+    com.project: DEBUG
+    org.springframework.session: DEBUG
+    org.springframework.security.web.session: DEBUG
+
+app:
+  mqtt:
+    mock: false
+
+springwolf:
+  enabled: true
+  docket:
+    info:
+      title: Autowing Car Async API
+      version: 1.0.0
+      description: 차량 관제 실시간 통신 API
+    base-package: com.project
+    servers:
+      local:
+        protocol: ws
+        host: localhost:8080
+        description: Local WebSocket Server
+  use-fqn: false

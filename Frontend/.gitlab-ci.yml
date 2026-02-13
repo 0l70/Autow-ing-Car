@@ -1,0 +1,89 @@
+spec:
+  inputs:
+    project_dir:
+      type: string
+      default: "Frontend"
+      description: "Frontend Project Directory"
+---
+variables:
+  DOCKER_TLS_CERTDIR: ""
+
+stages:
+  - build
+  - deploy
+
+# 1. Docker Build & Push (변수 검증 및 단일 빌드로 통합)
+frontend-docker-push:
+  stage: deploy
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  before_script:
+    - echo "$BACKEND_DOCKER_PASSWORD" | docker login -u "$BACKEND_DOCKER_USERNAME" --password-stdin
+  script:
+    - |
+      echo "🚀 [Frontend] Starting Docker Build & Push..."
+      cd $[[ inputs.project_dir ]]
+
+      # 🔍 [CRITICAL] GitLab CI 변수 존재 여부 확인
+      if [ -z "$VITE_API_BASE_URL" ] || [ -z "$VITE_WS_BASE_URL" ]; then
+        echo "❌ ERROR: VITE_API_BASE_URL or VITE_WS_BASE_URL is empty!"
+        echo "GitLab Settings > CI/CD > Variables 에서 해당 변수가 등록되어 있는지, 혹은 Protected Branch 설정 때문에 가려진 건 아닌지 확인하세요."
+        exit 1
+      fi
+
+      echo "--- Debug: Variables found ---"
+      echo "VITE_API_BASE_URL: $VITE_API_BASE_URL"
+      echo "VITE_WS_BASE_URL: $VITE_WS_BASE_URL"
+      echo "-------------------------------"
+
+      SAFE_TAG=$(echo $CI_COMMIT_REF_NAME | sed 's/\//_/g')
+      IMAGE_NAME="$BACKEND_DOCKER_USERNAME/autowing-frontend:$SAFE_TAG"
+
+      docker build \
+        --build-arg VITE_WS_BASE_URL="$VITE_WS_BASE_URL" \
+        --build-arg VITE_API_BASE_URL="$VITE_API_BASE_URL" \
+        -t $IMAGE_NAME .
+
+      docker push $IMAGE_NAME
+      echo "🚀 Deployment Image [$IMAGE_NAME] Pushed Successfully!"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH =~ /^hotfix\/.*/'
+      changes:
+        - Frontend/**/*
+
+# 2. SSH Deploy to EC2 (원본 그대로 유지 + 요구하신 네트워크/포트 적용됨)
+frontend-deploy-ec2:
+  stage: deploy
+  image: alpine:latest
+  needs: ["frontend-docker-push"]
+  before_script:
+    - apk add --no-cache openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+  script:
+    - |
+      SAFE_TAG=$(echo $CI_COMMIT_REF_NAME | sed 's/\//_/g')
+      IMAGE_NAME="$BACKEND_DOCKER_USERNAME/autowing-frontend:$SAFE_TAG"
+      echo "🚀 [Frontend] Deploying branch [$CI_COMMIT_REF_NAME] (Tag: $SAFE_TAG) to EC2..."
+
+      ssh ubuntu@$EC2_IP "
+        echo '$BACKEND_DOCKER_PASSWORD' | docker login -u '$BACKEND_DOCKER_USERNAME' --password-stdin &&
+        docker pull $IMAGE_NAME &&
+        docker stop frontend-app || true &&
+        docker rm frontend-app || true &&
+        docker run -d --name frontend-app \
+          --network app-net \
+          --restart always \
+          -p 3000:3000 \
+          $IMAGE_NAME &&
+        echo '✅ Frontend Deployment Complete!'
+      "
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH =~ /^hotfix\/.*/'
+      changes:
+        - Frontend/**/*
+      when: on_success

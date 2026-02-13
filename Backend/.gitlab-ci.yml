@@ -1,0 +1,150 @@
+spec:
+  inputs:
+    project_dir:
+      type: string
+      default: "Backend/autowing_car"
+      description: "Backend 프로젝트의 상대 경로"
+---
+variables:
+  BACKEND_DIR: "Backend/autowing_car"
+  # ✅ [수정됨] 등록하신 변수명 사용
+  BACKEND_IMAGE: $BACKEND_DOCKER_USERNAME/autowing-backend:$CI_COMMIT_SHORT_SHA
+
+  # 🔥 [핵심 해결책] 이 줄이 없으면 2375 포트 연결 에러가 납니다!
+  # TLS(HTTPS) 인증서 생성을 끄고, 일반 HTTP(2375) 통신을 강제합니다.
+  DOCKER_TLS_CERTDIR: ""
+
+# ---------------------------------------------------------------------------
+# [0. Test Stage]
+# ---------------------------------------------------------------------------
+backend-build-test:
+  stage: build
+  image: eclipse-temurin:17-jdk-alpine
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"'
+      changes:
+        - Backend/**/*
+  script:
+    - echo "🏗️ [Backend] Build Test"
+    - cd $BACKEND_DIR
+    - chmod +x ./gradlew
+    - ./gradlew clean build -x test
+
+# ---------------------------------------------------------------------------
+# [1. Package Stage] - Docker build
+# ---------------------------------------------------------------------------
+backend-docker:
+  stage: package
+  image: docker:24.0.5
+  services:
+    # dind 서비스가 실행될 때 DOCKER_TLS_CERTDIR: "" 설정을 보고 2375 포트를 엽니다.
+    - docker:24.0.5-dind
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "master" || $CI_COMMIT_REF_NAME == "dev"'
+      changes:
+        - Backend/**/*
+  before_script:
+    - echo "$BACKEND_DOCKER_PASSWORD" | docker login -u "$BACKEND_DOCKER_USERNAME" --password-stdin
+  script:
+    - echo "📦 [Backend] Docker build & Push"
+    - cd $BACKEND_DIR
+    - docker build --pull -t $BACKEND_IMAGE .
+    - docker push $BACKEND_IMAGE
+
+# ---------------------------------------------------------------------------
+# [2. Deploy Stage] - EC2 배포
+# ---------------------------------------------------------------------------
+backend-deploy:
+  stage: deploy
+  image: alpine:latest
+  needs:
+    - backend-docker
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "master" || $CI_COMMIT_REF_NAME == "dev"'
+      changes:
+        - Backend/**/*
+  before_script:
+    - apk add --no-cache openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+  script:
+    - |
+      echo "🚀 [Backend] Deploying..."
+      ssh ubuntu@$EC2_IP "
+        # 1. Docker Login & Pull
+        echo '$BACKEND_DOCKER_PASSWORD' | docker login -u '$BACKEND_DOCKER_USERNAME' --password-stdin &&
+        docker pull $BACKEND_IMAGE &&
+
+        # 2. Cleanup Old Container
+        docker stop backend-app || true &&
+        docker rm backend-app || true &&
+
+        # 3. Network Setup (Use EXISTING app-net)
+        # Assuming app-net is already created and DB is attached to it.
+        # If app-net doesn't exist, create it (fallback)
+        docker network create app-net || true &&
+
+        # [Safety] Ensure DB container is connected to the network
+        DB_CONTAINER_NAME="autowing-postgres"
+        # Only connect if not already connected (though usually it is)
+        docker network connect app-net $DB_CONTAINER_NAME || true &&
+
+        # 4. Prepare Environment Variables
+        # Determine Profile (master -> prod, dev -> dev)
+        TARGET_PROFILE='dev'
+        if [ '$CI_COMMIT_REF_NAME' == 'master' ]; then
+          TARGET_PROFILE='prod'
+        fi &&
+
+        echo \"Deploying with Profile: \$TARGET_PROFILE\" &&
+
+        # Create .env file
+        echo 'MQTT_HOST=autowingcar.o-r.kr' > deploy.env &&
+        echo 'MQTT_PORT=8883' >> deploy.env &&
+        echo 'JWT_SECRET=$JWT_SECRET' >> deploy.env &&
+        echo 'JWT_EXPIRATION=86400000' >> deploy.env &&
+        echo 'REDIS_HOST=autowing-redis' >> deploy.env &&
+        echo 'REDIS_PORT=6379' >> deploy.env &&
+        echo \"BACKEND_IMAGE=$BACKEND_IMAGE\" >> deploy.env &&
+        
+        # [DB Vars] Auto-generate for app-net
+        if [ -z "$DB_URL" ]; then
+          echo "⚠️ DB_URL is empty. Using auto-generated internal Docker URL on app-net."
+          # Use internal 5432 port
+          echo "DB_URL=jdbc:postgresql://$DB_CONTAINER_NAME:5432/autowing?binaryTransfer=false" >> deploy.env
+        else
+          echo "DB_URL=$DB_URL" >> deploy.env
+        fi &&
+        echo \"DB_USERNAME=$DB_USERNAME\" >> deploy.env &&
+        echo \"DB_PASSWORD=$DB_PASSWORD\" >> deploy.env &&
+
+        # 5. Redis Container Setup (app-net)
+        if ! docker ps -a | grep -q autowing-redis; then
+          echo '🔴 Redis Container not found. Creating...'
+          docker run -d --name autowing-redis \
+            --network app-net \
+            --restart always \
+            -v autowing-redis-data:/data \
+            redis:7-alpine redis-server --appendonly yes
+        else
+          echo '✅ Redis Container exists.'
+          # Ensure Redis is also on the network
+          docker network connect app-net autowing-redis || true
+        fi &&
+
+        # 6. Run Backend Container
+        docker run -d --name backend-app \
+          --network app-net \
+          --restart always \
+          -p 8080:8080 \
+          --env-file deploy.env \
+          -e SPRING_PROFILES_ACTIVE=\$TARGET_PROFILE \
+          $BACKEND_IMAGE &&
+
+        # 7. Cleanup
+        rm deploy.env &&
+        docker image prune -f
+      "

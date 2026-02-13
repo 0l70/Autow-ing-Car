@@ -1,0 +1,236 @@
+amcl:
+  ros__parameters:
+    use_sim_time: False
+    
+    # [위치 추정] 초기 위치 (사용자 환경에 맞게 수정)
+    # set_initial_pose: true
+    # initial_pose:
+    #   x: -0.895
+    #   y: 2.245
+    #   z: 0.0
+    #   yaw: -1.5708
+      
+#      x: -0.324
+#     y: 0.833
+#     z: 0.0
+#     yaw: -1.53
+    
+    # 초기 분산 (작을수록 초기 위치를 확신함)
+    initial_cov_xx: 0.02
+    initial_cov_yy: 0.02
+    initial_cov_aa: 0.02
+
+    # 갱신 주기 단축 (5cm 이동 or 3도 회전마다 갱신)
+    update_min_d: 0.01
+    update_min_a: 0.01
+
+    # 오도메트리 노이즈 설정
+    alpha1: 1.0
+    alpha2: 1.0
+    alpha3: 1.0
+    alpha4: 1.0
+    alpha5: 1.0
+
+    # 입자 필터 설정
+    min_particles: 1000
+    max_particles: 3000
+    resample_interval: 1
+
+    base_frame_id: "base_link"
+    global_frame_id: "map"
+    odom_frame_id: "odom"
+    scan_topic: scan
+    
+    tf_broadcast: true
+    transform_tolerance: 1.0
+    
+    # Lidar 모델 튜닝
+    laser_max_beams: 100
+    laser_model_type: "likelihood_field"
+    z_hit: 0.9
+    z_rand: 0.05
+    z_max: 0.05
+    z_short: 0.05
+    sigma_hit: 0.2
+    lambda_short: 0.1
+    laser_likelihood_max_dist: 2.0
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: False
+    global_frame: map
+    robot_base_frame: base_link
+    odom_topic: /odom
+    bt_loop_duration: 10
+    default_server_timeout: 20
+
+controller_server:
+  ros__parameters:
+    use_sim_time: False
+    controller_frequency: 20.0
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.5
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.3
+    progress_checker_plugin: "progress_checker"
+    goal_checker_plugins: ["general_goal_checker"] 
+    controller_plugins: ["FollowPath"]
+
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.5
+      movement_time_allowance: 10.0
+    
+    # [수정됨] 도착 판정 기준 강화 (정밀 주차)
+    general_goal_checker:
+      stateful: True
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.10   # 25cm -> 10cm (더 정확하게)
+      yaw_goal_tolerance: 0.05   # 각도 오차도 줄임
+    
+    # 아커만 조향 컨트롤러
+    FollowPath:
+      plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      
+      desired_linear_vel: 0.8
+      max_linear_accel: 0.5
+      max_linear_decel: 0.5
+      
+      min_turning_radius: 1.1
+      
+      lookahead_dist: 1.5
+      min_lookahead_dist: 0.4
+      max_lookahead_dist: 1.0
+      lookahead_time: 2.0
+      
+      rotate_to_heading_at_start: false
+      use_rotate_to_heading: false
+      allow_reversing: true
+      transform_tolerance: 0.5
+      use_velocity_scaled_lookahead_dist: true
+      min_approach_linear_velocity: 0.05
+      approach_velocity_scaling_dist: 0.6
+      use_collision_detection: true
+      max_robot_pose_search_dist: 10.0
+      use_interpolation: true
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      use_sim_time: False
+      rolling_window: true
+      width: 3
+      height: 3
+      resolution: 0.05
+      robot_radius: 0.15
+      
+      plugins: ["voxel_layer", "inflation_layer"]
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 5.0
+        inflation_radius: 0.25
+      voxel_layer:
+        plugin: "nav2_costmap_2d::VoxelLayer"
+        enabled: True
+        publish_voxel_map: True
+        origin_z: 0.0
+        z_resolution: 0.05
+        z_voxels: 16
+        max_obstacle_height: 2.0
+        mark_threshold: 0
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          raytrace_max_range: 3.0
+          obstacle_max_range: 2.5
+      static_layer:
+        map_subscribe_transient_local: True
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_link
+      use_sim_time: False
+      robot_radius: 0.15
+      resolution: 0.05
+      track_unknown_space: true
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          raytrace_max_range: 3.0
+          obstacle_max_range: 2.5
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: True
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 5.0
+        inflation_radius: 0.25
+
+map_server:
+  ros__parameters:
+    use_sim_time: False
+    yaml_filename: "my_map.yaml"
+
+# [수정됨] 경로 계획기: NavfnPlanner -> SmacPlannerHybrid (자동차용)
+planner_server:
+  ros__parameters:
+    expected_planner_frequency: 20.0
+    use_sim_time: False
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_smac_planner/SmacPlannerHybrid"
+      downsample_costmap: false
+      tolerance: 0.25
+      allow_unknown: true
+      max_iterations: 1000000
+      max_on_approach_iterations: 1000
+      max_planning_time: 2.0
+      
+      # [핵심] 자동차 물리 모델 (후진 가능)
+      motion_model_for_search: "REEDS_SHEPP"  # 전진+후진 경로 생성
+      angle_quantization_bins: 72             # 5도 단위 정밀도
+      minimum_turning_radius: 1.1           # 회전 반경 (m)
+      reverse_penalty: 2.0                    # 후진 억제 가중치
+      change_penalty: 0.05                    # 방향 전환 페널티
+      non_straight_penalty: 2.0              # 곡선 주행 페널티
+      cost_travel_multiplier: 2.0
+      lookup_table_size: 20.0
+      cache_obstacle_heuristic: false
+      debug_visualizations: false
+      smooth_path: true
+
+recoveries_server:
+  ros__parameters:
+    costmap_topic: local_costmap/costmap_raw
+    footprint_topic: local_costmap/published_footprint
+    cycle_frequency: 10.0
+    recovery_plugins: ["backup", "wait"]
+    spin:
+      plugin: "nav2_recoveries/Spin"
+    backup:
+      plugin: "nav2_recoveries/BackUp"
+    wait:
+      plugin: "nav2_recoveries/Wait"
+    global_frame: odom
+    robot_base_frame: base_link
+    use_sim_time: False

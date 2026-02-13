@@ -1,0 +1,82 @@
+#!/bin/bash
+# 저장 위치: scripts/utils/prepare-commit-msg
+
+COMMIT_MSG_FILE=$1
+COMMIT_SOURCE=$2
+SHA1=$3
+
+# 1. 브랜치 이름에서 지라 키 추출 (예: S14P11A402-123)
+BRANCH_NAME=$(git symbolic-ref --short HEAD 2>/dev/null)
+JIRA_KEY=$(echo "$BRANCH_NAME" | grep -oE "S[0-9]+P[0-9]+A[0-9]+-[0-9]+")
+
+# 2. 기존 커밋 메시지 읽기
+ORIGINAL_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# 3. 이미 포맷이 적용된 경우(Merge, Revert 등)는 건너뛰기
+if [[ "$ORIGINAL_MSG" == *"Merge branch"* ]] || [[ "$ORIGINAL_MSG" == *"Revert"* ]]; then
+    exit 0
+fi
+
+# 4. 메시지 파싱 (형식: "type: content")
+# 정규표현식으로 맨 앞의 type과 나머지 내용을 분리합니다.
+TYPE=$(echo "$ORIGINAL_MSG" | cut -d':' -f1 | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+CONTENT=$(echo "$ORIGINAL_MSG" | cut -d':' -f2- | sed 's/^ *//') # 앞 공백 제거
+
+# type이 없거나 내용과 같으면(즉, 콜론이 없으면) 변환하지 않고 지라 키만 붙임
+if [ "$TYPE" == "$ORIGINAL_MSG" ] || [ -z "$CONTENT" ]; then
+    if [ -n "$JIRA_KEY" ] && [[ "$ORIGINAL_MSG" != *"$JIRA_KEY"* ]]; then
+        echo "[$JIRA_KEY] $ORIGINAL_MSG" > "$COMMIT_MSG_FILE"
+    fi
+    exit 0
+fi
+
+# 5. 이모지 매핑 (여기서 이모지를 붙입니다!)
+case "$TYPE" in
+    "feat"|"feature")   EMOJI="✨"; LABEL="Feat" ;;
+    "fix"|"bug")        EMOJI="🐛"; LABEL="Fix" ;;
+    "docs"|"doc")       EMOJI="📝"; LABEL="Docs" ;;
+    "style")            EMOJI="🎨"; LABEL="Style" ;;
+    "refactor"|"refact") EMOJI="♻️";  LABEL="Refactor" ;;
+    "test")             EMOJI="✅"; LABEL="Test" ;;
+    "chore")            EMOJI="🔨"; LABEL="Chore" ;;
+    "design")           EMOJI="💄"; LABEL="Design" ;;
+    "hotfix")           EMOJI="🚑️"; LABEL="Hotfix" ;;
+    *)                  EMOJI="✨"; LABEL="Feat" ;; # 기본값
+esac
+
+# 6. 파트(Part) 정보 감지 (선택 사항)
+# 브랜치 이름의 뒷부분부터 확인하여 태그 추출 (예: ...-fe-be -> [FE] [BE])
+# 허용된 태그: fe, be, em, pm, ai
+IFS='-' read -ra ADDR <<< "$BRANCH_NAME"
+PART=""
+for (( idx=${#ADDR[@]}-1 ; idx>=0 ; idx-- )) ; do
+    seg="${ADDR[idx]}"
+    # 대소문자 무시하고 소문자로 변환하여 비교
+    lower_seg=$(echo "$seg" | tr '[:upper:]' '[:lower:]')
+    
+    case "$lower_seg" in
+        "fe"|"be"|"em"|"pm"|"ai")
+            upper_seg=$(echo "$lower_seg" | tr '[:lower:]' '[:upper:]')
+            PART="[$upper_seg] $PART"
+            ;;
+        *)
+            # 태그가 아닌 단어를 만나면 즉시 중단 (뒤에서부터 태그가 연속되어야 함)
+            break
+            ;;
+    esac
+done
+
+# 7. 최종 메시지 조합
+# 형식: [지라키] [파트] 이모지 라벨: 내용
+# 예시: [S14P11A402-123] [FE] ✨ Feat: 로그인 기능 구현
+
+if [ -n "$JIRA_KEY" ]; then
+    # 지라 키가 있을 때
+    NEW_MSG="[$JIRA_KEY] ${PART}${EMOJI} ${LABEL}: ${CONTENT}"
+else
+    # 지라 키가 없을 때 (마스터 브랜치 등)
+    NEW_MSG="${PART}${EMOJI} ${LABEL}: ${CONTENT}"
+fi
+
+# 8. 파일 덮어쓰기
+echo "$NEW_MSG" > "$COMMIT_MSG_FILE"

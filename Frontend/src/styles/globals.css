@@ -1,0 +1,48 @@
+@import "./tokens.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    /* Small Text: SF Mono / JetBrains Mono (Technical Details) */
+    @apply bg-background text-foreground font-mono antialiased;
+  }
+  
+  /* Large Text: Apple System / Inter (Clean Headers) */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-sans;
+  }
+
+  /* Custom "Dark Ops" Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-[hsl(var(--gray-600)_/_0.5)] rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-accent-cyan/50;
+  }
+}
+
+/* [Animation] Fill Loop (Continuous Filling) */
+@keyframes fill-loop {
+  0% {
+    stroke-dashoffset: 1; /* Empty (Before start) */
+  }
+  85%{
+    stroke-dashoffset: 0; /* Full (Filled) */
+  }
+}
+
+.animate-fill-loop {
+  animation: fill-loop 1.3s linear infinite;
+}
