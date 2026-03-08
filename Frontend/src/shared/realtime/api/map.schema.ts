@@ -24,6 +24,10 @@ export const MapEdgeSchema = z.object({
     id: z.string(),
     from: z.string(),
     to: z.string(),
+    waypoints: z.array(z.object({
+        x: z.number(),
+        y: z.number()
+    })).nullable().optional().default([]),
 });
 
 export const MapCornersSchema = z.object({
@@ -39,10 +43,14 @@ export const MapCornersSchema = z.object({
  * Payload received from /topic/sys/map/info
  */
 export const MapInfoPayloadSchema = z.object({
-    map_id: z.string(),
+    mapId: z.string(),
     width: z.number().optional(),
     height: z.number().optional(),
-    corners: MapCornersSchema,
+    resolution: z.number().optional(),
+    originX: z.number().optional(),
+    originY: z.number().optional(),
+    imagePath: z.string().optional(),
+    corners: MapCornersSchema.optional(),
     nodes: z.array(MapNodeSchema),
     edges: z.array(MapEdgeSchema).optional().default([]),
 });

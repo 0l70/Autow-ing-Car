@@ -15,7 +15,12 @@ public class MapInfoHandler implements MqttTopicHandler {
 
     @Override
     public MqttIncomingMessage parse(String topic, JsonNode payload) {
-        String mapId = payload.has("mapId") ? payload.get("mapId").asText() : "UNKNOWN";
+        String mapId = "UNKNOWN";
+        if (payload.has("map_id"))
+            mapId = payload.get("map_id").asText();
+        else if (payload.has("mapId"))
+            mapId = payload.get("mapId").asText();
+
         return MqttIncomingMessage.MapData.builder()
                 .mapId(mapId)
                 .messageType("map_info")

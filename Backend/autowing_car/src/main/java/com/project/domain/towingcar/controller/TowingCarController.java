@@ -29,4 +29,10 @@ public class TowingCarController {
         TowingCarStatusResponse status = towingCarService.getTowingCarStatusByPilot(pilotId);
         return ResponseEntity.ok(status);
     }
+
+    @GetMapping
+    public ResponseEntity<java.util.List<TowingCarStatusResponse>> getAllTowingCars() {
+        log.info("[API] Request for all towing cars status");
+        return ResponseEntity.ok(towingCarService.getAllTowingCars());
+    }
 }

@@ -5,18 +5,24 @@ import com.project.domain.common.CarStatus;
 import com.project.domain.common.MissionStatus;
 import com.project.domain.flight.entity.Flight;
 import com.project.domain.flight.service.FlightDBAdaptor;
+import com.project.domain.map.entity.Edge;
 import com.project.domain.map.entity.Node;
 import com.project.domain.map.service.MapDBAdaptor;
 import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.CarConnectRequestDto;
 import com.project.domain.user.service.UserDBAdaptor;
-import com.project.domain.flight.service.FlightService;
-import com.project.domain.flight.dto.FlightWebSocketDtos.FlightInfoDto;
+
 import com.project.domain.mission.dto.MissionWebSocketDtos.MissionResponseDto;
 import com.project.domain.mission.entity.Mission;
 import com.project.domain.mission.service.MissionDBAdaptor;
 import com.project.domain.towingcar.dto.TowingCarWebSocketDtos.*;
 import com.project.domain.mission.dto.MissionWebSocketDtos.AdminAlertDto;
 import com.project.domain.mission.dto.MissionWebSocketDtos.NotificationType; // [NEW]
+import com.project.domain.map.service.MapService; // [NEW]
+import java.util.List; // [NEW]
+import com.project.global.util.TxUtil; // [NEW]
+import com.project.domain.towingcar.mapper.TowingCarMapper; // [NEW]
+import java.util.HashMap;
+import java.util.UUID;
 import com.project.domain.towingcar.entity.DrivingLog;
 import com.project.domain.towingcar.entity.TowingCar;
 import com.project.domain.user.entity.User;
@@ -29,10 +35,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
+
 import java.util.Map;
 import com.project.domain.towingcar.dto.TowingCarStatusResponse;
 
@@ -46,11 +49,14 @@ public class TowingCarService {
     private final MissionDBAdaptor missionDBAdaptor;
     private final FlightDBAdaptor flightDBAdaptor;
     private final MapDBAdaptor mapDBAdaptor;
+    private final MapService mapService; // [NEW]
     private final TowingCarMqttService towingCarMqttService;
     private final TowingCarWebSocketService towingCarWebSocketService;
-    private final FlightService flightService; // [RESTORED]
+    private final TowingCarMapper towingCarMapper; // [NEW]
 
     // [Restored Configuration Fields]
+    private final String START_NODE = "n1";
+    private final String FINISH_NODE = "n8";
     private boolean isAutoConnectEnabled = true;
     private boolean isAutoDisconnectEnabled = true;
     private static final double ARRIVAL_THRESHOLD = 2.0;
@@ -76,7 +82,7 @@ public class TowingCarService {
                     .build();
         }
 
-        return toResponseDTO(car);
+        return towingCarMapper.toResponseDTO(car);
     }
     // ...
 
@@ -93,7 +99,7 @@ public class TowingCarService {
 
         // 이동 중 상태로 변경
         assignedCar.updateStatus(assignedCar.getLastPosX(), assignedCar.getLastPosY(), assignedCar.getLastHeading(),
-                assignedCar.getLastVelocity(), assignedCar.getBattery(), CarStatus.MOVING_TO_LOAD);
+                assignedCar.getLastVelocity(), assignedCar.getBattery(), CarStatus.MOVING_TO_GATE);
 
         log.info("🚗 [Dispatch] {} -> {}", assignedCar.getCode(), flightNumber);
 
@@ -102,46 +108,32 @@ public class TowingCarService {
 
         // ✅ MQTT: 트랜잭션 커밋 후 전송
         final String carCode = assignedCar.getCode();
-        final String nodeCode = flight.getNodeCode();
-        sendMqttAfterCommit(() -> towingCarMqttService.moveCarToGate(carCode, nodeCode));
+        final String nodeCode = flight.getNodeCode(); // Target Gate
 
-        // ✅ 비동기 시뮬레이션: 트랜잭션 커밋 후 시작
-        final Long flightId = flight.getId();
-        sendMqttAfterCommit(() -> simulateAutoConnection(carCode, flightId));
-    }
+        // [New Logic] Calculate Path on Server
+        Node carNode = mapDBAdaptor.getNodeByCode(START_NODE); // Default Origin
+        Node gateNode = mapDBAdaptor.getNodeByCode(nodeCode);
 
-    private void simulateAutoConnection(String carCode, Long flightId) {
-        CompletableFuture.runAsync(() -> {
-            try {
-                // Wait 3 seconds (car "travels" to gate)
-                TimeUnit.SECONDS.sleep(3);
+        List<Edge> path = mapService.findOptimalPath(carNode, gateNode);
+        // List<Map<String, Object>> pathPayload =
+        // mapService.convertPathToPayload(path); // Removed
 
-                log.info("[TEST] {} arrived at gate, triggering connect...", carCode);
+        // Define Payload (Standardized Format)
+        Map<String, Object> data = new HashMap<>();
+        data.put("carId", carCode);
+        data.put("startNode", START_NODE);
+        data.put("endNode", nodeCode);
+        data.put("edgeIds", path.stream().map(Edge::getEdgeCode).toList());
+        data.put("finalAction", "DOCK");
 
-                // Trigger connect (sets LOADING status)
-                TowingCar car = towingCarDBAdaptor.getCarByCode(carCode);
-                Flight flight = flightDBAdaptor.getFlightById(flightId);
+        Map<String, Object> payload = new HashMap<>(); // [FIX] Use import
+        payload.put("msgId", UUID.randomUUID().toString());
+        payload.put("timestamp", System.currentTimeMillis());
+        payload.put("type", "DRIVE");
+        payload.put("taskId", "DISPATCH_" + flight.getId());
+        payload.put("data", data);
 
-                car.updateStatus(car.getLastPosX(), car.getLastPosY(), car.getLastHeading(),
-                        car.getLastVelocity(), car.getBattery(), CarStatus.LOADING);
-                towingCarDBAdaptor.save(car); // [FIX] DB Sync
-                towingCarWebSocketService.broadcastCarStatus(carCode, toDTO(car));
-
-                // Wait another 3 seconds (loading process)
-                TimeUnit.SECONDS.sleep(3);
-
-                log.info("[TEST] {} loading complete, Connected (TOWING)", carCode);
-
-                // Set TOWING status
-                car.updateStatus(car.getLastPosX(), car.getLastPosY(), car.getLastHeading(),
-                        car.getLastVelocity(), car.getBattery(), CarStatus.TOWING);
-                towingCarDBAdaptor.save(car); // [FIX] DB Sync
-                towingCarWebSocketService.broadcastCarStatus(carCode, toDTO(car));
-
-            } catch (InterruptedException e) {
-                log.error("[TEST] Auto-connection simulation interrupted", e);
-            }
-        });
+        TxUtil.executeAfterCommit(() -> towingCarMqttService.sendDriveCommand(carCode, payload));
     }
 
     /**
@@ -162,7 +154,7 @@ public class TowingCarService {
         // ✅ 비즈니스 로직: 상태 변경만
         assignedCar.updateStatus(assignedCar.getLastPosX(), assignedCar.getLastPosY(),
                 assignedCar.getLastHeading(), assignedCar.getLastVelocity(),
-                assignedCar.getBattery(), CarStatus.LOADING);
+                assignedCar.getBattery(), CarStatus.DOCKING);
 
         // ✅ 알림: WebSocket (Helper 메서드로 위임)
         notifyCarConnected(assignedCar, pilotId);
@@ -170,7 +162,7 @@ public class TowingCarService {
         // ✅ MQTT: 트랜잭션 커밋 후 전송
         final String carCode = assignedCar.getCode();
         final Long flightId = flight.getId();
-        sendMqttAfterCommit(() -> towingCarMqttService.connectCar(carCode, flightId));
+        TxUtil.executeAfterCommit(() -> towingCarMqttService.connectCar(carCode, flightId));
     }
 
     /**
@@ -185,25 +177,84 @@ public class TowingCarService {
 
         log.info("🔌 [Disconnect] Flight={} (By {})", flight.getFlightNumber(), pilotId);
 
-        // ✅ 비즈니스 로직: 상태 변경과 미션 종료
+        // 1. 상태 변경: UNLOADING
         assignedCar.updateStatus(assignedCar.getLastPosX(), assignedCar.getLastPosY(),
                 assignedCar.getLastHeading(), assignedCar.getLastVelocity(),
-                assignedCar.getBattery(), CarStatus.UNLOADING);
+                assignedCar.getBattery(), CarStatus.UNDOCKING);
+        towingCarDBAdaptor.save(assignedCar); // Intermediate save
 
-        // 미션 완료 처리
+        // 2. 미션 완료 처리
         if (assignedCar.getCurrentMissionId() != null) {
             Mission mission = missionDBAdaptor.getMissionById(assignedCar.getCurrentMissionId());
             mission.updateStatus(MissionStatus.COMPLETED);
             assignedCar.clearMission();
         }
 
+        // 3. 차고지 복귀 (Return to Base) -> MQTT 전송 & 상태 변경 (MOVING_TO_IDLE)
+        returnToBase(assignedCar);
+
+        log.info("✅ [Disconnect] Car {} returning to base (MOVING_TO_IDLE)", assignedCar.getCode());
+
         // ✅ 알림: WebSocket (Helper 메서드로 위임)
         notifyCarDisconnected(assignedCar, pilotId);
 
-        // ✅ MQTT: 트랜잭션 커밋 후 전송
+        // ✅ MQTT: Disconnect 명령을 따로 보낼 필요가 있는지 체크 (이미 Return Path를 보냄)
+        // 만약 Disconnect라는 Action이 별도로 필요하다면 유지, 아니면 PARK 명령으로 대체됨.
+        // 기장님 요청: "경로가 주어지고 도착 시 UNLOADING -> 차고지로 돌아가기 -> IDLE"
+        // 즉, 별도의 Disconnect Control 명령보다는 Drive 명령이 중요함.
+        // 하지만 기존 호환성을 위해 Disconnect Control 메시지도 전송 (Optional)
         final String carCode = assignedCar.getCode();
         final Long flightId = flight.getId();
-        sendMqttAfterCommit(() -> towingCarMqttService.disconnectCar(carCode, flightId));
+        TxUtil.executeAfterCommit(() -> towingCarMqttService.disconnectCar(carCode, flightId));
+    }
+
+    private void returnToBase(TowingCar car) {
+        // 1. Find Base Entrance (n8)
+        Node baseEntrance = mapDBAdaptor.getNodeByCode(FINISH_NODE); // "n8"
+        if (baseEntrance == null) {
+            baseEntrance = mapService.findNearestNode(0, 0);
+        }
+
+        // Use LastNode if available
+        Node carNode = car.getLastNode();
+        if (carNode == null) {
+            carNode = mapService.findNearestNode(car.getLastPosX(), car.getLastPosY());
+        }
+
+        // 2. Calculate Path
+        List<Edge> path = mapService.findOptimalPath(carNode, baseEntrance);
+
+        // [Safeguard] If already at n8 (or path empty/very close), we might need to
+        // Trigger Hop immediately
+        // But usually, we send the Drive command even if short.
+
+        if (path.isEmpty() && mapService.calculateDistance(carNode, baseEntrance) > 1.0) {
+            log.warn("❌ [Return] No path found from {} to {}", carNode.getNodeCode(), baseEntrance.getNodeCode());
+            return;
+        }
+
+        // 3. Construct Payload
+        Map<String, Object> data = new HashMap<>();
+        data.put("carId", car.getCode());
+        data.put("startNode", carNode.getNodeCode());
+        data.put("endNode", baseEntrance.getNodeCode());
+        data.put("edgeIds", path.stream().map(Edge::getEdgeCode).toList());
+        data.put("finalAction", "PARK");
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("msgId", UUID.randomUUID().toString());
+        payload.put("timestamp", System.currentTimeMillis());
+        payload.put("type", "DRIVE");
+        payload.put("taskId", "RETURN_" + car.getCode());
+        payload.put("data", data);
+
+        // 4. Send MQTT
+        TxUtil.executeAfterCommit(() -> towingCarMqttService.sendDriveCommand(car.getCode(), payload));
+
+        // 5. Update Status
+        car.updateStatus(car.getLastPosX(), car.getLastPosY(), car.getLastHeading(),
+                car.getLastVelocity(), car.getBattery(), CarStatus.RETURNING);
+        towingCarDBAdaptor.save(car);
     }
 
     // =========================================================================
@@ -219,39 +270,111 @@ public class TowingCarService {
         double y = payload.get("y").asDouble();
         double heading = payload.get("yaw").asDouble();
         double velocity = payload.get("v").asDouble();
-        CarStatus status = parseCarStatus(payload.path("mode").asText());
+        CarStatus status = CarStatus.from(payload.path("mode").asText());
         int battery = payload.get("battery").asInt();
 
-        // [Auto Trigger] 로봇이 멈췄을 때(IDLE) 자동 연결/해제 체크
+        // [Topological Tracking] Update LastNode within context
+        Node nearestNode = mapService.findNearestNode(x, y, assignedCar.getLastNode());
+        if (nearestNode != null) {
+            // Only update if very close (e.g., 2.0m)
+            if (mapService.calculateDistance(nearestNode, x, y) <= ARRIVAL_THRESHOLD) {
+                assignedCar.updateLastNode(nearestNode);
+            }
+        }
+
+        // [Auto Trigger]
         checkAndTriggerAutoActions(assignedCar, x, y, status);
 
         // DB Update & Log
+        CarStatus oldStatus = assignedCar.getCarStatus();
         assignedCar.updateStatus(x, y, heading, velocity, battery, status);
+
+        // [New Logic] 1-4. 토잉카가 토잉 완료(TOWING) 상태를 보냈을 때 -> 기장에게 즉시 알림
+        if (oldStatus != CarStatus.TOWING && status == CarStatus.TOWING) {
+            log.info("🎉 [Monitoring] Car {} reported TOWING complete!", carCode);
+            Flight flight = flightDBAdaptor.getFlightByAssignedCar(assignedCar);
+            if (flight != null) {
+                notifyTowingComplete(assignedCar, flight.getPilot().getEmail());
+            }
+        }
 
         Mission mission = (assignedCar.getCurrentMissionId() != null)
                 ? missionDBAdaptor.getMissionById(assignedCar.getCurrentMissionId())
                 : null;
+
+        // [Status Tracking] Car status -> Mission status sync
+        if (mission != null && mission.getStatus() == MissionStatus.RUNNING) {
+            if (status == CarStatus.STOP) {
+                mission.updateStatus(MissionStatus.PAUSED);
+                missionDBAdaptor.save(mission);
+                log.warn("⚠️ [Monitoring] Car {} STOPPED -> Mission {} PAUSED", carCode, mission.getId());
+                // Notify?
+            } else if (status == CarStatus.ERROR) {
+                // handle error...
+            }
+        }
+
         saveDrivingLog(assignedCar, mission);
+
+        // [Final Step] 통합 브로드캐스트 (DTO 기반으로 Pilot + ATCs에게 전송)
+        towingCarWebSocketService.broadcastCarStatus(carCode, towingCarMapper.toDTO(assignedCar));
     }
 
     private void checkAndTriggerAutoActions(TowingCar assignedCar, double x, double y, CarStatus status) {
-        // [Fix] Allow checking auto actions even if status is not IDLE (e.g.
-        // MOVING_TO_LOAD)
-        // if (status != CarStatus.IDLE) return;
-
-        // Auto Connect
-        if (isAutoConnectEnabled && assignedCar.getCarStatus() == CarStatus.MOVING_TO_LOAD) { // DB상 배차이동중
+        // 1. Auto Connect (Moving to Load -> Arrived at Gate -> Connect)
+        if (isAutoConnectEnabled && assignedCar.getCarStatus() == CarStatus.MOVING_TO_GATE) {
             Flight flight = flightDBAdaptor.getFlightByAssignedCar(assignedCar);
+            // Use LastNode logic or Distance logic
             if (flight != null && isArrivedAt(x, y, flight.getNodeCode())) {
                 connectCar("SYSTEM", new CarConnectRequestDto(flight.getId()));
             }
         }
 
-        // Auto Disconnect
-        if (isAutoDisconnectEnabled && assignedCar.getCurrentMissionId() != null) {
-            Mission mission = missionDBAdaptor.getMissionById(assignedCar.getCurrentMissionId());
-            if (mission.getStatus() == MissionStatus.RUNNING && isArrivedAt(x, y, mission.getDestNode())) {
-                disconnectCar("SYSTEM", new CarDisconnectRequestDto(mission.getFlight().getId()));
+        // 2. Auto Disconnect / Return (Runway Undocking -> Return n8)
+        // Trigger specific transition: UNLOADING -> IDLE
+        if (isAutoDisconnectEnabled && status == CarStatus.WAITING_FOR_RETURN) {
+            if (assignedCar.getCurrentMissionId() != null) {
+                Mission mission = missionDBAdaptor.getMissionById(assignedCar.getCurrentMissionId());
+                Node destNode = mapDBAdaptor.getNodeByCode(mission.getDestNode());
+                Node lastNode = assignedCar.getLastNode();
+
+                if (lastNode != null && destNode != null &&
+                        lastNode.getId().equals(destNode.getId())) {
+
+                    log.info("🚩 [Auto Action] Car {} arrived at Dest {} ({}) -> Triggering Disconnect/Return",
+                            assignedCar.getCode(), destNode.getNodeCode(), status);
+
+                    disconnectCar("SYSTEM", new CarDisconnectRequestDto(mission.getFlight().getId()));
+                }
+            }
+        }
+
+        // 3. Mission Completion Check (Arrival at n1 + IDLE)
+        // Scenario: Car moves n8 -> n1 (physically, no edge). Reports IDLE when at n1.
+        if (status == CarStatus.IDLE) {
+            Node startNode = mapDBAdaptor.getNodeByCode(START_NODE); // "n1"
+            if (startNode != null && mapService.calculateDistance(startNode, assignedCar.getLastPosX(),
+                    assignedCar.getLastPosY()) <= ARRIVAL_THRESHOLD) {
+                // 1. Force update LastNode to n1
+                if (assignedCar.getLastNode() == null || !assignedCar.getLastNode().getNodeCode().equals(START_NODE)) {
+                    assignedCar.updateLastNode(startNode);
+                    log.info("📍 [Monitoring] Car {} Arrived at Base {} (Physical Check)", assignedCar.getCode(),
+                            START_NODE);
+                }
+
+                // 2. Complete Mission if exists
+                if (assignedCar.getCurrentMissionId() != null) {
+                    Mission mission = missionDBAdaptor.getMissionById(assignedCar.getCurrentMissionId());
+                    if (mission != null && mission.getStatus() == MissionStatus.RUNNING) {
+                        mission.updateStatus(MissionStatus.COMPLETED);
+                        missionDBAdaptor.save(mission);
+
+                        assignedCar.assignMission(null); // Clear Mission
+                        log.info("🎉 [Mission] Mission {} COMPLETED (Car at Base)", mission.getId());
+
+                        // Notify?
+                    }
+                }
             }
         }
     }
@@ -269,7 +392,7 @@ public class TowingCarService {
         // ✅ MQTT (커밋 후)
         final String carCode = request.getCar_code();
         final String mode = request.getMode();
-        sendMqttAfterCommit(() -> towingCarMqttService.setMode(carCode, mode));
+        TxUtil.executeAfterCommit(() -> towingCarMqttService.setMode(carCode, mode));
     }
 
     /**
@@ -279,12 +402,43 @@ public class TowingCarService {
     public void emergencyStop(String pilotId, CarEmergencyRequestDto request) {
         log.info("[WS] EMERGENCY STOP: Pilot={}, Car={}", pilotId, request.getCarId());
 
-        // 1. MQTT (커밋 후 전송 - 즉시 정지)
         final String carCode = request.getCarId();
-        sendMqttAfterCommit(() -> towingCarMqttService.emergencyStop(carCode));
+
+        // [NEW] Mission 상태를 PAUSED로 변경
+        missionDBAdaptor.findByCarCodeAndStatus(carCode, MissionStatus.RUNNING)
+                .ifPresent(mission -> {
+                    mission.updateStatus(MissionStatus.PAUSED);
+                    missionDBAdaptor.save(mission);
+                    log.info("[Mission] Status changed to PAUSED: missionId={}", mission.getId());
+                });
+
+        // 1. MQTT (커밋 후 전송 - 즉시 정지)
+        TxUtil.executeAfterCommit(() -> towingCarMqttService.emergencyStop(carCode));
 
         // 2. 알림 (Helper) - 관제사에게 알림 추가
         notifyEmergencyStop(pilotId, request.getCarId());
+    }
+
+    /**
+     * [NEW] 푸시백 재개
+     */
+    @Transactional
+    public void resumePushback(String pilotId, CarEmergencyRequestDto request) {
+        String carCode = request.getCarId();
+        log.info("[WS] RESUME PUSHBACK: Pilot={}, Car={}", pilotId, carCode);
+
+        // 1. PAUSED 상태의 Mission 찾기
+        Mission mission = missionDBAdaptor.findByCarCodeAndStatus(carCode, MissionStatus.PAUSED)
+                .orElseThrow(() -> new IllegalStateException("No paused mission for car: " + carCode));
+
+        // 2. Mission 상태를 RUNNING으로 변경
+        mission.updateStatus(MissionStatus.RUNNING);
+        missionDBAdaptor.save(mission);
+
+        // 3. MQTT 재개 명령
+        TxUtil.executeAfterCommit(() -> towingCarMqttService.resumeCar(carCode));
+
+        log.info("[Mission] Resumed: missionId={}", mission.getId());
     }
 
     // =========================================================================
@@ -304,72 +458,23 @@ public class TowingCarService {
                 .towingCarId(car.getId())
                 .missionId(mission != null ? mission.getId() : null)
                 .carStatus(car.getCarStatus())
-                .missionStatus(mission != null ? mission.getStatus() : MissionStatus.WAITING)
+                .missionStatus(mission != null ? mission.getStatus() : MissionStatus.RUNNING)
                 .posX(car.getLastPosX()).posY(car.getLastPosY())
                 .heading(car.getLastHeading()).velocity(car.getLastVelocity()).battery(car.getBattery())
                 .build();
         towingCarDBAdaptor.saveDrivingLog(log);
     }
 
-    private TowingCarStatusResponse toResponseDTO(TowingCar car) {
-        return TowingCarStatusResponse.builder()
-                .code(car.getCode())
-                .posX(car.getLastPosX() != null ? car.getLastPosX() : 0.0)
-                .posY(car.getLastPosY() != null ? car.getLastPosY() : 0.0)
-                .heading(car.getLastHeading() != null ? car.getLastHeading() : 0.0)
-                .velocity(car.getLastVelocity() != null ? car.getLastVelocity() : 0.0)
-                .battery(car.getBattery())
-                .status(car.getCarStatus().name())
-                .build();
-    }
-
-    private TowingCarDTO toDTO(TowingCar car) {
-        return TowingCarDTO.builder()
-                .code(car.getCode())
-                .posX(car.getLastPosX() != null ? car.getLastPosX() : 0.0)
-                .posY(car.getLastPosY() != null ? car.getLastPosY() : 0.0)
-                .heading(car.getLastHeading() != null ? car.getLastHeading() : 0.0)
-                .velocity(car.getLastVelocity() != null ? car.getLastVelocity() : 0.0)
-                .battery(car.getBattery())
-                .status(car.getCarStatus().name())
-                .build();
-    }
-
-    private CarStatus parseCarStatus(String s) {
-        try {
-            return CarStatus.valueOf(s.toUpperCase());
-        } catch (Exception e) {
-            return CarStatus.IDLE;
-        }
-    }
-
-    // =========================================================================
-    // Helper Methods (Notification & MQTT-After-Commit)
-    // =========================================================================
-
-    /**
-     * TransactionSynchronization을 사용하여 트랜잭션 커밋 후 MQTT 명령 전송
-     * MissionService 패턴 적용
-     */
-    private void sendMqttAfterCommit(Runnable mqttCommand) {
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(
-                    new TransactionSynchronization() {
-                        @Override
-                        public void afterCommit() {
-                            mqttCommand.run();
-                        }
-                    });
-        } else {
-            mqttCommand.run();
-        }
-    }
+    // toResponseDTO, toDTO, parseCarStatus and sendMqttAfterCommit are removed
 
     /**
      * 배차 완료 알림
      */
+    /**
+     * 배차 완료 알림
+     */
     private void notifyCarDispatched(TowingCar car, Flight flight) {
-        towingCarWebSocketService.broadcastCarStatus(car.getCode(), toDTO(car));
+        towingCarWebSocketService.broadcastCarStatus(car.getCode(), towingCarMapper.toDTO(car));
         towingCarWebSocketService.notifyFlightChannel(flight.getId(),
                 Map.of("event", "CAR_DISPATCHED", "carCode", car.getCode()));
     }
@@ -378,7 +483,6 @@ public class TowingCarService {
      * 연결 완료 알림
      */
     private void notifyCarConnected(TowingCar car, String pilotId) {
-        towingCarWebSocketService.broadcastCarStatus(car.getCode(), toDTO(car));
         towingCarWebSocketService.notifyPilotResult(pilotId,
                 MissionResponseDto.builder()
                         .status("SUCCESS")
@@ -390,7 +494,6 @@ public class TowingCarService {
      * 연결 해제 알림
      */
     private void notifyCarDisconnected(TowingCar car, String pilotId) {
-        towingCarWebSocketService.broadcastCarStatus(car.getCode(), toDTO(car));
         towingCarWebSocketService.notifyPilotResult(pilotId,
                 MissionResponseDto.builder()
                         .status("SUCCESS")
@@ -404,7 +507,7 @@ public class TowingCarService {
     private void notifyModeSwitched(String pilotId, String mode) {
         towingCarWebSocketService.notifyPilotResult(pilotId,
                 MissionResponseDto.builder()
-                        .status("SUCCESS")
+                        .status("mode_switched")
                         .message("Mode Switched to: " + mode)
                         .build());
     }
@@ -416,7 +519,7 @@ public class TowingCarService {
         // 1. Pilot에게 알림
         towingCarWebSocketService.notifyPilotResult(pilotId,
                 MissionResponseDto.builder()
-                        .status("SUCCESS")
+                        .status("emergency_stop")
                         .message("EMERGENCY STOP EXECUTED")
                         .build());
 
@@ -425,11 +528,29 @@ public class TowingCarService {
         AdminAlertDto alert = AdminAlertDto.builder()
                 .type(NotificationType.EMERGENCY_STOP) // [FIX] Use Enum
                 .message("Pilot triggered EMERGENCY STOP for Car " + carCode)
-                .severity("CRITICAL")
+                .severity("emergency_stop")
                 .flightNumber("N/A") // 필요 시 Flight 조회하여 채움
                 .timestamp(System.currentTimeMillis())
                 .build();
 
         towingCarWebSocketService.notifyAdminEmergency(alert);
+    }
+
+    /**
+     * 토잉 완료(연결 완료) 알림
+     */
+    private void notifyTowingComplete(TowingCar car, String pilotId) {
+        towingCarWebSocketService.notifyPilotResult(pilotId,
+                MissionResponseDto.builder()
+                        .status("SUCCESS")
+                        .message("Towing Connected (Ready for Mission)")
+                        .build());
+    }
+
+    @Transactional(readOnly = true)
+    public List<TowingCarStatusResponse> getAllTowingCars() {
+        return towingCarDBAdaptor.findAllCars().stream()
+                .map(towingCarMapper::toResponseDTO)
+                .collect(java.util.stream.Collectors.toList());
     }
 }

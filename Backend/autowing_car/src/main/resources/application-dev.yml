@@ -1,0 +1,52 @@
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  datasource:
+    url: jdbc:h2:mem:ats_db;MODE=PostgreSQL # Postgres 모드로 실행 (호환성 UP)
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop # 껐다 켜면 초기화 (개발용)
+    show-sql: true
+    properties:
+      hibernate:
+        format-sql: true
+  h2:
+    console:
+      enabled: true # http://localhost:8080/h2-console 접속 가능
+
+  # Redis 설정 (Refresh Token 저장소)
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+logging:
+  level:
+    org.springframework.web: DEBUG
+    com.project: DEBUG
+    org.springframework.session: DEBUG
+    org.springframework.security.web.session: DEBUG
+
+app:
+  mqtt:
+    mock: false
+
+springwolf:
+  enabled: true
+  docket:
+    info:
+      title: Autowing Car Async API
+      version: 1.0.0
+      description: 차량 관제 실시간 통신 API
+    base-package: com.project
+    servers:
+      local:
+        protocol: ws
+        host: localhost:8080
+        description: Local WebSocket Server
+  use-fqn: false # 클래스명을 짧게 표시
+

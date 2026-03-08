@@ -82,6 +82,14 @@ public class TowingCarWSController {
         towingCarService.emergencyStop(principal.getName(), request);
     }
 
+    // [NEW] 푸시백 재개
+    @MessageMapping("/car/resume")
+    @AsyncPublisher(operation = @AsyncOperation(channelName = "/app/car/resume", description = "기장이 긴급 정지된 푸시백을 재개합니다. 차량이 기존 경로를 따라 다시 이동합니다."))
+    public void resumePushback(@Payload CarEmergencyRequestDto request, Principal principal) {
+        log.info("[WS] RESUME PUSHBACK Request: Pilot={}, Car={}", principal.getName(), request.getCarId());
+        towingCarService.resumePushback(principal.getName(), request);
+    }
+
     // ========== Server → Client (SUBSCRIBE) - 문서화용 ==========
 
     @AsyncListener(operation = @AsyncOperation(channelName = "/topic/car/{carCode}", description = "특정 견인차의 실시간 상태를 브로드캐스트합니다. MQTT 모니터링 데이터를 WebSocket으로 중계하여 위치, 배터리, 연결 상태 등을 전달합니다."))

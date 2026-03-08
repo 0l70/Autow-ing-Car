@@ -34,19 +34,35 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**", "/h2-console/**", "/ws-server/**").permitAll() // 로그인, H2, WS
-                                                                                                        // Handshake 허용
+                        .requestMatchers("/api/auth/**", "/api/map/**", "/h2-console/**", "/ws-server/**").permitAll() // 로그인,
+                                                                                                                       // 맵,
+                                                                                                                       // H2,
+                                                                                                                       // WS
+                        // Handshake 허용
                         .requestMatchers("/app/**", "/topic/**", "/user/**").permitAll() // STOMP 메시징
                         /* 허용(ROLE : ATC ,PILOT) */
                         .requestMatchers("/springwolf/**").permitAll() // Springwolf UI 허용
+                        // Swagger UI 허용
+                        .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated())
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
+                            response.setContentType("application/json");
+                            response.getWriter().write("{\"message\": \"Unauthorized\"}");
+                        }))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .headers(headers -> headers.frameOptions(frame -> frame.disable()))
                 .cors(cors -> cors.configurationSource(request -> {
                     var corsConfiguration = new org.springframework.web.cors.CorsConfiguration();
-                    corsConfiguration.setAllowedOrigins(java.util.List.of("http://localhost:3000"));
+                    corsConfiguration.setAllowedOrigins(java.util.List.of(
+                            "http://localhost:3000",
+                            "http://127.0.0.1:3000",
+                            "https://autowingcar.o-r.kr",
+                            "https://autowingcar.o-r.kr:8443"));
                     corsConfiguration.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
                     corsConfiguration.setAllowedHeaders(java.util.List.of("*"));
+                    corsConfiguration.setAllowCredentials(true); // 인증 정보 포함 허용
                     return corsConfiguration;
                 }));
 

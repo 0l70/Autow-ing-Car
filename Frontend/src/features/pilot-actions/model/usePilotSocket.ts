@@ -1,13 +1,12 @@
-import { useEffect, useCallback } from 'react';
-import { useGraphStore } from '@/entities/map/model/store';
+import { useEffect, useCallback, useRef } from 'react';
 import { Aircraft } from '@/entities/map/model/types';
 import { useAuthStore } from '@/features/auth/model/useAuthStore';
-import { useStompClient } from '@/shared/realtime/clients/useStompClient';
+import { useSocket } from '@/shared/realtime/context/SocketProvider'; // Changed to use shared context
 import { WS_TOPICS } from '@/shared/realtime/config/topics';
 import { z } from 'zod';
 
 // Basic validation schema
-const AircraftStatusSchema = z.enum(['IDLE', 'MOVING_TO_LOAD', 'LOADING', 'TOWING', 'UNLOADING', 'MOVING_TO_IDLE', 'STOP', 'ERROR']);
+const AircraftStatusSchema = z.enum(['IDLE', 'MOVING_TO_GATE', 'DOCKING', 'TOWING', 'UNDOCKING', 'WAITING_FOR_RETURN', 'RETURNING', 'STOP', 'ERROR']);
 
 const TelemetrySchema = z.object({
     car_id: z.string().optional(),
@@ -19,6 +18,7 @@ const TelemetrySchema = z.object({
     posY: z.number().optional(),
     heading: z.number().optional(),
     velocity: z.number().optional(),
+    speed: z.number().optional(), // [Safety] Fallback
     status: AircraftStatusSchema.optional(),
 
     // Legacy/MQTT fields
@@ -33,49 +33,26 @@ const TelemetrySchema = z.object({
     is_loaded: z.boolean().default(false)
 });
 
-// TODO: .env 파일로 이동 필요
-const WS_URL_DEV = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8080/ws-server/websocket';
+import { useAircraftStore } from '@/entities/aircraft';
 
 export function usePilotSocket(targetCarId?: string | null, enabled: boolean = true) {
-    const { updateAircraft } = useGraphStore();
+    const ingestAircraft = useAircraftStore(state => state.ingest);
     const { socketToken } = useAuthStore();
-    const serverUrl = WS_URL_DEV;
+    
+    // 1. Use Shared Socket Context (Singleton)
+    const socket = useSocket();
+    
+    // Safe access to context values
+    const isConnected = socket?.isConnected ?? false;
+    const send = socket?.send;
+    const onMessage = socket?.onMessage;
 
-    // 1. OnConnect Callback
-    const handleConnect = useCallback((sendFn: (cmd: string, headers: Record<string, string>, body?: string) => void) => {
-        console.log(`[PilotSocket] Session Ready. Account: ${socketToken?.substring(0, 8)}...`);
-        
-        // 1. Subscribe to Private Responses
-        sendFn("SUBSCRIBE", {
-            id: "sub-pilot-private",
-            destination: WS_TOPICS.PRIVATE_RESPONSES
-        });
-
-        // 2. Subscribe to Flight Info
-        sendFn("SUBSCRIBE", {
-            id: "sub-pilot-flight-info",
-            destination: WS_TOPICS.PILOT_FLIGHT_INFO
-        });
-
-        // 3. Request Flight Info (명시적 요청)
-        console.log("[PilotSocket] Requesting flight info...");
-        sendFn("SEND", {
-            destination: "/app/flight/info/request"
-        }, "");
-    }, [socketToken]);
-
-    // 2. Use Shared Stomp Client
-    const { isConnected, request, send, onMessage } = useStompClient({
-        url: serverUrl,
-        token: socketToken,
-        enabled,
-        onConnect: handleConnect
-    });
-
-    // 2.1 Dynamic Subscription for Car Monitoring
-    // This allows subscription even if car ID is assigned AFTER the socket connects.
+    // 2. Pilot-Specific Subscriptions
+    // [REFACTORED] Global Pilot Subscriptions moved to PilotInitializer.tsx to prevent duplicates
+    
+    // 3. Dynamic Subscription for Car Monitoring
     useEffect(() => {
-        if (isConnected && targetCarId) {
+        if (isConnected && targetCarId && send) {
             const subId = `sub-pilot-monitor-${targetCarId}`;
             console.log(`[PilotSocket] 🎯 Subscribing to car telemetry: ${targetCarId}`);
             
@@ -88,22 +65,19 @@ export function usePilotSocket(targetCarId?: string | null, enabled: boolean = t
                 console.log(`[PilotSocket] Unsubscribing from car telemetry: ${targetCarId}`);
                 send("UNSUBSCRIBE", { id: subId });
             };
-        } else {
-             // console.log(`[PilotSocket] ⚠️ Subscription Skipped - Connected: ${isConnected}, TargetCar: ${targetCarId}`);
         }
     }, [isConnected, targetCarId, send]);
 
-    // 3. Data Processing Logic (Specific to Pilot - Update only my car)
+    // 4. Data Processing Logic
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleTelemetryMessage = useCallback((msg: any) => {
         const { destination, body } = msg;
-        const parseData = body || msg; // Unwrap Stomp Message Wrapper
 
-        // Only process if it's from the monitoring topic
-        // [FIX] Relaxed Destination Check: Check payload content instead of strict topic matching
-        // if (targetCarId && destination !== WS_TOPICS.MONITORING(targetCarId)) {
-        //     return;
-        // }
+        if (!destination?.startsWith('/topic/towingcar/')) {
+            return;
+        }
+
+        const parseData = body || msg;
         
         const result = TelemetrySchema.safeParse(parseData);
         if (!result.success) {
@@ -112,19 +86,18 @@ export function usePilotSocket(targetCarId?: string | null, enabled: boolean = t
         }
         
         const data = result.data;
-        // Backend DTO uses 'code', MQTT uses 'carId' or 'car_id'
         const rawId = data.code || data.car_id || data.carId;
         
-        // Priority: DTO fields -> MQTT fields -> Default
         const finalStatus = data.status || data.mode;
         const finalX = data.posX ?? data.x;
         const finalY = data.posY ?? data.y;
         const finalYaw = data.heading ?? data.yaw;
-        const finalV = data.velocity ?? data.v;
+                                                                           
+        // Priority: velocity (DTO) -> speed (Common) -> v (Legacy)
+        const finalV = data.velocity ?? data.speed ?? data.v; 
 
         // 내 차 정보만 업데이트
         if (rawId && rawId === targetCarId) {
-            // console.log(`[PilotSocket] Updating Store for ${rawId} with status: ${finalStatus}`);
             const aircraft: Aircraft = {
                 id: rawId,
                 callsign: rawId,
@@ -134,27 +107,31 @@ export function usePilotSocket(targetCarId?: string | null, enabled: boolean = t
                     y: finalY,
                     r: finalYaw * (Math.PI / 180)
                 },
-                status: finalStatus,
+                status: finalStatus as any,
                 battery: data.battery,
                 speed: finalV,
                 currentMission: data.currentMission,
                 isLoaded: data.is_loaded
             };
-            updateAircraft(aircraft);
-        } else if (rawId) {
-            // console.log(`[PilotSocket] Ignoring telemetry for ${rawId} (Target: ${targetCarId})`);
+            ingestAircraft(aircraft);
         }
-    }, [updateAircraft, targetCarId]);
 
-    // 4. Register Listener
+        // [DEBUG] Speed Issue Investigation
+        if (rawId === targetCarId && (finalV === 0 || finalV === undefined)) {
+             // console.warn(`[PilotSocket] Speed is 0 or undefined. Raw Data:`, data);
+        }
+  }, [ingestAircraft, targetCarId]);
+
+    // 5. Register Listener
     useEffect(() => {
+        if (!onMessage) return;
         const unsubscribe = onMessage(handleTelemetryMessage);
         return () => unsubscribe();
     }, [onMessage, handleTelemetryMessage]);
 
     return {
         isConnected,
-        request,
+        request: socket?.request,
         send,
         onMessage
     };

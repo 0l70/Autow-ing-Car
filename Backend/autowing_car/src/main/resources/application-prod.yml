@@ -2,7 +2,7 @@
 spring:
   config:
     activate:
-      on-profile: prod
+      on-profile: master
   datasource:
     # 환경변수에서 주입받도록 수정
     url: ${DB_URL}
@@ -12,8 +12,12 @@ spring:
     hibernate:
       ddl-auto: validate
     database-platform: org.hibernate.dialect.PostgreSQLDialect
-  # Redis도 필요하다면 환경변수 처리
+  # Redis 설정 (환경변수로 주입)
   data:
     redis:
-      host: localhost
-      port: 8379
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+
+app:
+  mqtt:
+    mock: false

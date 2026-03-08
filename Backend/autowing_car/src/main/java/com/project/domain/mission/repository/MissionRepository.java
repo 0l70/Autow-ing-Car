@@ -23,4 +23,12 @@ public interface MissionRepository extends JpaRepository<Mission, Long> {
 
     // 3. 최근 완료된 미션 순 조회 (이력용)
     List<Mission> findTop10ByTowingCarOrderByCompletedAtDesc(TowingCar towingCar);
+
+    // 4. 특정 상태 리스트에 해당하는 미션들 조회
+    List<Mission> findAllByStatusIn(java.util.Collection<com.project.domain.common.MissionStatus> statuses);
+
+    // 5. [NEW] 차량 코드와 상태로 미션 조회 (Resume용)
+    @Query("SELECT m FROM Mission m WHERE m.towingCar.code = :carCode AND m.status = :status")
+    Optional<Mission> findByCarCodeAndStatus(@Param("carCode") String carCode,
+            @Param("status") com.project.domain.common.MissionStatus status);
 }

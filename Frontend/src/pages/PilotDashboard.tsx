@@ -1,101 +1,73 @@
-import { useState } from 'react';
-
-// --- Logic Hook ---
 import { usePilotController } from "@/features/pilot-actions/model/usePilotController";
-
-// --- UI Components ---
+import { useAircraftStore } from "@/entities/aircraft"; 
 import { PilotCommandBar } from "@/features/pilot-actions/ui/PilotCommandBar";
 import { PilotStatusPanel } from "@/features/pilot-actions/ui/PilotStatusPanel";
 import { TowingCarInfo } from "@/features/pilot-actions/ui/TowingCarInfo";
 import { PilotSafetyLock } from "@/features/pilot-actions/ui/PilotSafetyLock";
 import { PilotTimeline } from "@/features/pilot-actions/ui/PilotTimeline";
-import { PilotConfirmModal } from "@/features/pilot-actions/ui/PilotConfirmModal"; // [NEW]
-import { PilotWelcomeModal } from "@/features/pilot-actions/ui/PilotWelcomeModal"; // [NEW]
+import { PilotConfirmModal } from "@/features/pilot-actions/ui/PilotConfirmModal";
+import { PilotWelcomeModal } from "@/features/pilot-actions/ui/PilotWelcomeModal";
 import { CameraWidget } from "@/widgets/camera-panel/ui/CameraWidget";
 import { PilotMapWidget } from "@/widgets/pilot-map/ui/PilotMapWidget"; 
-import { useGraphStore } from "@/entities/map/model/store"; 
 
 export function PilotDashboard() {
-    // 1. Logic Binding (The "Brain")
-    const { state, controls } = usePilotController(); // Dynamic Car ID
+    // 1. Logic Binding
+    const { state, controls } = usePilotController();
 
     // 2. Data Integration (Live Store)
-    const { aircrafts } = useGraphStore();
+    const aircrafts = useAircraftStore(state => state.aircrafts);
     
     // Find MY assigned car from the store data
-    // [FILTER] Only show if car is actively dispatched or connected (not IDLE/UNLOADING)
     const activeCarId = state.flightInfo?.assignedCarId;
     const assignedAircraft = activeCarId ? aircrafts.find(a => a.id === activeCarId) || null : null;
     const myAircraft = (assignedAircraft && 
                         assignedAircraft.status !== 'IDLE' && 
-                        assignedAircraft.status !== 'UNLOADING') 
+                        assignedAircraft.status !== 'UNDOCKING') 
                         ? assignedAircraft 
                         : null;
 
     return (
-            <div className="h-full w-full bg-black/50 p-4 text-slate-200 font-mono overflow-hidden flex flex-col gap-[2%] relative">
-                
-                {/* --- TOP ROW (Visuals: ~60%) --- */}
-                <div className="grid grid-cols-12 gap-4 h-[58%] min-h-0">
-                    
-                    {/* T1: Camera Widget */}
-                    <CameraWidget 
-                        className="col-span-5 h-full overflow-hidden" 
-                        carId={state.flightInfo?.assignedCarId || ''} 
-                    />
-
-                    {/* T2: Digital Twin Map Widget */}
-                    <PilotMapWidget 
-                        className="col-span-5 h-full overflow-hidden"
-                        // Selection removed: Map is for visualization only now
-                    />
-
-                    {/* T3: Logs */}
-                    <PilotTimeline logs={state.logs} />
-                </div>
-
-                {/* --- BOTTOM ROW (Controls: ~40%) --- */}
-                <div className="grid grid-cols-12 gap-4 h-[38%] min-h-0 shrink-0">
-                    
-                    {/* B1: Command Actions */}
-                    <PilotCommandBar 
-                        moveState={state.move} 
-                        connState={state.connection}
-                        moveLongPress={controls.moveLongPress}
-                        connLongPress={controls.connLongPress}
-                    />
-
-                    {/* B2: Status */}
-                    <PilotStatusPanel 
-                        aircraft={myAircraft} 
-                    /> 
-
-                    {/* B3: Navigation Info */}
-                    <TowingCarInfo moveState={state.move} aircraft={myAircraft} />
-
-                    {/* B4: Safety */}
-                    <PilotSafetyLock 
-                        isAutoMode={state.isAutoMode}
-                        modeLongPress={controls.modeLongPress}
-                        handleEmergencyStop={controls.handleEmergencyStop}
-                    />
-                </div>
-
-                {/* --- Confirmation Modal --- */}
-                <PilotConfirmModal 
-                    isOpen={state.confirmModal.open}
-                    action={state.confirmModal.action}
-                    onConfirm={controls.handleConfirm}
-                    onCancel={controls.closeConfirmModal}
+        <div className="h-full w-full bg-black/50 p-4 text-slate-200 font-mono overflow-hidden flex flex-col gap-[2%] relative">
+            <div className="grid grid-cols-12 gap-4 h-[58%] min-h-0">
+                <CameraWidget 
+                    className="col-span-5 h-full overflow-hidden" 
+                    carId={state.flightInfo?.assignedCarId || ''} 
                 />
-
-                {/* --- Welcome Modal (Flight Info) --- */}
-                <PilotWelcomeModal
-                    isOpen={state.welcomeModal.open}
-                    data={state.flightInfo}
-                    onClose={controls.closeWelcomeModal}
+                <PilotMapWidget 
+                    className="col-span-5 h-full overflow-hidden" 
+                    assignedCarId={state.flightInfo?.assignedCarId}
                 />
-
+                <PilotTimeline logs={state.logs} />
             </div>
+
+            <div className="grid grid-cols-12 gap-4 h-[38%] min-h-0 shrink-0">
+                <PilotCommandBar 
+                    moveState={state.move} 
+                    connState={state.connection}
+                    moveLongPress={controls.moveLongPress}
+                    connLongPress={controls.connLongPress}
+                />
+                <PilotStatusPanel aircraft={myAircraft} /> 
+                <TowingCarInfo moveState={state.move} aircraft={myAircraft} />
+                <PilotSafetyLock 
+                    moveState={state.move}
+                    handleResume={controls.handleResume}
+                    handleEmergencyStop={controls.handleEmergencyStop}
+                />
+            </div>
+
+            <PilotConfirmModal 
+                isOpen={state.confirmModal.open}
+                action={state.confirmModal.action}
+                onConfirm={controls.handleConfirm}
+                onCancel={controls.closeConfirmModal}
+            />
+
+            <PilotWelcomeModal
+                isOpen={state.welcomeModal.open}
+                data={state.flightInfo}
+                onClose={controls.closeWelcomeModal}
+            />
+        </div>
     );
 }

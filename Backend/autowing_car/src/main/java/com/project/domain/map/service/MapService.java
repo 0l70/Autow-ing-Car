@@ -11,25 +11,43 @@ import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Set;
 
+import com.project.domain.map.repository.MapInfoRepository;
 import org.springframework.stereotype.Service;
 
 import com.project.domain.common.MapStatus;
 import com.project.domain.map.component.GraphCache;
 import com.project.domain.map.component.UsageManager;
+import com.project.domain.map.dto.MapResponse;
 import com.project.domain.map.entity.Edge;
+import com.project.domain.map.entity.MapInfo;
 import com.project.domain.map.entity.Node;
 import com.project.domain.mission.dto.MissionWebSocketDtos.PathOptionDto;
+import com.project.domain.flight.entity.Flight;
+import com.project.domain.flight.service.FlightDBAdaptor;
+import com.project.domain.towingcar.entity.TowingCar;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+/**
+ * 지도 및 경로 탐색 관련 비즈니스 로직을 담당하는 서비스 클래스
+ * A*, Yen's 알고리즘 등을 사용하여 최적 경로를 계산합니다.
+ */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class MapService {
 
     private final GraphCache graphCache;
     private final UsageManager usageManager;
+    private final MapDBAdaptor mapDBAdaptor;
+    private final FlightDBAdaptor flightDBAdaptor;
+    private final MapInfoRepository mapInfoRepository;
+    private final ObjectMapper objectMapper;
 
     @AllArgsConstructor
     @Getter
@@ -43,13 +61,86 @@ public class MapService {
      * A* Algorithm using GraphCache and UsageManager
      */
 
-    // [Mock] Pushback Path Calculation
+    /**
+     * [New] Calculate Pushback Path using actual car position
+     */
     public Map<String, Object> getPushbackPath(Long flightId, String targetGate) {
-        // 실제로는 flightId로 현재 위치 조회, targetGate로 경로 계산 필요
-        // 지금은 Mock 데이터 반환
+        Flight flight = flightDBAdaptor.getFlightById(flightId);
+        TowingCar car = flight.getAssignedTowingCar();
+
+        Node startNode;
+        if (car != null) {
+            startNode = findNearestNode(car.getLastPosX(), car.getLastPosY());
+        } else {
+            startNode = mapDBAdaptor.getNodeByCode(flight.getNodeCode());
+        }
+
+        Node endNode = mapDBAdaptor.getNodeByCode(targetGate);
+
+        List<PathOptionDto> pathOptions = findShortestPath(startNode, endNode);
+
+        if (pathOptions.isEmpty()) {
+            return Map.of(
+                    "destNodeName", targetGate,
+                    "path", List.of());
+        }
+
+        // Return best path's edge IDs
         return Map.of(
                 "destNodeName", targetGate,
-                "path", List.of("WP-001", "WP-002", "Gate-01"));
+                "path", pathOptions.get(0).getEdgeIds());
+    }
+
+    /**
+     * [Legacy Support] 최단 경로 1개 반환 (A* for Towing Service)
+     */
+    public List<Edge> findOptimalPath(Node start, Node end) {
+        return findSinglePath(start, end, Collections.emptySet());
+    }
+
+    /**
+     * [Helper] Edge List -> MQTT Payload List 변환
+     */
+    public List<Map<String, Object>> convertPathToPayload(List<Edge> path) {
+        List<Map<String, Object>> payload = new ArrayList<>();
+
+        for (Edge edge : path) {
+            // 1. 중간 경로점(Waypoints) 추가
+            if (edge.getWaypoints() != null && !edge.getWaypoints().isEmpty()) {
+                try {
+                    List<MapResponse.PointDto> waypoints = objectMapper.readValue(
+                            edge.getWaypoints(),
+                            new TypeReference<List<MapResponse.PointDto>>() {
+                            });
+
+                    for (MapResponse.PointDto wp : waypoints) {
+                        Map<String, Object> point = new HashMap<>();
+                        point.put("nodeId", null); // 중간 점은 노드 ID가 없음
+                        point.put("x", wp.getX());
+                        point.put("y", wp.getY());
+                        point.put("edgeId", edge.getEdgeCode());
+                        point.put("maxSpeed", edge.getMaxSpeed() != null ? (double) edge.getMaxSpeed() : 10.0);
+                        payload.add(point);
+                    }
+                } catch (Exception e) {
+                    // 로그만 남기고 다음 노드로 진행
+                    log.error("Failed to parse waypoints for edge {}: {}", edge.getEdgeCode(), e.getMessage());
+                }
+            }
+
+            // 2. 도착 노드(Target Node) 추가
+            Map<String, Object> targetPoint = new HashMap<>();
+            Node targetNode = edge.getDstNode();
+
+            targetPoint.put("nodeId", targetNode.getNodeCode());
+            targetPoint.put("x", targetNode.getPosX());
+            targetPoint.put("y", targetNode.getPosY());
+            targetPoint.put("edgeId", edge.getEdgeCode());
+            targetPoint.put("maxSpeed", edge.getMaxSpeed() != null ? (double) edge.getMaxSpeed() : 10.0);
+
+            payload.add(targetPoint);
+        }
+        return payload;
     }
 
     /**
@@ -162,7 +253,7 @@ public class MapService {
     }
 
     private double calculatePathCost(List<Edge> path) {
-        return path.stream().mapToDouble(Edge::getDistance).sum();
+        return path.stream().mapToDouble(Edge::getTravelTime).sum();
     }
 
     /**
@@ -204,7 +295,8 @@ public class MapService {
                 if (usageManager.isEdgeLocked(edge.getId()) || usageManager.isNodeLocked(neighbor.getId()))
                     continue;
 
-                double newG = gScore.getOrDefault(currentNode.getId(), Double.MAX_VALUE) + edge.getDistance();
+                double newG = gScore.getOrDefault(currentNode.getId(), Double.MAX_VALUE)
+                        + (edge.getTravelTime() != null ? edge.getTravelTime() : edge.getDistance() / 10.0);
                 if (newG < gScore.getOrDefault(neighbor.getId(), Double.MAX_VALUE)) {
                     cameFrom.put(neighbor.getId(), edge);
                     gScore.put(neighbor.getId(), newG);
@@ -225,10 +317,114 @@ public class MapService {
         return path;
     }
 
-    // Heuristic: Euclidean Distance
+    /**
+     * 특정 좌표(x, y)에서 가장 가까운 노드를 찾습니다.
+     */
+    /**
+     * 특정 좌표(x, y)에서 가장 가까운 노드를 찾습니다.
+     * contextNode가 주어지면, 해당 노드와 그 이웃 노드들 중에서만 검색합니다. (Topological Tracking)
+     */
+    public Node findNearestNode(double x, double y) {
+        return findNearestNode(x, y, null);
+    }
+
+    public Node findNearestNode(double x, double y, Node contextNode) {
+        List<Node> candidates;
+
+        if (contextNode == null) {
+            candidates = mapDBAdaptor.findAllNodes();
+        } else {
+            // ContextNode + Neighbors
+            candidates = new ArrayList<>();
+            candidates.add(contextNode);
+
+            List<Edge> edges = graphCache.getEdges(contextNode);
+            if (edges != null) {
+                for (Edge edge : edges) {
+                    candidates.add(edge.getDstNode());
+                }
+            }
+        }
+
+        return candidates.stream()
+                .min(Comparator.comparingDouble(n -> Math.pow(n.getPosX() - x, 2) + Math.pow(n.getPosY() - y, 2)))
+                .orElse(null);
+    }
+
+    /**
+     * HTTP API 요청에 따라 전체 지도 데이터(노드, 간선)를 반환합니다.
+     * 
+     * @param mapId 지도를 식별하는 ID
+     * @return 지도의 전체 구성을 담은 MapResponse DTO
+     */
+    public MapResponse getFullMap(String mapId) {
+        List<Node> dbNodes = mapDBAdaptor.findAllNodes();
+        List<Edge> dbEdges = mapDBAdaptor.findAllEdges();
+        MapInfo info = mapInfoRepository.findByBasicMapTrue().orElse(null);
+
+        return MapResponse.builder()
+                .mapId(mapId)
+                .width(info != null ? info.getWidth() : null)
+                .height(info != null ? info.getHeight() : null)
+                .resolution(info != null ? info.getResolution() : null)
+                .originX(info != null ? info.getOriginX() : null)
+                .originY(info != null ? info.getOriginY() : null)
+                .imagePath(info != null ? info.getImagePath() : null)
+                .maxSpeed(info != null ? info.getMaxSpeed() : null)
+                .nodes(dbNodes.stream().map(n -> MapResponse.NodeDto.builder()
+                        .id(n.getNodeCode())
+                        .x(n.getPosX())
+                        .y(n.getPosY())
+                        .status(n.getStatus().name())
+                        .type(n.getNodeType().name())
+                        .build()).toList())
+                .edges(dbEdges.stream().map(e -> {
+                    List<MapResponse.PointDto> waypoints = new java.util.ArrayList<>();
+                    if (e.getWaypoints() != null && !e.getWaypoints().isEmpty()) {
+                        try {
+                            waypoints = objectMapper.readValue(e.getWaypoints(),
+                                    new TypeReference<List<MapResponse.PointDto>>() {
+                                    });
+                        } catch (Exception ex) {
+                            // ignore or log
+                        }
+                    }
+                    return MapResponse.EdgeDto.builder()
+                            .id(e.getEdgeCode())
+                            .from(e.getSrcNode().getNodeCode())
+                            .to(e.getDstNode().getNodeCode())
+                            .cost(e.getDistance())
+                            .waypoints(waypoints)
+                            .build();
+                }).toList())
+                .build();
+    }
+
+    // Heuristic: Estimated Travel Time (Distance / Max Speed)
     private double heuristic(Node a, Node b) {
         double dx = a.getPosX() - b.getPosX();
         double dy = a.getPosY() - b.getPosY();
+        double distance = Math.sqrt(dx * dx + dy * dy);
+
+        // MapInfo에서 최대 속도 가져오기 (기본값: 10.0)
+        double maxSpeed = mapInfoRepository.findByBasicMapTrue()
+                .map(info -> info.getMaxSpeed())
+                .orElse(10.0);
+
+        return distance / maxSpeed;
+    }
+
+    public double calculateDistance(Node n1, Node n2) {
+        if (n1 == null || n2 == null)
+            return Double.MAX_VALUE;
+        return calculateDistance(n1, n2.getPosX(), n2.getPosY());
+    }
+
+    public double calculateDistance(Node n1, double x, double y) {
+        if (n1 == null)
+            return Double.MAX_VALUE;
+        double dx = n1.getPosX() - x;
+        double dy = n1.getPosY() - y;
         return Math.sqrt(dx * dx + dy * dy);
     }
 }

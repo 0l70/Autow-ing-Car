@@ -7,7 +7,8 @@ public enum CarCommand {
     START_TRANSPORT("START_TRANSPORT"),
     EMERGENCY_STOP("EMERGENCY_STOP"),
     SET_MODE("SET_MODE"),
-    MOVE("MOVE");
+    MOVE("MOVE"),
+    RESUME("RESUME"); // [NEW] 푸시백 재개 명령
 
     private final String cmd;
 

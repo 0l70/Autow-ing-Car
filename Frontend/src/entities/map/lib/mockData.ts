@@ -14,8 +14,8 @@ export const MOCK_MAP_META: MapMeta = {
 
 // Virtual Map Size for Grid Rendering
 export const MOCK_MAP_SIZE = {
-    width: 2000,
-    height: 1500
+    width: 327,
+    height: 275
 };
 
 // Generate some futuristic Looking Nodes
@@ -37,15 +37,15 @@ export const MOCK_NODES: GraphNode[] = [
 
 export const MOCK_EDGES: GraphEdge[] = [
     // Main Artery
-    { id: "e1", fromId: "n2", toId: "n1", bidirectional: true, cost: 30 },
-    { id: "e2", fromId: "n1", toId: "n3", bidirectional: true, cost: 30 },
+    { id: "e1", fromId: "n2", toId: "n1", bidirectional: true, cost: 30, waypoints: [] },
+    { id: "e2", fromId: "n1", toId: "n3", bidirectional: true, cost: 30, waypoints: [] },
     
     // Gate Branches
-    { id: "e3", fromId: "n2", toId: "g1", bidirectional: true, cost: 25 },
-    { id: "e4", fromId: "n1", toId: "g2", bidirectional: true, cost: 22.5 },
-    { id: "e5", fromId: "n3", toId: "g3", bidirectional: true, cost: 25 },
+    { id: "e3", fromId: "n2", toId: "g1", bidirectional: true, cost: 25, waypoints: [] },
+    { id: "e4", fromId: "n1", toId: "g2", bidirectional: true, cost: 22.5, waypoints: [] },
+    { id: "e5", fromId: "n3", toId: "g3", bidirectional: true, cost: 25, waypoints: [] },
 
     // Parking Connectors
-    { id: "e6", fromId: "n2", toId: "p1", bidirectional: true, cost: 25 },
-    { id: "e7", fromId: "n3", toId: "p2", bidirectional: true, cost: 25 },
+    { id: "e6", fromId: "n2", toId: "p1", bidirectional: true, cost: 25, waypoints: [] },
+    { id: "e7", fromId: "n3", toId: "p2", bidirectional: true, cost: 25, waypoints: [] },
 ];

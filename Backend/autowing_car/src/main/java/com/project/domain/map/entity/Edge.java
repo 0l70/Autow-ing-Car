@@ -32,7 +32,7 @@ public class Edge {
     private Node dstNode;
 
     @Column(nullable = false)
-    private Double distance; // A* 가중치
+    private Double distance; // 좌표 갯수
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -43,4 +43,17 @@ public class Edge {
 
     @Column(name = "max_speed")
     private Integer maxSpeed;
+
+    @Column(name = "waypoints", columnDefinition = "TEXT")
+    private String waypoints; // JSON string of path coordinates
+
+    @Column(name = "travel_time")
+    private Double travelTime; // 해당 간선 통과 예상 시간 (단위: 초)
+
+    public void updatePath(String waypoints, Double distance, Double travelTime) {
+        this.waypoints = waypoints;
+        this.distance = distance;
+        this.travelTime = travelTime;
+    }
+
 }

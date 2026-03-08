@@ -18,48 +18,39 @@ public class TowingCarMqttService {
 
     private final MqttService mqttService;
 
-    @Value("${app.mqtt.mock:false}")
-    private boolean isMockMode;
-
-    // Type-safe sending method
-    private void send(String carCode, CarCommand command, Object data) {
-        if (isMockMode) {
-            log.info("[MOCK MQTT] Topic={} Cmd={} Data={}", MqttTopics.cmd(carCode), command, data);
-            return;
-        }
-
-        String topic = MqttTopics.cmd(carCode);
-        Map<String, Object> payload = Map.of(
-                "cmd", command.getCmd(),
-                "data", data != null ? data : Map.of());
-        mqttService.publish(topic, payload);
-    }
-
-    public void moveCarToGate(String carCode, String targetNode) {
-        send(carCode, CarCommand.MOVE_TO_GATE, Map.of("targetNode", targetNode));
+    // [Internal] Helper for publishing to Control Topic
+    private void publishControl(String carCode, Map<String, Object> payload) {
+        mqttService.publish(MqttTopics.cmdControl(carCode), payload);
     }
 
     public void connectCar(String carCode, Long flightId) {
-        send(carCode, CarCommand.CONNECT, Map.of("flightId", flightId));
+        publishControl(carCode, Map.of("cmd", CarCommand.CONNECT.getCmd(), "flightId", flightId));
     }
 
     public void disconnectCar(String carCode, Long flightId) {
-        send(carCode, CarCommand.DISCONNECT, Map.of("flightId", flightId));
-    }
-
-    public void startTransport(String carCode, Object data) {
-        send(carCode, CarCommand.START_TRANSPORT, data);
+        publishControl(carCode, Map.of("cmd", CarCommand.DISCONNECT.getCmd(), "flightId", flightId));
     }
 
     public void emergencyStop(String carCode) {
-        send(carCode, CarCommand.EMERGENCY_STOP, null);
+        publishControl(carCode, Map.of("cmd", CarCommand.EMERGENCY_STOP.getCmd()));
     }
 
     public void setMode(String carCode, String mode) {
-        send(carCode, CarCommand.SET_MODE, Map.of("mode", mode));
+        publishControl(carCode, Map.of("cmd", CarCommand.SET_MODE.getCmd(), "mode", mode));
     }
 
     public void moveCar(String carCode, String type) {
-        send(carCode, CarCommand.MOVE, Map.of("type", type));
+        publishControl(carCode, Map.of("cmd", CarCommand.MOVE.getCmd(), "type", type));
+    }
+
+    // [Standardized] 이동 명령 전송 (Path based)
+    public void sendDriveCommand(String carCode, Object payload) {
+        String topic = MqttTopics.cmdDrive(carCode);
+        mqttService.publish(topic, payload);
+    }
+
+    // [NEW] 푸시백 재개 명령
+    public void resumeCar(String carCode) {
+        publishControl(carCode, Map.of("cmd", CarCommand.RESUME.getCmd()));
     }
 }

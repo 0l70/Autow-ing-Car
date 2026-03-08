@@ -5,117 +5,118 @@ import {
   Radio,
   TriangleAlert,
   Bell,
+  Route,
+  X,
 } from "lucide-react";
-import { useStompClient } from "@/shared/realtime/clients/useStompClient";
 import { cn } from "@/shared/lib/utils";
 import { useTimelineStore } from "./model/useTimelineStore";
 import { useSocket } from "@/shared/realtime/context/SocketProvider";
-import { useAuthStore } from "@/features/auth/model/useAuthStore";
 import { WS_TOPICS } from "@/shared/realtime/config/topics";
 
-// --- Types (Match Backend DTO) ---
-type NotificationType = "MISSION_REQUEST" | "MANUAL_CONTROL" | "EMERGENCY_STOP";
+// [FSD] Import Types & Store
+import { useAlertStore } from "./model/useAlertStore";
+import { AdminAlertDto, PathOptionDto, PathOptionsResponseDto } from "./model/alert.types";
 
-interface PathOptionDto {
-  optionId: number;
-  label: string;
-  edgeIds: string[];
-}
-
-interface AdminAlertDto {
-  type: NotificationType;
-  message?: string;
-  severity?: "INFO" | "WARNING" | "CRITICAL";
-
-  // Mission Specific
-  flightId?: number;
-  flightNumber?: string;
-  pilotId?: string;
-  currentGate?: string;
-  activeRunway?: string;
-  pathOptions?: PathOptionDto[];
-
-  // Internal
-  id: string; // for React key
-  timestamp: number;
-}
+// [NEW] Use Aircraft Store for State Sync
+import { useAircraftStore } from "@/entities/aircraft/model/store";
 
 export function ApprovalQueue() {
-  const [alerts, setAlerts] = useState<AdminAlertDto[]>([]);
+  const { onMessage, send, isConnected } = useSocket() || {};
+  
+  // [FSD] Persistent Store
+  const { alerts, addAlert, removeAlert } = useAlertStore();
+  
+  // [NEW] Aircraft State for Sync
+  const aircrafts = useAircraftStore((state) => state.aircrafts);
 
-  const { socketToken } = useAuthStore();
-
-  // 1. Try to consume Context
-  const context = useSocket();
-  const shouldFallback = !context;
-
-  // 2. Fallback Client
-  const fallbackClient = useStompClient({
-    url:
-      import.meta.env.VITE_WS_BASE_URL ||
-      "ws://localhost:8080/ws-server/websocket",
-    token: socketToken,
-    enabled: shouldFallback && !!socketToken,
-  });
-
-  // 3. Active Client
-  const client = context || fallbackClient;
-  const { onMessage, request, send, isConnected } = client;
-
-  // [New] Explicit Subscription Logic
-  useEffect(() => {
-    if (isConnected) {
-      console.log("[ApprovalQueue] Subscribing to ATC Channels...");
-
-      // 1. Mission Updates (Global)
-      send("SUBSCRIBE", {
-        id: "sub-atc-mission-updates",
-        destination: WS_TOPICS.MISSION_UPDATES,
-      });
-
-      // 2. Controller Requests (Private/Broadcast)
-      send("SUBSCRIBE", {
-        id: "sub-atc-controller-requests",
-        destination: WS_TOPICS.CONTROLLER_REQUESTS,
-      });
-    }
-  }, [isConnected, send]);
-
-  useEffect(() => {
-    const unsubscribe = onMessage((msg: any) => {
-      // Filter by destination to avoid data leakage
-      if (
-        msg.destination !== WS_TOPICS.MISSION_UPDATES &&
-        msg.destination !== WS_TOPICS.CONTROLLER_REQUESTS
-      )
-        return;
-
-      const data = msg.body;
-      console.log("[ApprovalQueue] 📨 Received Message:", msg.destination, data); // [DEBUG]
-      // Basic structure check
-      if (data.flightId || data.type) {
-        const newAlert: AdminAlertDto = {
-          ...data,
-          type: data.type || "MISSION_REQUEST",
-          id: Date.now().toString() + Math.random(),
-          timestamp: Date.now(),
-        };
-
-        // EMERGENCY_STOP goes to top, others append
-        setAlerts((prev) => {
-          if (newAlert.type === "EMERGENCY_STOP") {
-            return [newAlert, ...prev];
-          }
-          return [newAlert, ...prev];
-        });
-      }
-    });
-    return () => unsubscribe();
-  }, [onMessage]);
-
+  // Timeline Store
   const addLog = useTimelineStore((state) => state.addLog);
 
+  // Local UI State (Workflow)
+  const [pathOptionsData, setPathOptionsData] = useState<PathOptionsResponseDto | null>(null);
+  const [selectedPath, setSelectedPath] = useState<PathOptionDto | null>(null);
+
+  // --- [NEW] State Synchronization Logic ---
+  // If an aircraft is in ERROR/STOP state but no alert exists, create one.
+  useEffect(() => {
+    aircrafts.forEach(car => {
+      // Check for Emergency conditions
+      if (car.status === 'ERROR' || car.status === 'STOP') {
+         // Check if alert already exists to prevent duplicate (spam)
+         // We assume one active emergency alert per car is enough
+         const exists = alerts.find(a => 
+           (a.type === 'EMERGENCY_STOP' || a.type === 'MANUAL_CONTROL') && 
+           a.flightNumber === car.callsign // or car.id
+         );
+         
+         if (!exists) {
+            console.log(`[ApprovalQueue] ⚠️ Detected silent emergency for ${car.callsign}. Synced alert.`);
+            addAlert({
+                id: `sync-alert-${Date.now()}-${car.id}`,
+                type: 'EMERGENCY_STOP',
+                message: `Synced: Vehicle ${car.callsign} is in ${car.status} state.`,
+                severity: 'CRITICAL',
+                timestamp: Date.now(),
+                flightNumber: car.callsign, 
+             });
+         }
+      }
+    });
+  // Check periodically or only when aircrafts change? 
+  // 'aircrafts' changes frequently (telemetry), so we need to be careful not to spam.
+  // 'addAlert' in store should handle duplicates if ID matches, but here we generate new ID.
+  // We rely on the 'exists' check.
+  }, [aircrafts, alerts, addAlert]);
+
+
+  // --- WebSocket Subscription ---
+  useEffect(() => {
+    if (!onMessage) return;
+
+    // Listen for All Controller Notifications (Requests + Emergencies)
+    const unsubscribe = onMessage((msg: any) => {
+      const { destination, body } = msg;
+
+      // Ensure we listen to the correct topic constant
+      if (destination === WS_TOPICS.CONTROLLER_REQUESTS) {
+        const data = typeof body === 'string' ? JSON.parse(body) : body;
+        console.log("[ApprovalQueue] Received Notification:", data);
+
+        // CASE 1: Emergency / Manual Control Notif
+        if (data.type === 'EMERGENCY_STOP' || data.type === 'MANUAL_CONTROL' || data.severity === 'emergency_stop') {
+             addAlert({
+                id: `alert-${Date.now()}`,
+                type: data.type || (data.severity === "emergency_stop" ? "EMERGENCY_STOP" : "MANUAL_CONTROL"),
+                message: data.message,
+                severity: data.severity === "emergency_stop" ? "CRITICAL" : "WARNING",
+                timestamp: Date.now(),
+                flightNumber: data.flightNumber || data.carCode || "Unknown", // Backend sends flightNumber or carCode
+                flightId: data.flightId, 
+             });
+        } 
+        // CASE 2: Mission Request (Default)
+        else {
+             addAlert({
+                ...data,
+                type: "MISSION_REQUEST",
+                id: data.id || `req-${Date.now()}`,
+                timestamp: Date.now(),
+             });
+             addLog({
+                type: "CONFIRM",
+                message: `NEW REQUEST: ${data.flightNumber}`,
+                subMessage: "Pilot requested pushback.",
+                actor: "System",
+             });
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [onMessage, addAlert, addLog]);
+
   // --- Actions ---
+  // ... existing handleDecision ...
   const handleDecision = async (
     alertItem: AdminAlertDto,
     approved: boolean,
@@ -123,52 +124,87 @@ export function ApprovalQueue() {
     if (!alertItem.flightId) return;
 
     try {
-      // [TEST MODE] Bypass Backend for Mock Data
-      if (alertItem.flightId === 101) {
-        console.log("[TEST] Skipping Backend Call for Mock Flight 101");
-      } else {
-        // ✅ Use send() instead of request() - decideMission doesn't return a response
-        console.log(
-          "[ApprovalQueue] Sending decision to:",
-          WS_TOPICS.ATC.MISSION_DECIDE,
-        );
-        send(
-          "SEND",
-          {
-            destination: WS_TOPICS.ATC.MISSION_DECIDE,
-          },
-          JSON.stringify({
+      if (approved) {
+        if (alertItem.pathOptions && alertItem.pathOptions.length > 0) {
+          setPathOptionsData({
             flightId: alertItem.flightId,
-            approved: approved,
-            rejectReason: approved ? null : "Denied by ATC",
-            // Mock selection: first path logic
-            selectedEdgeIds: alertItem.pathOptions?.[0]?.edgeIds || [
-              "E1",
-              "E2",
-            ],
-            destNode: alertItem.activeRunway || "RUNWAY",
-          }),
-        );
+            flightNumber: alertItem.flightNumber || "",
+            departNode: alertItem.currentGate || "",
+            destNode: alertItem.activeRunway || "", 
+            pathOptions: alertItem.pathOptions,
+            alertId: alertItem.id, // [NEW] Store Alert ID
+          });
+          
+          addLog({
+            type: "APPROVE",
+            message: `PUSHBACK REQUEST ACCEPTED: ${alertItem.flightNumber}`,
+            subMessage: `Opening path options...`,
+            actor: "ATC-Controller",
+          });
+          // NOTE: Do NOT remove alert here. Wait for Route Confirmation.
+        } else {
+          window.alert("No path options available for this request.");
+          return;
+        }
+      } else {
+        if (send) {
+          send(
+            "SEND",
+            { destination: WS_TOPICS.ATC.MISSION_DECIDE },
+            JSON.stringify({
+              flightId: alertItem.flightId,
+              approved: false,
+              rejectReason: "Denied by ATC",
+            }),
+          );
+        }
+
+        addLog({
+          type: "REJECT",
+          message: `PUSHBACK REJECTED: ${alertItem.flightNumber}`,
+          subMessage: `Reason: Denied by ATC`,
+          actor: "ATC-Controller",
+        });
+        
+        // Remove only on rejection
+        removeAlert(alertItem.id);
       }
-
-      // Log to Timeline
-      addLog({
-        type: approved ? "APPROVE" : "REJECT",
-        message: approved
-          ? `PUSHBACK APPROVED: ${alertItem.flightNumber}`
-          : `PUSHBACK REJECTED: ${alertItem.flightNumber}`,
-        subMessage: approved
-          ? `Dest: ${alertItem.activeRunway || "N/A"}`
-          : `Reason: Denied by ATC`,
-        actor: "ATC-Controller",
-      });
-
-      // Remove from list on success
-      setAlerts((prev) => prev.filter((a) => a.id !== alertItem.id));
     } catch (e) {
       console.error("Decision Failed", e);
       window.alert("Failed to send decision");
     }
+  };
+
+  const handleRouteConfirm = () => {
+    if (!pathOptionsData || !selectedPath) return;
+
+    if (send) {
+      send(
+        "SEND",
+        { destination: WS_TOPICS.ATC.MISSION_DECIDE },
+        JSON.stringify({
+          flightId: pathOptionsData.flightId,
+          approved: true,
+          destNode: pathOptionsData.destNode,
+          selectedEdgeIds: selectedPath.edgeIds,
+        }),
+      );
+    }
+
+    addLog({
+      type: "APPROVE",
+      message: `ROUTE CONFIRMED: ${pathOptionsData.flightNumber}`,
+      subMessage: `${pathOptionsData.departNode} → ${pathOptionsData.destNode} (${selectedPath.edgeIds.length} edges)`,
+      actor: "ATC-Controller",
+    });
+
+    // [NEW] Remove Alert NOW (after route confirmation)
+    if (pathOptionsData.alertId) {
+        removeAlert(pathOptionsData.alertId);
+    }
+
+    setPathOptionsData(null);
+    setSelectedPath(null);
   };
 
   const handleConfirm = (id: string) => {
@@ -178,18 +214,17 @@ export function ApprovalQueue() {
         type: "CONFIRM",
         message:
           target.type === "EMERGENCY_STOP"
-            ? "EMERGENCY STOP CONFIRMED"
-            : "MANUAL CONTROL CONFIRMED",
-        subMessage: target.message || "Situational awareness confirmed.",
+            ? "EMERGENCY STOP ACKNOWLEDGED"
+            : "MANUAL CONTROL ACKNOWLEDGED",
+        subMessage: target.message || "ACKNOWLEDGED.",
         actor: "ATC-Controller",
       });
     }
-    // Just remove from list
-    setAlerts((prev) => prev.filter((a) => a.id !== id));
+    removeAlert(id);
   };
 
   return (
-    <div className="flex flex-col h-[40%] glass-panel rounded-xl p-0 relative overflow-hidden shrink-0 border-accent-red/20 shadow-[0_0_15px_rgba(255,0,0,0.05)]">
+    <div className="flex flex-col h-[50%] glass-panel rounded-xl p-0 relative overflow-hidden shrink-0 border-accent-red/20 shadow-[0_0_15px_rgba(255,0,0,0.05)]">
       {/* Header */}
       <div className="flex items-center justify-between p-4 pb-2 border-b border-white/10 bg-white/5">
         <h2 className="text-sm font-bold tracking-wider text-slate-200 uppercase flex items-center gap-2">
@@ -208,19 +243,82 @@ export function ApprovalQueue() {
 
       {/* Alert List */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-hide">
-        {alerts.length === 0 && (
+        {alerts.length === 0 && !pathOptionsData && (
           <div className="h-full flex flex-col items-center justify-center opacity-30 text-xs text-center">
             <CheckCircle className="w-8 h-8 mb-2" />
             NO PENDING ACTIONS
           </div>
         )}
 
-        {alerts.map((alert) => {
-          const isMission = alert.type === "MISSION_REQUEST";
-          const isEmergency =
-            alert.type === "EMERGENCY_STOP" || alert.type === "MANUAL_CONTROL";
+        {/* [NEW] 경로 승인 UI */}
+        {pathOptionsData && (
+          <div className="p-3 rounded border border-purple-500/40 bg-purple-500/5 animate-in slide-in-from-left-2">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-bold text-purple-400 flex items-center gap-2">
+                <Route className="w-3 h-3" />
+                CONFIRM ROUTE
+              </h3>
+              <button
+                onClick={() => setPathOptionsData(null)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="text-[11px] text-gray-400 mb-3 font-mono">
+              <span>FLIGHT: <span className="text-white">{pathOptionsData.flightNumber}</span></span>
+              <div className="mt-1">
+                <span className="text-purple-400">{pathOptionsData.departNode}</span>
+                <span className="mx-2">→</span>
+                <span className="text-purple-400">{pathOptionsData.destNode}</span>
+              </div>
+            </div>
 
-          // Style Config based on logic
+            {/* Path Options */}
+            <div className="space-y-2 mb-3">
+              {pathOptionsData.pathOptions.map((option) => (
+                <button
+                  key={option.optionId}
+                  onClick={() => setSelectedPath(option)}
+                  className={cn(
+                    "w-full p-2 text-left rounded border transition-all",
+                    selectedPath?.optionId === option.optionId
+                      ? "bg-purple-500/20 border-purple-400 ring-2 ring-purple-400/50"
+                      : "bg-white/5 border-white/10 hover:bg-white/10 hover:border-purple-500/50"
+                  )}
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="text-[11px] font-bold text-white">{option.label}</span>
+                    <span className="text-[9px] text-gray-500">{option.edgeIds.length} edges</span>
+                  </div>
+                  <div className="text-[9px] text-gray-400 mt-1 font-mono truncate">
+                    {option.edgeIds.slice(0, 3).join(" → ")}
+                    {option.edgeIds.length > 3 && "..."}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={handleRouteConfirm}
+              disabled={!selectedPath}
+              className={cn(
+                "w-full py-2 text-[11px] font-bold rounded transition-all uppercase",
+                selectedPath
+                  ? "bg-purple-500 text-white hover:bg-purple-400"
+                  : "bg-gray-700 text-gray-500 cursor-not-allowed"
+              )}
+            >
+              {selectedPath ? "Confirm Route" : "Select a route"}
+            </button>
+          </div>
+        )}
+
+        {alerts
+        .filter((alert) => !pathOptionsData || alert.id !== pathOptionsData.alertId)
+        .map((alert) => {
+          const isMission = alert.type === "MISSION_REQUEST";
+          
           const borderClass = isMission
             ? "border-accent-cyan/40"
             : "border-accent-orange/40";
@@ -325,7 +423,7 @@ export function ApprovalQueue() {
                     onClick={() => handleConfirm(alert.id)}
                     className="flex-1 py-1.5 bg-accent-orange/10 border border-accent-orange/50 text-accent-orange text-[10px] font-bold rounded hover:bg-accent-orange hover:text-black transition-all uppercase"
                   >
-                    Confirm
+                    Acknowledged
                   </button>
                 )}
               </div>
@@ -334,62 +432,7 @@ export function ApprovalQueue() {
         })}
       </div>
 
-      {/* DEBUG: Temporary Testing Controls */}
-      {import.meta.env.DEV && (
-        <div className="p-2 border-t border-white/10 flex gap-2 justify-center opacity-50 hover:opacity-100 transition-opacity">
-          <button
-            onClick={() =>
-              setAlerts((prev) => [
-                {
-                  id: Date.now().toString(),
-                  type: "MANUAL_CONTROL",
-                  message: "Pilot requested MANUAL CONTROL",
-                  timestamp: Date.now(),
-                },
-                ...prev,
-              ])
-            }
-            className="text-[10px] bg-accent-orange/20 text-accent-orange px-2 py-1 rounded"
-          >
-            [TEST] Manual
-          </button>
-          <button
-            onClick={() =>
-              setAlerts((prev) => [
-                {
-                  id: Date.now().toString(),
-                  type: "EMERGENCY_STOP",
-                  message: "EMERGENCY STOP TRIGGERED",
-                  timestamp: Date.now(),
-                },
-                ...prev,
-              ])
-            }
-            className="text-[10px] bg-red-500/20 text-red-500 px-2 py-1 rounded"
-          >
-            [TEST] Emergency
-          </button>
-          <button
-            onClick={() =>
-              setAlerts((prev) => [
-                {
-                  id: Date.now().toString(),
-                  type: "MISSION_REQUEST",
-                  flightNumber: "KE123",
-                  currentGate: "T1-105",
-                  activeRunway: "RUNWAY_34L",
-                  flightId: 101,
-                  timestamp: Date.now(),
-                },
-                ...prev,
-              ])
-            }
-            className="text-[10px] bg-accent-cyan/20 text-accent-cyan px-2 py-1 rounded"
-          >
-            [TEST] Request
-          </button>
-        </div>
-      )}
+
     </div>
   );
 }

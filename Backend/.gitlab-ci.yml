@@ -86,15 +86,29 @@ backend-deploy:
         echo 'MQTT_PORT=8883' >> deploy.env &&
         echo 'JWT_SECRET=$JWT_SECRET' >> deploy.env &&
         echo 'JWT_EXPIRATION=86400000' >> deploy.env &&
+        echo 'REDIS_HOST=autowing-redis' >> deploy.env &&
+        echo 'REDIS_PORT=6379' >> deploy.env &&
         echo \"BACKEND_IMAGE=$BACKEND_IMAGE\" >> deploy.env &&
 
-        # 컨테이너 실행
+        # Redis 컨테이너 설정 (최초 1회만, 이미 있으면 skip)
+        if ! docker ps -a | grep -q autowing-redis; then
+          echo '🔴 Redis 컨테이너가 없습니다. 새로 생성합니다...'
+          docker run -d --name autowing-redis \
+            --network app-net \
+            --restart always \
+            -v autowing-redis-data:/data \
+            redis:7-alpine redis-server --appendonly yes
+        else
+          echo '✅ Redis 컨테이너가 이미 실행 중입니다. 유지합니다.'
+        fi &&
+
+        # Backend 컨테이너 실행(dev 환경 엔 local, master 환경엔 prod)
         docker run -d --name backend-app \
-          --network app-network \
+          --network app-net \
           --restart always \
           -p 8080:8080 \
           --env-file deploy.env \
-          -e SPRING_PROFILES_ACTIVE=local \
+          -e SPRING_PROFILES_ACTIVE=$CI_COMMIT_REF_NAME \
           $BACKEND_IMAGE &&
 
         rm deploy.env &&

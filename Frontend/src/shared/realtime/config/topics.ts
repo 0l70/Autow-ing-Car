@@ -54,6 +54,7 @@ export const WS_TOPICS = {
     MOVE: "/app/car/move", // 이동 명령 (Pushback 등)
     MODE: "/app/car/mode", // 모드 변경 (Auto/Manual)
     EMERGENCY: "/app/car/emergency", // 비상 정지
+    RESUME: "/app/car/resume", // [NEW] 작업 재개
     MISSION_REQUEST: "/app/mission/request", // 미션 요청 (기장용이지만 참고)
   },
 
