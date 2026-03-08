@@ -31,11 +31,15 @@ export interface Aircraft {
     position: {
         x: number;          // MQTT: x_m
         y: number;          // MQTT: y_m
-        r: number;          // MQTT: yaw_deg -> Converted to Radians for Canvas
+        r: number;          // MQTT: yaw_deg -> Stored directly as Degrees (0-360) for UI
     };
     status: AircraftStatus; // MQTT: mode
     battery: number;        // MQTT: battery_pct
     speed: number;          // MQTT: velocity_mps
-    currentMission?: string; // MQTT: current_mission (e.g. "DOCKING_A")
+    currentMission?: {
+        id: string;
+        status: string;     // e.g. "RUNNING"
+        path?: string[];    // [NEW] Edge IDs for active route
+    } | string;             // Legacy support (string only)
     isLoaded: boolean;      // MQTT: is_loaded
 }

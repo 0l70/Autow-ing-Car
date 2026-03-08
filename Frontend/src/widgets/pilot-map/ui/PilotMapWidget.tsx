@@ -4,41 +4,40 @@ import { Card, CardHeader, CardTitle } from "@/shared/ui/Card";
 import { useGraphStore } from "@/entities/map/model/store";
 import { Aircraft } from "@/entities/map/model/types";
 import { useAircraftStore } from "@/entities/aircraft"; 
+import { useMissionStore } from "@/entities/mission";
 
-// FSD Layers
+// FSD 레이어
 import { MapCanvas } from "@/features/map-visualizer/ui/MapCanvas";
 import { GraphLayer } from "@/features/map-visualizer/ui/GraphLayer";
 import { AircraftLayer } from "@/features/map-visualizer/ui/AircraftLayer";
 import { useMapData } from "@/features/map-visualizer/model/useMapData";
-import { useAutoViewport } from "@/features/map-visualizer/model/useAutoViewport"; 
 import { useGridMetadata } from "@/features/map-visualizer/model/useGridMetadata"; 
+import { useAutoViewport } from "@/features/map-visualizer/model/useAutoViewport";
+import { MAP_CONFIG } from "@/features/map-visualizer/model/mapConfig";
 
 interface PilotMapWidgetProps {
     className?: string;
-    assignedCarId?: string | null | undefined; // [UPDATED] Allow undefined for optional chain compatibility
+    assignedCarId?: string | null | undefined; 
     onAircraftSelect?: ((aircraft: Aircraft | null) => void) | undefined;
 }
 
 export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: PilotMapWidgetProps) {
-    // 1. Data Layer
+    // 1. 데이터 레이어
     const { meta, mapImage } = useMapData();
-    const { mapMeta: storeMeta, nodes } = useGraphStore(); 
+    const { nodes } = useGraphStore(); 
     
-    // Pilot Context (Removed Hook Call to prevent duplicate logs)
-    // const { state: pilotState } = usePilotController(); // REMOVED
-    // const assignedCarId = pilotState.flightInfo?.assignedCarId; // REMOVED
     const allAircrafts = useAircraftStore(state => state.aircrafts);
 
-    // 2. Logic Layer
+    // 2. 로직 레이어
     const [loadedDims, setLoadedDims] = useState({ width: 0, height: 0 });
     
-    // Grid & Dimensions
+    // 그리드 및 치수
     const { gridMetadata: rawGridMetadata } = useGridMetadata();
 
-    // 1.2x Grid Expansion Logic (Virtual Map)
+    // [Update] 1.2x Grid Expansion Logic (Matching ATC Map)
     const paddedGridMetadata = useMemo(() => {
-        const expansionRatio = 0.2; 
-        const sideRatio = 0.1;      
+        const expansionRatio = 0.2; // Total +20%
+        const sideRatio = 0.1;      // +10% per side
 
         const extraW = rawGridMetadata.width * expansionRatio;
         const extraH = rawGridMetadata.height * expansionRatio;
@@ -46,6 +45,7 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
         const newWidth = rawGridMetadata.width + extraW;
         const newHeight = rawGridMetadata.height + extraH;
 
+        // Calculate Metric Padding (Meters)
         const padX_Meters = (rawGridMetadata.width * sideRatio) * rawGridMetadata.resolution;
         const padY_Meters = (rawGridMetadata.height * sideRatio) * rawGridMetadata.resolution;
 
@@ -63,53 +63,82 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
         };
     }, [rawGridMetadata]);
 
-    // Viewport Logic (Feature Hook)
-    // [Revert] Back to "Overview Mode" (Show Whole Path) 
-    // Removed Focusing Logic
-    const { viewBox: dynamicViewBox } = useAutoViewport(
-        nodes, 
-        paddedGridMetadata as any, 
-        paddedGridMetadata.height,     
-        paddedGridMetadata.width, 
-        paddedGridMetadata.height,
-        { paddingScale: 0.05, minPadding: 2 }
-    );
+    // Dimensions to use
+    const activeWidth = loadedDims.width || paddedGridMetadata.width;
+    const activeHeight = loadedDims.height || paddedGridMetadata.height;
 
-    // Filter Logic
+    // 뷰포트 로직
+    const { viewBox: autoViewBox } = useAutoViewport(
+        nodes,
+        paddedGridMetadata as any,
+        paddedGridMetadata.height,
+        paddedGridMetadata.width,
+        paddedGridMetadata.height,
+        { 
+            paddingScale: 0.05, 
+            minPadding: 2 
+        } // Consistent with ATC
+    );
+    
     const myAircraftData = useMemo(() => {
         return assignedCarId 
             ? allAircrafts.filter(a => a.id === assignedCarId) 
             : []; 
     }, [allAircrafts, assignedCarId]);
 
-    const activeWidth = loadedDims.width || paddedGridMetadata.width;
-    const activeHeight = loadedDims.height || paddedGridMetadata.height;
+    // [Active Route Extraction]
+    const activeRoutePath = useMemo(() => {
+        if (!assignedCarId) return undefined;
+        const myAircraft = allAircrafts.find(a => a.id === assignedCarId);
+        
+        // Show path when Connected/Towing or STOP
+        const isActiveState = myAircraft?.status === 'TOWING' || myAircraft?.status === 'STOP' || myAircraft?.status === 'MOVING_TO_GATE';
+        
+        if(!isActiveState) return undefined;
 
-    // 3. UI Layer
+        // Priority 1: Check aircraft.currentMission.path (from WebSocket)
+        const missionObj = myAircraft?.currentMission as any;
+        if(Array.isArray(missionObj?.path)) {
+            return missionObj.path as string[];
+        }
+
+        // Priority 2: Check activeMissions[carId].edgeIds (from REST API)
+        const activeMissions = useMissionStore.getState().activeMissions;
+        const missionInfo = activeMissions[assignedCarId];
+        if(Array.isArray(missionInfo?.edgeIds)) {
+            return missionInfo.edgeIds;
+        }
+
+        return undefined;
+    }, [allAircrafts, assignedCarId]);
+
+    // 3. UI 레이어
     return (
         <Card className={`glass-panel relative overflow-hidden flex flex-col ${className}`}>
             <CardHeader className="py-3 border-b border-white/10 z-10 bg-black/20 backdrop-blur">
                 <CardTitle className="text-sm font-bold tracking-wide text-slate-400 flex items-center gap-2">
                     <MapIcon className="w-4 h-4 text-cyan-500" />
-                    DIGITAL TWIN NAVIGATION
+                    DIGITAL TWIN NAVIGATION (PILOT)
                 </CardTitle>
             </CardHeader>
-            <div className="flex-1 relative bg-black/40 overflow-hidden">
+            <div className="flex-1 relative bg-[#0a0a0f] overflow-hidden">
                     <MapCanvas
-                        // Data
+                        // 데이터
                         mapImage={mapImage || null}
                         meta={paddedGridMetadata as any} 
                         
-                        // Config
+                        // 설정
                         visualStyle="abstract"
                         gridMetadata={paddedGridMetadata} 
-                        pixelRatio={5} 
                         
-                        // Viewport
-                        initialViewBox={dynamicViewBox}
-                        maxBounds={dynamicViewBox}
+                        // 렌더 스케일 (Match ATC)
+                        pixelRatio={5}
                         
-                        // Grid Options
+                        // 뷰포트
+                        initialViewBox={autoViewBox}
+                        maxBounds={autoViewBox} // [Zoom Limit] Restrict to auto-fit bounds
+                        
+                        // 그리드 옵션 (Match Match ATC)
                         gridOptions={{
                             majorInterval: 1.5,
                             minorInterval: 0.5,
@@ -124,13 +153,20 @@ export function PilotMapWidget({ className, assignedCarId, onAircraftSelect }: P
                         onMapClick={(pos) => console.log("Pilot Map Click:", pos)}
                     >
                         {/* Layers */}
-                        <GraphLayer meta={paddedGridMetadata as any} mapHeight={activeHeight} />
+                        <GraphLayer 
+                            meta={paddedGridMetadata as any} 
+                            mapHeight={activeHeight} 
+                            overridePath={activeRoutePath}
+                            activePathColor={MAP_CONFIG.GRAPH.COLOR.PILOT_GLOW} 
+                            activeNodeColor={MAP_CONFIG.GRAPH.COLOR.PILOT_ACTIVE} // [NEW] Mint/Teal
+                            activeNodeBorderColor={MAP_CONFIG.GRAPH.COLOR.PILOT_ACTIVE_BORDER} // [NEW] Dark Teal
+                        />
                         
                         <AircraftLayer
                             meta={paddedGridMetadata as any}
-                            mapWidth={activeWidth}
                             mapHeight={activeHeight}
-                            pixelRatio={5} // High-Res
+                            mapWidth={activeWidth}
+                            pixelRatio={5}
                             data={myAircraftData}
                             onAircraftClick={(ac) => onAircraftSelect?.(ac)} 
                         />

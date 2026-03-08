@@ -32,3 +32,17 @@
     @apply bg-accent-cyan/50;
   }
 }
+
+/* [Animation] Fill Loop (Continuous Filling) */
+@keyframes fill-loop {
+  0% {
+    stroke-dashoffset: 1; /* Empty (Before start) */
+  }
+  85%{
+    stroke-dashoffset: 0; /* Full (Filled) */
+  }
+}
+
+.animate-fill-loop {
+  animation: fill-loop 1.3s linear infinite;
+}

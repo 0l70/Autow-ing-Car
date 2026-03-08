@@ -1,6 +1,8 @@
 import { Gauge, Navigation, MapPin, Signal, Battery } from "lucide-react";
 import { useMissionStore } from "@/entities/mission";
 import { useAircraftStore } from "@/entities/aircraft";
+import { useDerivedMetrics } from "@/features/pilot-actions/model/hooks/useDerivedMetrics";
+import { msToKmh } from "@/shared/lib/math";
 
 interface MissionInspectorProps {
     selectedAircraftId: string | null;
@@ -12,6 +14,9 @@ export function MissionInspector({ selectedAircraftId }: MissionInspectorProps) 
         state.aircrafts.find(a => a.id === selectedAircraftId) ?? null
     );
 
+    // [New] Real-time Euclidean Metrics
+    const { calcSpeed } = useDerivedMetrics(selectedAircraft);
+
     if (!selectedAircraft) {
         return (
             <div className="h-full flex items-center justify-center text-gray-500 text-xs font-mono border border-white/5 rounded-xl p-4 bg-black/20">
@@ -20,12 +25,12 @@ export function MissionInspector({ selectedAircraftId }: MissionInspectorProps) 
         );
     }
 
-    const { id, status, speed, position, battery, isLoaded } = selectedAircraft;
-    const missionInfo = activeMissions[id]; // Lookup Flight Info
+    const { id, status, battery, isLoaded, position } = selectedAircraft;
+    const missionInfo = activeMissions[id];
+
     
-    // Degrees from Radians
-    const headingDeg = Math.round((position.r * 180) / Math.PI);
-    const normalizedHeading = (headingDeg + 360) % 360; // 0-360
+    // Degrees (Stored in position.r)
+    const normalizedHeading = Math.round(position.r);
 
     return (
         <div className="h-full flex flex-col gap-4 min-h-0">
@@ -186,7 +191,7 @@ export function MissionInspector({ selectedAircraftId }: MissionInspectorProps) 
                     <div className="flex items-center justify-between text-gray-500">
                         <div className="flex items-center gap-2">
                             <Gauge className="w-4 h-4" />
-                            <span className="text-xs font-bold tracking-wider uppercase">GS (kts)</span>
+                            <span className="text-xs font-bold tracking-wider uppercase">GS (km/h)</span>
                         </div>
                         {isLoaded && <span className="text-[10px] font-mono text-accent-cyan">AUTO</span>}
                     </div>
@@ -194,15 +199,15 @@ export function MissionInspector({ selectedAircraftId }: MissionInspectorProps) 
                     <div className="flex flex-col mt-auto">
                          <div className="flex items-baseline gap-2">
                              <span className="text-4xl font-mono font-bold text-white tracking-tighter drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]">
-                                {(speed * 1.94384).toFixed(0)}
+                                {msToKmh(calcSpeed).toFixed(1)}
                              </span>
                              <span className="text-xs font-mono text-gray-500 mb-1">
-                                / TGT {speed > 0 ? "15" : "0"}
+                                / TGT 15.0
                              </span>
                          </div>
                          {/* Visual Bar for Speed */}
                          <div className="w-full h-1 bg-gray-700 mt-2 rounded-full overflow-hidden">
-                            <div className="h-full bg-white w-0 transition-all duration-300" style={{ width: `${Math.min((speed * 1.94384) / 20 * 100, 100)}%` }} />
+                            <div className="h-full bg-white transition-all duration-300" style={{ width: `${Math.min((msToKmh(calcSpeed)) / 20 * 100, 100)}%` }} />
                          </div>
                     </div>
                 </div>

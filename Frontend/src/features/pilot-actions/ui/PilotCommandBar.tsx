@@ -14,7 +14,7 @@ interface PilotCommandBarProps {
 
 export function PilotCommandBar({ moveState, connState, moveLongPress, connLongPress }: PilotCommandBarProps) {
     return (
-        <div className="col-span-2 flex flex-col gap-4">
+        <div className="col-span-2 flex flex-col gap-2">
             {/* Move Button */}
             <div className="relative group flex-1">
                 <Button

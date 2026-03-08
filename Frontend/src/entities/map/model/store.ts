@@ -43,6 +43,10 @@ interface GraphState {
   setMapMeta: (meta: import('./types').MapMeta) => void;
   setCorners: (corners: import('@/shared/realtime/api/map.schema').MapCorners) => void;
   setMapDimensions: (width: number, height: number) => void;
+
+  // [ATC] Visualization
+  highlightedPath: string[]; // List of Edge IDs to highlight
+  setHighlightedPath: (edgeIds: string[]) => void;
 }
 
 export const useGraphStore = create<GraphState>((set, get) => ({
@@ -56,6 +60,10 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   hoveredId: null,
   interactionMode: 'SELECT',
   activeNodeType: 'WAYPOINT',
+  
+  // [ATC] Initial State
+  highlightedPath: [],
+  setHighlightedPath: (edgeIds) => set({ highlightedPath: edgeIds }),
 
   setMode: (mode) => set({ interactionMode: mode, selectedId: null }),
   setActiveNodeType: (type) => set({ activeNodeType: type }),

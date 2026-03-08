@@ -27,7 +27,7 @@ export function PilotDashboard() {
                         : null;
 
     return (
-        <div className="h-full w-full bg-black/50 p-4 text-slate-200 font-mono overflow-hidden flex flex-col gap-[2%] relative">
+        <div className="h-full w-full bg-black/50 p-4 text-slate-200 font-mono overflow-hidden flex flex-col gap-[2%] relative ">
             <div className="grid grid-cols-12 gap-4 h-[58%] min-h-0">
                 <CameraWidget 
                     className="col-span-5 h-full overflow-hidden" 
